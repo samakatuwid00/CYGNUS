@@ -654,6 +654,9 @@
        .jv-spacer rule comes later in the file and would win a tie. */
     #jv-shell #jv-center .jv-spacer { flex: 1 1 auto; height: auto; min-height: 0; max-height: none; }
     #jv-feed { flex: 0 1 auto; min-height: 0; max-height: none; }
+    /* The last exchange keeps a height limit and scrolls inside it, so a long
+       reply cannot fill the panel and cover the black hole. */
+    html:not(.jv-tx-all):not(.jv-kb) #jv-side-log { max-height: 40vh; }
   }
   #jv-center .jv-spacer { flex: 0 0 auto; height: 15vh; min-height: 100px; max-height: 200px; }
 
@@ -1586,6 +1589,14 @@
   if (chatLog) new MutationObserver(syncTranscriptToggle).observe(chatLog, { childList: true });
   syncTranscriptToggle();
 
+  // "Show all" is for looking back. A new turn returns to the last exchange;
+  // before, the full-height transcript stayed on for every later message.
+  function collapseTranscript() {
+    if (!document.documentElement.classList.contains('jv-tx-all')) return;
+    document.documentElement.classList.remove('jv-tx-all');
+    syncTranscriptToggle();
+  }
+
   // ---------------------------------------------------------------- desktop app
   // The shell tells the page which of its three sizes it is in; the page lays
   // itself out for it and asks for a change with the two topbar buttons. The
@@ -1984,6 +1995,7 @@
   // logged as their line, HUD busy. False when the socket is down.
   function sendUserText(value) {
     if (!send({ type: 'text', text: value, speak: true })) return false;
+    collapseTranscript();
     logConv('user', value);
     // Typed input logs its own line here; the server still echoes a transcript
     // for it, and without this the echo would render the same words twice.
@@ -2148,6 +2160,7 @@
 
     if (m.type === 'transcript') {
       console.log('[you] ' + m.text);
+      collapseTranscript();
       commitInterim(m.text);           // keep the words; Whisper's text wins
       // Session boundary rules (Phase 1 UX + spurious-close fix):
       //   * Bare "jarvis" OPENS the mic when truly off (speaks a listening cue).
@@ -3073,6 +3086,19 @@
   chatInput.addEventListener('input', syncMicMode);
   // preload.js exposes window.jarvisDesktop in the desktop app only.
   if (IS_DESKTOP && window.jarvisDesktop) window.jarvisDesktop.onHotkey(talkNow);
+
+  // Clicking the black hole talks, like the mic. It sits under the shell (the
+  // spacer covers it), so a click on empty space inside its circle counts;
+  // controls, the transcript and open panels keep their own clicks.
+  var cyStage = document.getElementById('cy-stage');
+  document.addEventListener('click', function (e) {
+    if (!cyStage || e.target.closest('button, a, input, textarea, select, [role="button"], ' +
+        '#jv-side-log, #jv-topbar, #jv-gate, #jv-drawer, #jv-apps-modal, #jv-clarify-root, ' +
+        '#jv-col-left, #jv-col-right')) return;
+    var b = cyStage.getBoundingClientRect();
+    var dx = e.clientX - (b.left + b.width / 2), dy = e.clientY - (b.top + b.height / 2);
+    if (b.width && dx * dx + dy * dy <= b.width * b.width / 4) talkNow();
+  });
 
   // ---------------------------------------------------------------- apps modal
   var appsData = null, appCat = 'all';

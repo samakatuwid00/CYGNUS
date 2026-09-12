@@ -38,6 +38,11 @@ _SOURCE = "tool"
 _session_id: str | None = None
 _lock = threading.Lock()
 
+# The session of the last Hermes job. Each job runs in a session of its own
+# (the shared one had grown to ~70k tokens a call by 2026-09-13), so a
+# /redirect goes to the job that just ran.
+_last_job_session: str | None = None
+
 # Where we cache the session_id on disk so a JARVIS restart can pick it up.
 _CACHE_DIR = Path(__file__).parent / ".warm_harness"
 _SESSION_CACHE = _CACHE_DIR / "session_id.txt"
@@ -181,15 +186,17 @@ def warm_send(
     timeout: int = 300,
     max_turns: int = 15,
     progress_cb=None,
+    fresh: bool = False,
 ) -> str:
     """Send a task to Hermes via the warm session.
 
     Returns the parsed reply text. Falls back to fresh spawn if session
     is unavailable. If `progress_cb` is callable, it is invoked at milestones
     ("Delegating to Hermes...", "Hermes finished.") so the caller can stream
-    status to the user while the (blocking) subprocess runs.
+    status to the user while the (blocking) subprocess runs. `fresh` runs the
+    task in a session of its own and leaves the warm session untouched.
     """
-    global _session_id
+    global _session_id, _last_job_session
 
     task = str(task or "").strip()
     if not task:
@@ -202,10 +209,10 @@ def warm_send(
             pass
 
     with _lock:
-        sid = _session_id
+        sid = None if fresh else _session_id
 
     # If no session yet, try to warm one
-    if not sid:
+    if not sid and not fresh:
         sid = warm_session(timeout=min(timeout, 120))
 
     # Attempt with session
@@ -282,16 +289,19 @@ def warm_send(
         new_sid = _parse_session(combined)
         if new_sid:
             with _lock:
-                _session_id = new_sid
-                _save_session(new_sid)
+                if fresh:
+                    _last_job_session = new_sid
+                else:
+                    _session_id = new_sid
+                    _save_session(new_sid)
 
         reply = _parse_reply(combined)
         if rc != 0 and not reply:
             return f"[Error] Hermes exited with code {rc} and said nothing."
         if not reply:
             return "Hermes finished but returned no output."
-        # Truncate long replies for voice
-        if len(reply) > 1500:
+        # Truncate long replies for voice; a job's result is kept whole
+        if not fresh and len(reply) > 1500:
             reply = reply[:1500] + " …(truncated)"
         if callable(progress_cb):
             try:
@@ -315,12 +325,12 @@ def warm_redirect(instruction: str, timeout: int = 300, max_turns: int = 5) -> s
     new user turn to the same persistent session via `--resume`. Returns the
     Hermes reply, or None if no warm session exists.
     """
-    global _session_id
+    global _session_id, _last_job_session
     instruction = str(instruction or "").strip()
     if not instruction:
         return None
     with _lock:
-        sid = _session_id
+        sid = _last_job_session or _session_id
     if not sid:
         return None
     cmd = [
@@ -339,8 +349,11 @@ def warm_redirect(instruction: str, timeout: int = 300, max_turns: int = 5) -> s
         new_sid = _parse_session(combined)
         if new_sid and new_sid != sid:
             with _lock:
-                _session_id = new_sid
-                _save_session(new_sid)
+                if sid == _last_job_session:
+                    _last_job_session = new_sid
+                else:
+                    _session_id = new_sid
+                    _save_session(new_sid)
         return _parse_reply(combined) or None
     except Exception:
         return None

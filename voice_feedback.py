@@ -71,6 +71,7 @@ _PRIORITY = {
     "job_done": "high",
     "job_error": "high",
     "job_timeout": "high",
+    "job_unverified": "high",
 }
 
 class Policy:

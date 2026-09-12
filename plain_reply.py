@@ -193,7 +193,7 @@ def announce_job(event: dict) -> str | None:
     """A short spoken line for a job that reached an end state, or None."""
     state = event.get("state")
     title = short_task(event.get("task"))
-    note = event.get("note") or ""
+    note = event.get("note") or ((event.get("progress") or [""])[-1] or "")
     if state == "done":
         body = _full_result(event)
         ask = pending_ask(body)
@@ -210,6 +210,8 @@ def announce_job(event: dict) -> str | None:
             return f"I dropped “{title}” because it wasn't confirmed."
         return f"“{title}” ran out of time."
     if state == "unverified":
+        if note.startswith("only described"):
+            return f"“{title}” wasn't done: it only described the work."
         return (f"“{title}” finished, but I couldn't double-check the result. "
                 "Ask me what happened and I'll look.")
     return None
@@ -249,6 +251,9 @@ def card(job: dict) -> dict:
             return {**out, "label": "Needs you", "tone": "ask", "detail": ask}
         return {**out, "label": "Done", "tone": "ok", "detail": _first_sentence(body)}
     if state == "unverified":
+        if note.startswith("only described"):
+            return {**out, "label": "Not done", "tone": "warn",
+                    "detail": "It only described the work; nothing in Cygnus's folder changed."}
         return {**out, "label": "Done, not checked", "tone": "warn",
                 "detail": "It finished, but the result wasn't double-checked."}
     if state == "error":

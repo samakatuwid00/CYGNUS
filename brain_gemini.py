@@ -1829,6 +1829,9 @@ class JarvisBrain:
         """
         # Store progress callback in thread-local so tools can reach it.
         _progress_local.cb = progress_cb
+        # A delegation the model starts takes the same late-answer path.
+        import tools as _tools_jobs
+        _tools_jobs.set_job_callback(on_hermes_done)
         self._maybe_reset_idle()
         self._last_turn_ts = time.time()
         self.conversation.append({"role": "user", "content": user_input})

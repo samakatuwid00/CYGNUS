@@ -110,6 +110,20 @@ def set_progress_cb(cb):
     _tools_tls.cb = cb
 
 
+def set_job_callback(cb):
+    """Store where a background job's late answer goes for this thread's turn
+    (called by brain); None when the turn can only answer now."""
+    _tools_tls.on_done = cb
+
+
+def _job_run(kw: dict) -> dict:
+    """background/on_done for a delegation the model starts: in the background
+    whenever the turn can take a late answer. Without it a Hermes run held
+    the model's turn for up to five minutes."""
+    on_done = kw.get("on_done") or getattr(_tools_tls, "on_done", None)
+    return {"background": _truthy(kw.get("background", False)) or callable(on_done), "on_done": on_done}
+
+
 def progress(msg: str):
     """Emit a mid-task status update if a callback is set. Safe to call anytime."""
     cb = getattr(_tools_tls, "cb", None)
@@ -938,7 +952,7 @@ def web_browse(url: str, mode: str = "open", query: str = "") -> str:
     blocks a plain fetch (no login-wall bypass; matches the base stack).
     """
     import shutil, subprocess
-    oc = shutil.which("oc") or r"C:\Users\deped\AppData\Roaming\npm\oc.CMD"
+    oc = _direct_launcher("oc") or _direct_launcher(r"C:\Users\deped\AppData\Roaming\npm\oc.CMD")
     if not oc:
         return "[Error] oc CLI not found on PATH. Install with: npm i -g @only-cli/oc"
     url = (url or "").strip()
@@ -950,13 +964,15 @@ def web_browse(url: str, mode: str = "open", query: str = "") -> str:
         url = "https://" + url
     try:
         if mode == "raw":
-            cmd = [oc, "raw", url]
+            cmd = oc + ["raw", url]
         elif mode == "read":
-            cmd = [oc, "read", str(query or 1)]
+            cmd = oc + ["read", str(query or 1)]
         else:
-            cmd = [oc, "open", url, "--budget", "500"]
+            cmd = oc + ["open", url, "--budget", "500"]
+        # No shell: the address comes from the model, and a shell would run
+        # "https://x.com & anything" as two commands.
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=120,
-                             shell=True, encoding="utf-8", errors="replace")
+                             encoding="utf-8", errors="replace")
         out = (res.stdout or "").strip()
         if res.returncode != 0 or not out:
             err = (res.stderr or "").strip()[:200]
@@ -1796,6 +1812,34 @@ DELEGATE_AGENTS = {
 DELEGATE_TIMEOUT = int(os.getenv("JARVIS_DELEGATE_TIMEOUT", "300"))
 
 
+# An npm shim (.cmd) runs through cmd.exe, which ends an argument at its first
+# line break and reads & | " inside it as its own syntax: a task sent to
+# OpenCode arrived as its brief's first line only (2026-09-13), and prompt text
+# could run commands. Agents start from the shim's real target instead.
+_SHIM_TARGET_RE = re.compile(r'"%dp0%\\([^"%]+\.(?:exe|js))"', re.I)
+
+
+def _direct_launcher(bin_name: str) -> list | None:
+    """The argv prefix that runs `bin_name` without cmd.exe, or None when it
+    isn't installed or is a shim whose target can't be found."""
+    path = shutil.which(bin_name) if bin_name else None
+    if not path or not path.lower().endswith((".cmd", ".bat")):
+        return [path] if path else None
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            targets = _SHIM_TARGET_RE.findall(f.read())
+    except OSError:
+        return None
+    target = os.path.join(os.path.dirname(path), targets[-1]) if targets else ""
+    if not os.path.isfile(target):
+        return None
+    if target.lower().endswith(".exe"):
+        return [target]
+    node = os.path.join(os.path.dirname(path), "node.exe")
+    node = node if os.path.isfile(node) else shutil.which("node")
+    return [node, target] if node else None
+
+
 def delegate_task(task: str, agent: str = "claude") -> str:
     """Hand a task to a CLI coding agent and return what it reports back.
 
@@ -1810,11 +1854,11 @@ def delegate_task(task: str, agent: str = "claude") -> str:
     if not str(task).strip():
         return "[Error] No task given to delegate."
 
-    exe = shutil.which(DELEGATE_AGENTS[key][0])
-    if not exe:
+    launch = _direct_launcher(DELEGATE_AGENTS[key][0])
+    if not launch:
         return (f"[Error] The {key} CLI is not on PATH, so I cannot delegate to it.")
 
-    cmd = [exe] + DELEGATE_AGENTS[key][1:] + [str(task)]
+    cmd = launch + DELEGATE_AGENTS[key][1:] + [str(task)]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True,
                               timeout=DELEGATE_TIMEOUT, encoding="utf-8",
@@ -2176,11 +2220,15 @@ def run_opencli(command: str, confirm: bool = False,
     base = f"opencli {command}" + (
         f" --window {'foreground' if foreground else 'background'}"
         if is_browser_primitive else "")
-    # shell=True is required on Windows to resolve the opencli .cmd shim.
-    # Build a shell command that preserves multi-word quoted args as ONE
-    # argument. shlex.split() discards the user's quotes, so we use a
-    # quote-aware splitter and then double-quote any token that contains a
-    # space (Node/Commander needs double quotes, not shlex's single quotes).
+    # Run opencli's own script, not its .cmd shim through a shell: cmd.exe
+    # reads & | in the command as its syntax (see _direct_launcher). Quoted
+    # multi-word args stay ONE argument: shlex.split() discards the user's
+    # quotes, so a quote-aware splitter keeps them, and they are removed as
+    # each argument is handed over.
+    launch = _direct_launcher("opencli")
+    if not launch:
+        return "[OpenCLI error] opencli is not installed on PATH."
+
     def _split_keep_quotes(s):
         out, cur, q = [], "", None
         for ch in s:
@@ -2200,23 +2248,19 @@ def run_opencli(command: str, confirm: bool = False,
             out.append(cur)
         return out
 
-    def _win_quote(tok):
-        if " " in tok and not (tok.startswith('"') and tok.endswith('"')):
-            return f'"{tok}"'
-        return tok
+    def _unquote(tok):
+        return tok[1:-1] if len(tok) >= 2 and tok[0] == tok[-1] and tok[0] in "\"'" else tok
 
-    raw_tokens = _split_keep_quotes(base)
+    raw_tokens = [_unquote(t) for t in _split_keep_quotes(base)]
     # For site/app adapters (NOT the `browser` primitive), everything after
     # the 2nd token is free text (a title/query) that OpenCLI wants as ONE
-    # quoted argument. Rejoin trailing tokens so "Web scraping" -> "Web scraping".
+    # argument. Rejoin trailing tokens so Web scraping -> "Web scraping".
     if not is_browser_primitive and len(raw_tokens) > 3:
-        head = raw_tokens[:3]
-        tail = " ".join(raw_tokens[3:])
-        raw_tokens = head + [f'"{tail}"']
-    shell_cmd = " ".join(_win_quote(t) for t in raw_tokens)
+        raw_tokens = raw_tokens[:3] + [" ".join(raw_tokens[3:])]
+    argv = launch + raw_tokens[1:]              # raw_tokens[0] is "opencli"
     try:
-        proc = subprocess.run(shell_cmd, shell=True, capture_output=True,
-                              text=True, timeout=180)
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=180,
+                              encoding="utf-8", errors="replace")
         out = (proc.stdout or "").strip()
         err = (proc.stderr or "").strip()
         if proc.returncode != 0:
@@ -2249,14 +2293,14 @@ def _run_hermes_sync(task: str, timeout: int, max_turns: int,
                       progress_cb=None) -> str:
     """Synchronously launch Hermes and return its parsed reply (blocking).
 
-    Phase 2 (warm harness): uses persistent session via warm_harness module
-    instead of spawning a fresh subprocess each turn. Session survives JARVIS
-    restarts via disk cache. Falls back to fresh spawn if warm session fails.
+    Each job runs in a Hermes session of its own: resuming one shared session
+    carried every earlier job into the next (49 messages, ~70k tokens a call,
+    and an unrelated CLAUDE_TASK.md read on 2026-09-13).
     Phase 4: progress_cb streams milestone status to the caller (WS/voice).
     """
     from warm_harness import warm_send
     return warm_send(task, timeout=timeout, max_turns=max_turns,
-                     progress_cb=progress_cb)
+                     progress_cb=progress_cb, fresh=True)
 
 
 # A "safe" task is one the user asked to look at, not change, so Hermes is
@@ -2286,9 +2330,31 @@ def _repo_changes() -> dict:
     return seen
 
 
+def _changed_files(before: dict) -> list:
+    """Files in Cygnus's folder changed since the `before` snapshot."""
+    return sorted(p for p, m in _repo_changes().items() if before.get(p, -1) != m)
+
+
+# A changing task whose reply only says what would be done ("I would delegate
+# this to Claude Code. The goal would be ...") did not do it. On 2026-09-13
+# such a reply was marked Done.
+_DESCRIBES_ONLY_RE = re.compile(r"\s*(?:I would|I'd|The goal (?:\w+ ){0,3}would be)\b", re.I)
+DESCRIBED_ONLY_NOTE = "only described the work; no files in Cygnus's folder changed"
+
+
+def _finish_hermes_job(jid, result: str, before: dict, look_only: bool) -> None:
+    """Mark a finished Hermes job done, or unverified when a changing task
+    came back as a description of the work and nothing changed."""
+    import jobs as _jobs
+    if not look_only and _DESCRIBES_ONLY_RE.match(result) and not _changed_files(before):
+        _jobs.update(jid, state="unverified", note=DESCRIBED_ONLY_NOTE, result=result, summary=result[:200])
+    else:
+        _jobs.update(jid, state="done", result=result, summary=result[:200])
+
+
 def _look_only_report(before: dict, result: str, jid) -> str:
     """`result`, plus a plain note if files changed while a look-only job ran."""
-    changed = sorted(p for p, m in _repo_changes().items() if before.get(p, -1) != m)
+    changed = _changed_files(before)
     if not changed:
         return result
     note = "Files in Cygnus's folder changed while this look-only job ran: " + ", ".join(changed[:8])
@@ -2391,7 +2457,7 @@ def delegate_to_hermes(task: str, timeout: int = 300, max_turns: int = 15,
     else:
         _jobs.update(jid, state="running", note="safe — launching Hermes")
         task = _LOOK_ONLY_BRIEF + task
-    before = _repo_changes() if is_safe else None
+    before = _repo_changes()
 
     # --- Execution path -----------------------------------------------------
     # Phase 2+4: non-blocking. Front never blocks; status via jobs registry + WS listener.
@@ -2401,13 +2467,13 @@ def delegate_to_hermes(task: str, timeout: int = 300, max_turns: int = 15,
             j = jid_bg
             try:
                 result = _run_hermes_sync(task, timeout, max_turns, progress_cb)
-                if before is not None:
+                if is_safe:
                     result = _look_only_report(before, result, j)
                 if result.startswith("[Error]"):
                     _jobs.update(j, state="error", error=result[:500], result=result, summary=result[:120])
                     _audit_log("delegate_to_hermes", gate_target, "background_error", result=result, confirm=confirm, extra={"jid": j})
                 else:
-                    _jobs.update(j, state="done", result=result, summary=result[:200])
+                    _finish_hermes_job(j, result, before, is_safe)
                     _audit_log("delegate_to_hermes", gate_target, "background_done", result=result, confirm=confirm, extra={"jid": j})
             except Exception as e:
                 result = f"[Error] Hermes background task failed: {type(e).__name__}: {e}"
@@ -2424,12 +2490,12 @@ def delegate_to_hermes(task: str, timeout: int = 300, max_turns: int = 15,
     # sync path — still tracked in registry so HUD shows it even while blocked
     _jobs.update(jid, state="running", note="sync execution")
     result = _run_hermes_sync(task, timeout, max_turns, progress_cb)
-    if before is not None:
+    if is_safe:
         result = _look_only_report(before, result, jid)
     if result.startswith("[Error]"):
         _jobs.update(jid, state="error", error=result[:500], result=result, summary=result[:120])
     else:
-        _jobs.update(jid, state="done", result=result, summary=result[:200])
+        _finish_hermes_job(jid, result, before, is_safe)
     _audit_log("delegate_to_hermes", gate_target, "executed", result=result, confirm=confirm, extra={"jid": jid})
     return result
 
@@ -2923,11 +2989,11 @@ def _run_cli_agent(task: str, name: str, timeout: int = 300) -> str:
         task = brief + task
     except Exception:
         pass
-    exe = _shutil.which(spec.get("bin", ""))
-    if exe is None:
+    launch = _direct_launcher(spec.get("bin", ""))
+    if launch is None:
         return (f"[cli:{name}] '{spec.get('bin')}' is not installed on PATH, sir. "
                 f"Install it and I'll route to it with no other changes.")
-    cmd = [exe]
+    cmd = list(launch)
     flag = spec.get("prompt_flag")
     if flag:
         cmd.append(flag)
@@ -2978,12 +3044,12 @@ def _cli_label(name: str) -> str:
 def _cli_command(task: str, name: str) -> list | None:
     """The command line for CLI agent `name`, or None when it isn't installed."""
     spec = _cli_registry().get(name) or {}
-    exe = shutil.which(spec.get("bin", ""))
-    if not exe:
+    launch = _direct_launcher(spec.get("bin", ""))
+    if not launch:
         return None
     args = [os.path.expanduser(a) for a in spec.get("args") or []]
     flag = [spec["prompt_flag"]] if spec.get("prompt_flag") else []
-    return [exe] + args + flag + [task]
+    return launch + args + flag + [task]
 
 
 def _start_cli_job(task: str, name: str, raw_task: str = None, on_done=None,
@@ -3107,7 +3173,7 @@ def _run_specialist(task: str, agent: str | None = None, timeout: int = 300) -> 
     """Run a task through the OpenCode specialist tier with per-delegate brief (Phase 4)."""
     import shutil, jobs as jobreg
     import subprocess
-    oc = shutil.which("opencode")
+    oc = _direct_launcher("opencode")
     if oc is None:
         return "[specialist] OpenCode not installed; route to hermes."
     try:
@@ -3119,7 +3185,7 @@ def _run_specialist(task: str, agent: str | None = None, timeout: int = 300) -> 
     # Phase 2: registry — sync specialist also tracked as job for proactive reporting
     jid = jobreg.create(task[:200], tier="specialist", agent=agent, background=False)
     jobreg.update(jid, state="running", note=f"sync specialist {agent or 'build'}")
-    cmd = [oc, "run"]
+    cmd = oc + ["run"]
     if agent:
         cmd += ["--agent", agent]
     cmd += _specialist_model_args(agent)      # a working model when its own is down
@@ -3191,7 +3257,7 @@ def _run_specialist_bg(task: str, agent: str | None, timeout: int,
     import shutil
     import subprocess
     import jobs as jobreg
-    oc = shutil.which("opencode")
+    oc = _direct_launcher("opencode")
     if oc is None:
         return ("[specialist] OpenCode not installed; route to hermes.", "")
     # Phase 4: per-delegate brief (opencode gets code-focused vault slice)
@@ -3204,7 +3270,7 @@ def _run_specialist_bg(task: str, agent: str | None, timeout: int,
         full_task = (grounded + task) if grounded else task
 
     jid = jobreg.create(task, tier="specialist", agent=agent, background=True)
-    cmd = [oc, "run"]
+    cmd = oc + ["run"]
     if agent:
         cmd += ["--agent", agent]
     cmd += _specialist_model_args(agent)      # a working model when its own is down
@@ -5502,19 +5568,17 @@ TOOL_MAP = {
     "delegate_task": lambda **kw: delegate_task(kw["task"], kw.get("agent", "claude")),
     "delegate_to_hermes": lambda **kw: delegate_to_hermes(
         kw["task"], int(kw.get("timeout", 300) or 300),
-        int(kw.get("max_turns", 6) or 6), _truthy(kw.get("confirm", False))),
+        int(kw.get("max_turns", 6) or 6), _truthy(kw.get("confirm", False)), **_job_run(kw)),
     "delegate_to_hermes_grounded": lambda **kw: delegate_to_hermes_grounded(
         kw["task"], int(kw.get("timeout", 300) or 300),
-        int(kw.get("max_turns", 6) or 6), _truthy(kw.get("confirm", False))),
+        int(kw.get("max_turns", 6) or 6), _truthy(kw.get("confirm", False)), **_job_run(kw)),
     "web_browse": lambda **kw: web_browse(kw["url"], kw.get("mode", "open"), kw.get("query", "")),
     "delegate": lambda **kw: delegate(
         kw["task"], kw.get("backend"),
         _truthy(kw.get("confirm", False)),
         _truthy(kw.get("grounded", True)),
-        _truthy(kw.get("background", False)),
-        kw.get("on_done"),
-        int(kw.get("timeout", 300) or 300),
-        int(kw.get("max_turns", 15) or 15)),
+        timeout=int(kw.get("timeout", 300) or 300),
+        max_turns=int(kw.get("max_turns", 15) or 15), **_job_run(kw)),
     "get_memory_context": lambda **kw: get_memory_context(int(kw.get("tokens", 4000))),
 }
 
