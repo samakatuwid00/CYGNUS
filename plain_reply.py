@@ -65,6 +65,20 @@ def _sentence(s: str) -> str:
 _NOT_FOUND = re.compile(r"Could not open (?P<app>.+?): The system cannot find the file specified: '[^']*'\.?")
 
 
+def _effect(task):
+    """What a task waiting for its confirm will do to the machine, by the
+    lists the confirm gates use, for the read-back ('' when nothing to say)."""
+    try:
+        import tools
+    except Exception:
+        return ""
+    if tools._DESTRUCTIVE_RE.search(task):
+        return "It may delete or overwrite things."
+    if tools._MUTATING_RE.search(task) or tools._CHANGE_RE.search(task):
+        return "It will change files on this machine."
+    return ""
+
+
 def for_user(text):
     """A reply as the user should see and hear it."""
     if not isinstance(text, str) or not text.strip():
@@ -80,8 +94,9 @@ def for_user(text):
         agent = via["agent"].strip() if via else ""
         lead = (f"Before I hand this to {agent}, please confirm:" if agent and agent.lower() != "hermes"
                 else "Before I start, please confirm:")
+        effect = _effect(m["task"])
         return (f"{lead} {_sentence(short_task(m['task'], 16))} "
-                "Say confirm to go ahead, or no to cancel.")
+                + (f"{effect} " if effect else "") + "Say confirm to go ahead, or no to cancel.")
     t = _SAY_CONFIRM.sub("Before I do this, please confirm. I will ", t)
     t = re.sub(r"^\[NEEDS_PICK\]\s*", "", t)
     t = _BACKGROUND_MARK.sub("", t)

@@ -1839,6 +1839,7 @@ class JarvisBrain:
             pass
         self._lead_record = None
         self._ask_remember = None
+        self._gate = None
         _progress_local.grounded = None
         try:
             import command_chain
@@ -1860,6 +1861,14 @@ class JarvisBrain:
                 msg["content"] = original
                 _progress_local.grounded = None
         reply = self._with_remember_question(reply)
+        if self._gate is not None:          # what the gate would do, next to what ran
+            try:
+                import action_gate
+                action_gate.log_shadow(user_input, self._gate, {
+                    "backend": self.last_backend, "intent": (self.last_stats or {}).get("intent"),
+                    "asked": isinstance(reply, str) and _asks_something(reply)})
+            except Exception:
+                pass
         if started is not None:
             try:
                 fixed = honest_reply(reply, intent_router._audit_since(started["audit_pos"]),
@@ -2253,6 +2262,30 @@ class JarvisBrain:
                             return _led
             except Exception as e:
                 print(f"[JARVIS] router lead failed ({type(e).__name__}: {e}); old routing...")
+        # One decision before acting (action_gate, CONFIRM_CLARIFY_PLAN.md):
+        # act, confirm, or ask which of several real choices was meant. In
+        # shadow it only records what it would do; in lead it asks.
+        if intent in ("general", "app_reference") and not _conversational:
+            try:
+                import action_gate as _ag
+                if _ag.MODE in ("shadow", "lead"):
+                    _sem = None
+                    try:
+                        import semantic_route as _sr
+                        _sem = _sr.pick(user_input)[1]
+                    except Exception:
+                        pass
+                    self._gate = _ag.decide(user_input, open_target=_open_target(user_input),
+                                            semantic_score=_sem,
+                                            router_confidence=(self._lead_record or {}).get("confidence"))
+                    if _ag.MODE == "lead" and self._gate.kind == "clarify":
+                        _q = _ag.ask(self._gate)
+                        self.conversation.append({"role": "assistant", "content": _q})
+                        self.last_backend = "instant"
+                        self.last_stats = {"backend": "instant", "intent": "gate_clarify"}
+                        return _q
+            except Exception as e:
+                print(f"[gate] failed ({type(e).__name__}: {e}); routing on", flush=True)
         if intent in ("general", "app_reference") and not _conversational \
                 and _is_multistep_goal(user_input):
             try:

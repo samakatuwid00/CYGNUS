@@ -2003,8 +2003,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     # than the tiny corpus, and asking 'did you mean open,
                     # the beatles?' for a clipped command is worse than trying.
                     intent = resolve_intent(text.strip(), INTAKE_CORPUS)
+                    import action_gate    # in lead the gate asks this, for every input path
                     if (intent.needs_confirmation() and intent.candidates
-                            and intent.entity is not None):
+                            and intent.entity is not None and action_gate.MODE != "lead"):
                         await websocket.send_text(json.dumps({
                             "type": "clarify",
                             "heard": text.strip(),

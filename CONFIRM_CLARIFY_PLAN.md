@@ -101,6 +101,10 @@ acknowledgement, never a yes to a risky confirm.
 
 Each phase ships with tests, keeps the full suite green, and is its own commit.
 
+Built 2026-09-13: phases 1-2 in `fc800d0`, phases 3-5 in the commit after it.
+The gate runs in shadow. To let it ask, set `JARVIS_GATE=lead` in `.env` and
+restart the backend; `JARVIS_GATE=off` turns it off.
+
 1. **Reply reader** (`consent.py`) and the existing questions moved onto it. No
    behaviour change beyond consistent yes/no/pick.
 2. **One question store**: app-or-site, rule slot, `OPEN_CLARIFY_Q` and

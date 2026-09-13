@@ -25,6 +25,16 @@ def test_an_autonomous_confirm_too():
     raw = ("[NEEDS_CONFIRM] That goal could change state on this machine and isn't on the safe "
            "allowlist. Say 'confirm' to let me run it autonomously: \"Create the test page.\"")
     assert pr.for_user(raw) == ("Before I start, please confirm: Create the test page. "
+                                "It will change files on this machine. "
+                                "Say confirm to go ahead, or no to cancel.")
+
+
+def test_a_confirm_reads_back_what_the_task_will_do():
+    raw = ("[NEEDS_CONFIRM:ab12cd34] Claude Code may change files for this, so I'm asking first. "
+           "If you want me to proceed, say or type 'confirm' and I'll run it through Claude Code: "
+           "\"delete the old logs folder\" (job ab12cd34)")
+    assert pr.for_user(raw) == ("Before I hand this to Claude Code, please confirm: delete the old logs "
+                                "folder. It may delete or overwrite things. "
                                 "Say confirm to go ahead, or no to cancel.")
 
 
@@ -66,7 +76,8 @@ def test_a_failed_turn_is_told_plainly_never_as_the_exception():
 
 def test_a_long_title_ends_once():
     raw = f'[NEEDS_CONFIRM:1] x: "{MOBILE}, please fix it quickly and tell me" (job 1)'
-    assert "…. " not in pr.for_user(raw) and "… Say confirm" in pr.for_user(raw)
+    out = pr.for_user(raw)
+    assert "…. " not in out and "… It will change files on this machine. Say confirm" in out
 
 
 def test_thanks_keeps_its_answer():
