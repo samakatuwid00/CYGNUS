@@ -22,8 +22,11 @@ def rows_of(procs, windows=None, ports=None, jobs=()):
 
 @pytest.fixture(autouse=True)
 def no_real_readers(monkeypatch):
-    monkeypatch.setattr(ra, "_claude_for", lambda p, now, taken: {
-        "folder": "jarvis-demo", "status": "working", "doing": "editing tools.py", "detail": []})
+    # Interactive sessions have a transcript here; one-off runs do not.
+    monkeypatch.setattr(ra, "_claude_sessions", lambda ps, now: {
+        p["pid"]: {"folder": "jarvis-demo", "status": "working", "doing": "editing tools.py",
+                   "detail": [], "matched": True}
+        for p in ps if "-p" not in p["cmdline"]})
     monkeypatch.setattr(ra, "_hermes_for", lambda now: {"status": "idle", "doing": "idle for 5 minutes",
                                                           "detail": []})
 
@@ -82,6 +85,27 @@ def test_an_agents_shells_roll_up_but_the_agents_it_starts_do_not():
                     proc(23, "python.exe", "python check.py", ppid=21)])
     assert [(r["name"], r["doing"]) for r in rows] == [
         ("Claude Code in jarvis-demo", "editing tools.py"), ("Claude one-off run", "one-off run on haiku")]
+
+
+def test_each_claude_process_gets_the_transcript_it_writes():
+    old, new = (1, NOW - 12 * 3600), (2, NOW - 120)
+    files = [("mine.jsonl", NOW - 12 * 3600 + 5, NOW - 10), ("run.jsonl", NOW - 100, NOW - 5)]
+    assert ra.match_transcripts([old, new], files) == {2: "run.jsonl", 1: "mine.jsonl"}
+    resumed = [("yesterday.jsonl", NOW - 86400, NOW - 30)]           # created before it started
+    assert ra.match_transcripts([(3, NOW - 600)], resumed) == {3: "yesterday.jsonl"}
+    assert ra.match_transcripts([(4, NOW - 60)], [("stale.jsonl", NOW - 86400, NOW - 3600)]) == {}
+
+
+def test_a_one_off_run_with_a_transcript_says_what_it_is_doing(monkeypatch):
+    monkeypatch.setattr(ra, "_claude_sessions", lambda ps, now: {p["pid"]: {
+        "folder": "jarvis-demo", "status": "working", "doing": "editing _probe.js",
+        "detail": ["Session: Responsive HUD overhaul"], "matched": True} for p in ps})
+    rows = rows_of([proc(1, "python.exe", "python jarvis_web.py", ppid=0),
+                    proc(50, "claude.exe", "claude -p --model sonnet", ppid=1)], ports={1: [8001]})
+    run = next(r for r in rows if r["name"].startswith("Claude one-off"))
+    assert (run["name"], run["doing"]) == ("Claude one-off run in jarvis-demo", "editing _probe.js")
+    assert run["detail"][:2] == ["Model: sonnet", "Session: Responsive HUD overhaul"]
+    assert "Started by Cygnus" in run["detail"] and "Started by python.exe" not in run["detail"]
 
 
 def test_a_windowed_app_is_named_from_its_title_and_the_desktop_claude_is_an_agent():

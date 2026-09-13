@@ -282,26 +282,58 @@ def _tail(path):
     return lines[1:] if size > TAIL_BYTES else lines
 
 
-def _claude_for(proc, now, taken):
-    """A Claude Code CLI's session, matched by the folder it runs in: its
-    transcript lives in ~/.claude/projects/<folder with every symbol a dash>."""
-    try:
-        import psutil
-        cwd = psutil.Process(proc["pid"]).cwd()
-    except Exception:
-        return None
-    home = os.path.normcase(cwd.rstrip("\\/")) == os.path.normcase(HOME.rstrip("\\/"))
-    folder = "your home folder" if home else os.path.basename(cwd.rstrip("\\/")) or cwd
-    session_dir = os.path.join(CLAUDE_PROJECTS, re.sub(r"[^A-Za-z0-9]", "-", cwd))
-    try:
-        files = sorted(glob.glob(os.path.join(session_dir, "*.jsonl")), key=os.path.getmtime, reverse=True)
-        files = [f for f in files if f not in taken and os.path.getmtime(f) >= proc["started"] - 60]
-    except OSError:
+def match_transcripts(procs, files):
+    """{pid: transcript} for the Claude CLI processes of one folder: each
+    takes the transcript created closest after it started, else (a resumed
+    session) the one most recently written since it started. procs: [(pid,
+    started)], files: [(path, created, modified)]. Newest-modified alone
+    gave a 12-hour-old session a 2-minute-old run's work (2026-09-13)."""
+    out, taken = {}, set()
+    by_age = sorted(procs, key=lambda p: p[1], reverse=True)
+    for pid, started in by_age:
+        born = [f for f in files if f[0] not in taken and f[1] >= started - 60 and f[2] >= started]
+        if born:
+            out[pid] = min(born, key=lambda f: f[1])[0]
+            taken.add(out[pid])
+    for pid, started in by_age:
+        if pid in out:
+            continue
+        active = [f for f in files if f[0] not in taken and f[2] >= started]
+        if active:
+            out[pid] = max(active, key=lambda f: f[2])[0]
+            taken.add(out[pid])
+    return out
+
+
+def _claude_sessions(claude_procs, now):
+    """{pid: session} for Claude CLI processes, sessions and one-off runs
+    alike, each read from its own transcript in the folder it runs in
+    (~/.claude/projects/<folder with every symbol a dash>)."""
+    import psutil
+    by_folder = {}
+    for p in claude_procs:
+        try:
+            by_folder.setdefault(psutil.Process(p["pid"]).cwd(), []).append(p)
+        except Exception:
+            continue
+    out = {}
+    for cwd, ps in by_folder.items():
+        home = os.path.normcase(cwd.rstrip("\\/")) == os.path.normcase(HOME.rstrip("\\/"))
+        folder = "your home folder" if home else os.path.basename(cwd.rstrip("\\/")) or cwd
         files = []
-    if not files:
-        return {"folder": folder, "status": "idle", "doing": "no session activity yet", "detail": []}
-    taken.add(files[0])
-    return dict(claude_session(_tail(files[0]), now), folder=folder)
+        for f in glob.glob(os.path.join(CLAUDE_PROJECTS, re.sub(r"[^A-Za-z0-9]", "-", cwd), "*.jsonl")):
+            try:
+                files.append((f, os.path.getctime(f), os.path.getmtime(f)))
+            except OSError:
+                pass
+        matched = match_transcripts([(p["pid"], p["started"]) for p in ps], files)
+        for p in ps:
+            if p["pid"] in matched:
+                out[p["pid"]] = dict(claude_session(_tail(matched[p["pid"]]), now), folder=folder, matched=True)
+            else:
+                out[p["pid"]] = {"folder": folder, "status": "idle", "doing": "no session activity yet",
+                                 "detail": [], "matched": False}
+    return out
 
 
 # ------------------------------------------------------------------ Hermes --
@@ -429,11 +461,8 @@ def build_rows(procs, windows, ports, now, jobs=()):
             p = procs.get(p["ppid"])
         return seen
 
-    claude_roots = sorted((r for r in members if _agent_name(procs[r]) == "Claude Code"),
-                          key=lambda r: procs[r]["started"], reverse=True)
-    taken, claude = set(), {}
-    for r in claude_roots:
-        claude[r] = _claude_for(procs[r], now, taken)
+    claude_procs = [procs[r] for r in members if _agent_name(procs[r]) in ("Claude Code", "Claude one-off run")]
+    claude = _claude_sessions(claude_procs, now) if claude_procs else {}
     hermes = None
 
     rows = []
@@ -444,6 +473,7 @@ def build_rows(procs, windows, ports, now, jobs=()):
         p = procs[root]
         titles = [t for m in pids for t in windows.get(m, [])]
         status, detail = "running", []
+        by_cygnus = any(_is_cygnus_backend(procs[a]) for a in ancestors(root)) and not _is_cygnus_backend(p)
         if group == "agents":
             name = _agent_name(p)
             if name == "Claude Code":
@@ -454,9 +484,15 @@ def build_rows(procs, windows, ports, now, jobs=()):
             elif name == "Claude one-off run":
                 cmd = p["cmdline"]
                 model = next((cmd[i + 1] for i, a in enumerate(cmd[:-1]) if a == "--model"), "")
-                status, doing = "working", f"one-off run{f' on {model}' if model else ''}"
                 parent = procs.get(p["ppid"])
-                detail = [f"Started by {parent['name']}"] if parent else []
+                detail = [f"Started by {parent['name']}"] if parent and not by_cygnus else []
+                s = claude.get(root) or {}
+                if s.get("matched"):             # it writes a transcript: say what it is doing
+                    name = f"Claude one-off run in {s['folder']}"
+                    status, doing = s["status"], s["doing"]
+                    detail = ([f"Model: {model}"] if model else []) + detail + list(s["detail"])
+                else:
+                    status, doing = "working", f"one-off run{f' on {model}' if model else ''}"
             elif name == "Hermes gateway":
                 hermes = hermes or _hermes_for(now)
                 status, doing, detail = hermes["status"], hermes["doing"], list(hermes["detail"])
@@ -472,9 +508,9 @@ def build_rows(procs, windows, ports, now, jobs=()):
             name, doing = _server_doing(server, ports_here)
         else:
             name, doing = p["name"].rsplit(".", 1)[0], _short_cmd(p)
-        if group in ("apps", "agents") and doing.lower() in name.lower():
+        if titles and group in ("apps", "agents") and doing.lower() in name.lower():
             doing = "open"                   # a window titled with its own app's name
-        if any(_is_cygnus_backend(procs[a]) for a in ancestors(root)) and not _is_cygnus_backend(p):
+        if by_cygnus:
             detail.append("Started by Cygnus")
         cpu = sum(procs[m]["cpu_s"] for m in pids)
         mem = sum(procs[m]["mem_mb"] for m in pids)
