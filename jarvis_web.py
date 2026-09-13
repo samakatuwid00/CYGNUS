@@ -1898,6 +1898,17 @@ async def websocket_endpoint(websocket: WebSocket):
                 except Exception:
                     pass
 
+            elif mtype == "wake_ack":
+                # What the HUD did with a server wake, next to what the wake
+                # engine heard: a wake that arrived but opened nothing, and in
+                # which view (panel, full HUD, orb, hidden in the tray).
+                try:
+                    wake_engine.note(
+                        f"HUD {message.get('result')} (mode {message.get('mode')}, "
+                        f"view {message.get('view')}, hidden {message.get('hidden')})")
+                except Exception:
+                    pass
+
             elif mtype == "audio":
                 # Browser sent a recorded clip (base64 WAV or WebM/Opus blob).
                 # mode == "scan" -> transcribe only (client-side wake-word check),

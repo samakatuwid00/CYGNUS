@@ -1866,7 +1866,9 @@
   }
   // Where the command starts: the last wake word heard. The recognizer may
   // hold the previous command and this one in a single still-open result.
-  function lastWakeAt(words) {
+  // Not named lastWakeAt: that var (the wake de-dupe timestamp) replaced this
+  // function at load, so every browser wake threw "not a function".
+  function wakeWordIndex(words) {
     for (var j = words.length - 1; j >= 0; j--) if (wakeWordIn(words[j])) return j;
     return words.length;
   }
@@ -2103,15 +2105,20 @@
       var src = (m.source === 'server') ? 'SERVER' : 'BROWSER';
       console.log('[wake] ' + src + ' engine detected wake word');
       var now = Date.now();
-      if (now - lastWakeAt < 2000) return;   // de-dupe against the browser listener
+      if (now - lastWakeAt < 2000) { wakeAck('ignored it (duplicate)', mode); return; }   // de-dupe against the browser listener
       lastWakeAt = now;
+      var was = mode;
       interruptReply();   // Phase C barge-in: the user just spoke over the reply
       // Open the voice session when resting (off after a reply, or idle from
       // enable-mic). Must match mode==='off' because goIdle() parks there.
-      if (mode === 'off' || mode === 'idle') {
+      // 'nomic' too: interruptReply() above sends a closed session through
+      // goIdle(), which parks there, and a wake is a fair moment to retry.
+      if (mode === 'off' || mode === 'idle' || mode === 'nomic') {
         console.log('[session] wake — opening voice session');
-        beginCapture('command', false);
-        cue('What is it, sir?');
+        wakeAck('opened a capture', was);
+        wakeOpen();
+      } else {
+        wakeAck('ignored it', was);
       }
       return;
     }
@@ -2127,7 +2134,7 @@
     // active capture while the clip plays so an opening cue doesn't drop the
     // just-opened listening window when it ends.
     if (m.type === 'cue') {
-      if (m.audio) { speak(m.audio, mode === 'command'); }
+      if (m.audio) { speak(m.audio, mode === 'command' || mode === 'off'); }
       else if (m.text) { notice(m.text); }
       // Phase B chip: last few spoken cues stay visible in the feed
       if (m.text) {
@@ -2183,8 +2190,7 @@
       if (mode === 'off' && isBareWake) {
         // Open the voice session and audibly signal listening.
         console.log('[session] wake — opening voice session');
-        beginCapture('command', false);
-        cue('What is it, sir?');
+        wakeOpen();
         return;
       }
       if (isCloseIntent) {
@@ -2192,6 +2198,10 @@
         sessionClosePending = true;
         console.log('[session] close requested — mic will stop after reply');
         if (mode !== 'busy' && mode !== 'speaking') {
+          // Closed now, so nothing is pending: left set, the goodbye clip's
+          // goIdle() closed a second time (two "Standing by"s) and then parked
+          // in 'nomic', where every later wake was ignored.
+          sessionClosePending = false;
           stopMic();
           mode = 'off';
           cue('Standing by, sir.');
@@ -2544,8 +2554,11 @@
       if (preserveMode) {
         // Restore the mode that was active before this clip (e.g. 'command'
         // during a cue so the mic stays open for the user's reply).
+        // 'off' is the goodbye cue: the session stays closed and waits for a
+        // wake. goIdle() would find no mic and park in 'nomic'.
         mode = prevMode;
         if (mode === 'command') setState('listening', 'LISTENING…');
+        else if (mode === 'off') setState('idle', 'VOICE SESSION ENDED — SAY "CYGNUS" TO RESUME');
         else goIdle();
       } else {
         goIdle();
@@ -2680,7 +2693,7 @@
         var txt = ev.results[i][0].transcript;
         if (wakeWordIn(txt)) {
           console.log('[wake] detected: ' + txt);
-          wordsHeard = lastWakeAt(heardWords);
+          wordsHeard = wakeWordIndex(heardWords);
           beginCapture('command', false);
           cue('What is it, sir?');
           return;
@@ -2844,6 +2857,27 @@
     // The server's wake fallback holds off while we own the mic: its decodes
     // were competing with this capture for the CPU.
     send({ type: 'listening', state: 'start' });
+  }
+
+  // Tells the server what a wake did, for logs/wake_debug.log: a wake that
+  // arrived but opened nothing shows there, with the view it arrived in.
+  function wakeAck(result, was) {
+    send({ type: 'wake_ack', result: result, mode: was,
+           view: document.documentElement.getAttribute('data-desk') || 'browser',
+           hidden: document.hidden });
+  }
+
+  // A wake opens a command capture. After a session close ('off') the mic is
+  // torn down: beginCapture alone recorded nothing, no VAD tick ever ended it,
+  // and the HUD sat on LISTENING… ignoring every later wake. Mic first.
+  async function wakeOpen() {
+    if (!micOk) {
+      mode = 'boot';
+      await startMic();
+      if (!micOk) { wakeAck('could not start the mic', 'nomic'); return; }   // startMic said why
+    }
+    beginCapture('command', false);
+    cue('What is it, sir?');
   }
 
   function endCapture() {
@@ -3021,7 +3055,7 @@
       sessionClosePending = false;
       stopMic();
       mode = 'off';
-      setState('idle', 'VOICE SESSION ENDED — CLICK ENABLE MIC TO RESUME');
+      setState('idle', 'VOICE SESSION ENDED — SAY "CYGNUS" TO RESUME');
       dot.className = 'dead';
     };
   }

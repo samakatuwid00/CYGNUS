@@ -381,6 +381,7 @@ ipcMain.on('desk:setMode', (_e, next) => showMode(next, next !== 'mini'))
 ipcMain.on('desk:surface', () => {
   if (!win || win.isDestroyed()) return
   if (mode === 'mini') setMode('sticky')
+  if (win.isMinimized()) win.restore()
   if (!win.isVisible()) win.showInactive()
 })
 

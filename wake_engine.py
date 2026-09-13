@@ -41,6 +41,9 @@ import time
 import queue
 import threading
 
+import logging
+from logging.handlers import RotatingFileHandler
+
 import numpy as np
 import sounddevice as sd
 
@@ -64,6 +67,27 @@ BURST_S = 0.5
 # taken), and a dead stream is reopened at most this often.
 SILENT_STREAM_S = 5.0
 REOPEN_EVERY_S = 10.0
+
+# Every decoded window, hit or miss, and every change in why the listener is
+# not decoding go to logs/wake_debug.log, so a missed wake shows what Whisper
+# heard ("signals"?) or that the listener was held off. The server adds what
+# the HUD did with each wake. On unless JARVIS_WAKE_DEBUG=0; 1 MB, one old
+# file kept.
+WAKE_DEBUG = os.environ.get("JARVIS_WAKE_DEBUG", "1") != "0"
+WAKE_DEBUG_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "wake_debug.log")
+
+
+def _debug_logger():
+    log = logging.getLogger("wake_debug")
+    if not log.handlers:
+        os.makedirs(os.path.dirname(WAKE_DEBUG_LOG), exist_ok=True)
+        handler = RotatingFileHandler(WAKE_DEBUG_LOG, maxBytes=1_000_000,
+                                      backupCount=1, encoding="utf-8")
+        handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+        log.addHandler(handler)
+        log.setLevel(logging.INFO)
+        log.propagate = False
+    return log
 
 
 def wake_word_in(text):
@@ -111,6 +135,8 @@ class WakeEngine:
         self.last_err = ''
         self._last_err_print = 0.0  # throttles transcribe-error prints to 1/min
         self._last_reopen = 0.0
+        self._gate = None      # why the listener is not decoding; None = decoding
+        self._log = self._write_debug
 
     # -- external signals ---------------------------------------------------
     def set_callback(self, cb):
@@ -152,6 +178,24 @@ class WakeEngine:
     def note_browser_wake(self):
         """The browser's own Web Speech listener fired — don't double-trigger."""
         self._last_browser_wake = time.time()
+
+    def note(self, msg):
+        """One line in the wake debug log (the server adds what the HUD did)."""
+        self._log(msg)
+
+    def _write_debug(self, msg):
+        if not WAKE_DEBUG:
+            return
+        try:
+            _debug_logger().info(msg)
+        except Exception:
+            pass
+
+    def _set_gate(self, gate):
+        """Log the reason the listener is not decoding, once per change."""
+        if gate != self._gate:
+            self._gate = gate
+            self._log(f"listener: {gate or 'decoding'}")
 
     # -- lifecycle ----------------------------------------------------------
     def start(self):
@@ -249,18 +293,14 @@ class WakeEngine:
         if self._buf.shape[0] > cap:
             self._buf = self._buf[-cap:]
 
-        if now - self._last_fire < self.cooldown:
+        gate = ('cooldown after a wake' if now - self._last_fire < self.cooldown else
+                'paused: a command turn is running' if self._paused else
+                'suspended: Cygnus is speaking' if now < self._suspend_until else
+                'held: the HUD is recording a command' if now < self._hold_until else
+                'browser handled the wake' if now - self._last_browser_wake < 2.0 else None)
+        self._set_gate(gate)
+        if gate or self._buf.shape[0] < window_samples:
             return False
-        if self._paused:
-            return False                      # a command turn owns the CPU
-        if now < self._suspend_until:
-            return False                      # JARVIS is (or just was) speaking
-        if now < self._hold_until:
-            return False                      # the browser is recording a command
-        if self._buf.shape[0] < window_samples:
-            return False
-        if now - self._last_browser_wake < 2.0:
-            return False                      # browser already handled it
         if now - self._last_decode < self.step_s:
             return False                      # at most one decode per step
 
@@ -271,7 +311,8 @@ class WakeEngine:
         n = window.shape[0] // blk
         means = np.abs(window[:n * blk]).reshape(n, blk).mean(axis=1)
         k = max(1, min(n, int(round(BURST_S / 0.1))))
-        if np.convolve(means, np.ones(k) / k, mode='valid').max() < SILENCE_FLOOR:
+        level = np.convolve(means, np.ones(k) / k, mode='valid').max()
+        if level < SILENCE_FLOOR:
             return False
         self._last_decode = now
         try:
@@ -284,7 +325,9 @@ class WakeEngine:
                 self._last_err_print = now
                 print(f"[WakeEngine] transcribe error: {e!r}", flush=True)
             return True
-        if wake_word_in(text):
+        hit = wake_word_in(text)
+        self._log(f"heard {text!r} (level {level:.4f}){' -> WAKE' if hit else ''}")
+        if hit:
             print(f"[WakeEngine] wake word detected: {text!r}", flush=True)
             delivered = True
             if self._callback:
@@ -295,6 +338,7 @@ class WakeEngine:
                 except Exception as e:
                     delivered = False
                     print(f"[WakeEngine] callback error: {e!r}", flush=True)
+            self._log("wake sent to the HUD" if delivered else "wake NOT delivered: no HUD connected")
             if delivered:
                 self._last_fire = now
         return True

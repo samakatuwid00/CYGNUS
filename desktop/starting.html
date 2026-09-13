@@ -5,8 +5,11 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
 <title>Cygnus</title>
 <style>
+  /* No -webkit-app-region here: Electron kept this page's whole-window drag
+     region after the HUD loaded, so Windows hit-tested the panel and the orb
+     as title bar and no click ever reached them. */
   html, body { margin: 0; height: 100%; background: #05070c; color: #ffd9a0;
-    font: 600 13px/1.5 system-ui, sans-serif; -webkit-app-region: drag; }
+    font: 600 13px/1.5 system-ui, sans-serif; }
   body { display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 14px; text-align: center; padding: 0 20px; box-sizing: border-box;
     border: 1px solid rgba(255, 180, 84, .35); border-radius: 14px; }

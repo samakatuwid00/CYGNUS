@@ -5,8 +5,15 @@ while the browser records a command. No microphone: _tick() is fed directly."""
 import time
 
 import numpy as np
+import pytest
 
 from wake_engine import WakeEngine, wake_targets
+
+
+@pytest.fixture(autouse=True)
+def _no_debug_file(monkeypatch):
+    """Tests never write to the real logs/wake_debug.log."""
+    monkeypatch.setattr(WakeEngine, "_write_debug", lambda self, msg: None)
 
 
 # --- who a server wake is delivered to -------------------------------------
@@ -146,3 +153,39 @@ def test_wake_word_fires_the_callback_once_per_cooldown():
     for i in range(40):
         engine._tick([_loud()], 1000.0 + i / 10)
     assert fired == [1]                   # 4 s cooldown after the first wake
+
+
+# --- the debug log: what was heard, and why nothing was decoded ------------
+
+def _logged(engine):
+    lines = []
+    engine._log = lines.append
+    return lines
+
+
+def test_a_miss_is_logged_with_what_whisper_heard():
+    engine = WakeEngine(_Voice("signals"))
+    lines = _logged(engine)
+    engine._tick([_loud()] * 25, 1000.0)
+    assert any("heard 'signals'" in line and "WAKE" not in line for line in lines)
+
+
+def test_a_hit_is_logged_with_whether_a_hud_got_it():
+    engine = WakeEngine(_Voice("Hey Cygnus."))
+    lines = _logged(engine)
+    engine.set_callback(lambda: False)    # no HUD connected
+    engine._tick([_loud()] * 25, 1000.0)
+    assert any("heard 'Hey Cygnus.'" in line and "-> WAKE" in line for line in lines)
+    assert "wake NOT delivered: no HUD connected" in lines
+
+
+def test_why_it_is_not_decoding_is_logged_once_per_change():
+    engine = WakeEngine(_Voice())
+    lines = _logged(engine)
+    engine.pause()
+    for i in range(30):
+        engine._tick([_loud()], 1000.0 + i / 10)
+    engine.resume()
+    engine._tick([_loud()], 1003.1)
+    assert [line for line in lines if line.startswith("listener:")] == [
+        "listener: paused: a command turn is running", "listener: decoding"]
