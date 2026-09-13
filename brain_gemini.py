@@ -931,14 +931,36 @@ def answer_remember(text):
     if not asked:
         return None
     import tools
-    t = (text or "").strip()
-    if tools._PREF_YES_RE.match(t):
+    reply = _consent.read(text, soft=True)
+    if reply.kind == "yes":
         dialogue_state.answered()
         return tools.remember_fact(asked["payload"]["text"])
-    if tools._PREF_NO_RE.match(t):
+    if reply.kind == "no":
         dialogue_state.answered()
         return "Okay, I won't remember that."
     return None
+
+
+def answer_choice(text):
+    """The reply to "Which one should I open?" or to a clarify question:
+    (None, request) routes the chosen request as if it had been said
+    outright, (reply, None) answers now, (None, None) when no such question
+    is open. A reply that is not an answer drops the question: the owner
+    moved on, and it is routed as the new request it is."""
+    import dialogue_state
+    asked = dialogue_state.pending("pick") or dialogue_state.pending("clarify")
+    if not asked:
+        return None, None
+    payload = asked["payload"]
+    options = payload.get("options") or []
+    reply = _consent.read(text, options=payload.get("labels") or options)
+    dialogue_state.answered()
+    if reply.kind == "pick":
+        chosen = options[reply.index]
+        return None, (f"{payload['verb']} {chosen}" if payload.get("verb") else chosen)
+    if reply.kind == "no":
+        return "Okay, sir. I'll leave it.", None
+    return None, None
 
 
 def fast_path_answer(text: str):
@@ -1576,21 +1598,11 @@ for _consent_tool in ("desktop_control", "run_opencli", "delegate_to_hermes",
 
 # A bare confirm utterance: ONLY the confirm words, nothing else. Must never
 # match sentences that merely CONTAIN "yes"/"confirm" — those route normally.
-# A bare yes to the confirm just asked, in the owner's own words: "yeah",
-# "sure, go ahead", "sige" (Tagalog). A bare "ok" is only an acknowledgement,
-# never consent to a gated task. Anything else after the yes is a command.
-_BARE_CONFIRM_RE = re.compile(
-    r"^(?:confirm(?:ed)?|proceed|go ahead|go for it|do it|yes|yeah|yep|yup|sure|oo|sige)"
-    r"(?:[\s,.!]+(?:please|sir|cygnus|jarvis|do it|go ahead|proceed|confirm(?:ed)?|na))*[.!\s]*$",
-    re.I)
-# "no" / "no, cancel that" / "nope, don't do it": a no to the waiting confirm.
-# Only decline words may follow, so "no, I meant open spotify" stays a
-# correction and "No Time to Die" stays a title. A bare "stop" is left to the
-# music and job controls.
-_BARE_DECLINE_RE = re.compile(
-    r"^(?:no|nope|nah|cancel|don'?t|do\s+not|never\s*mind|forget\s+it|hindi|huwag|wag)\b"
-    r"(?:[\s,.!]+(?:no|cancel|stop|don'?t|do\s+not|that|it|this|do\s+it|run\s+it|thanks|"
-    r"thank\s+you|please|sir|jarvis|cygnus|never\s*mind|forget\s+it))*[\s,.!]*$", re.I)
+# A bare yes or no to the confirm just asked, read the way every other
+# question's answer is (consent.py): "yeah" and "sige" confirm, "ok" does not.
+import consent as _consent
+_BARE_CONFIRM_RE = _consent.YES_RE
+_BARE_DECLINE_RE = _consent.NO_RE
 # A model reply that reports an action. Only true when a tool ran this turn.
 _ACTION_CLAIM_RE = re.compile(
     r"^\s*(?:(?:okay|ok|done|alright|sure)[,.!]?\s+)?(?:sir[,.]?\s+)?(?:i(?:'ve|\s+have)\s+)?"
@@ -1958,6 +1970,22 @@ class JarvisBrain:
         except Exception as e:
             print(f"[JARVIS] remember consent failed ({e}); routing normally...")
 
+        # The reply to "Which one should I open?" or a clarify question: the
+        # chosen request routes from here as if it had been said outright.
+        try:
+            _said, _chosen = answer_choice(user_input)
+            if _said is not None:
+                self.conversation.append({"role": "assistant", "content": _said})
+                self.last_backend = "instant"
+                self.last_stats = {"backend": "instant", "intent": "choice"}
+                return _said
+            if _chosen:
+                print(f"[JARVIS] choice picked: {user_input!r} -> {_chosen!r}", flush=True)
+                user_input = _chosen
+                self.conversation[-1] = {"role": "user", "content": user_input}
+        except Exception as e:
+            print(f"[JARVIS] choice failed ({e}); routing normally...")
+
         # A no to the confirm JARVIS just asked for. Runs before the
         # correction stripper, which would turn "no, cancel that" into a new
         # task "cancel that". A multi-step rule's own question (and a rule's
@@ -2081,7 +2109,9 @@ class JarvisBrain:
         # names the target ("a website, youtube") is rewritten to "open
         # youtube" and routed normally, so the answer actually reaches the
         # open path instead of being chatted at.
-        if last_assistant_message(self.conversation[:-1]) == OPEN_CLARIFY_Q:
+        import dialogue_state as _dq
+        if _dq.pending("open_choice"):
+            _dq.answered()
             _open_ans, _open_rewrite = resolve_open_choice(user_input)
             if _open_ans:
                 self.conversation.append({"role": "assistant", "content": _open_ans})
@@ -2096,6 +2126,8 @@ class JarvisBrain:
         # NO tool schema. Removes the ~4s 9router round-trip for simple tasks.
         ans, intent = fast_path_answer(user_input)
         if ans is not None and intent in SIMPLE_INTENTS:
+            if intent == "clarify_open":            # the next turn answers it
+                _dq.ask("open_choice", ans, owner="brain")
             self.conversation.append({"role": "assistant", "content": ans})
             self.last_backend = "instant"
             self.last_stats = {"backend": "instant", "intent": intent}

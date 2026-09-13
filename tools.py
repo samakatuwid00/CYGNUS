@@ -1639,14 +1639,10 @@ def _learn_preference(action: dict, site: str, browser: str | None) -> str:
     return ""
 
 
-# A reply that is ONLY a yes or no answers "Make that the default?"; anything
-# longer ("yes, search movie Godzilla") is a new command and is routed as one.
-_PREF_YES_RE = re.compile(
-    r"^(?:yes|yeah|yep|yup|sure|ok(?:ay)?|do it|go ahead|please do|make it (?:the )?default)"
-    r"[\s.,!]*(?:please|sir|jarvis|cygnus)?[\s.!]*$", re.I)
-_PREF_NO_RE = re.compile(
-    r"^(?:no|nope|nah|no thanks|don'?t|never ?mind|not now|skip it|leave it)"
-    r"[\s.,!]*(?:thanks|sir|jarvis|cygnus)?[\s.!]*$", re.I)
+# A reply that is ONLY a yes or no answers "Make that the default?" (read by
+# consent.py); anything longer ("yes, search movie Godzilla") is a new command
+# and is routed as one. "Make it the default" says yes in so many words.
+_MAKE_DEFAULT_RE = re.compile(r"^make it (?:the )?default[\s.!]*$", re.I)
 
 
 _LEAD_ACK_RE = re.compile(r"^(?:yes|yeah|yep|ok(?:ay)?|sure)[,.!]?\s+(?=\S)", re.I)
@@ -1659,13 +1655,15 @@ def _answer_preference(text: str):
     asked = dialogue_state.pending("preference")
     if not asked:
         return None
+    import consent
     topic = asked["payload"].get("topic")
-    if _PREF_YES_RE.match(text):
+    reply = consent.read(text, soft=True, extra_yes=_MAKE_DEFAULT_RE)
+    if reply.kind == "yes":
         saved = preferences.confirm(topic)
         dialogue_state.answered()
         return f"Saved. {topic.capitalize()} now defaults to {preferences._describe(saved)}." \
             if saved else None
-    if _PREF_NO_RE.match(text):
+    if reply.kind == "no":
         preferences.decline(topic)
         dialogue_state.answered()
         return "Okay, I won't ask about that again."
@@ -3962,6 +3960,12 @@ def delegate(
             pend = cw.pending_clarify()
             choice = cw.answer_clarify(_rtask)
             if pend and choice:
+                try:
+                    import dialogue_state
+                    if dialogue_state.pending("app_or_site"):
+                        dialogue_state.answered()
+                except Exception:
+                    pass
                 name = pend.get("payload", {}).get("name", "")
                 cw.append(task, "clarify_answer")
                 result = (open_site(name) if choice == "site"
@@ -4058,8 +4062,14 @@ def delegate(
         if kind8 == "clarify" and isinstance(target8, dict):
             if cw is not None:
                 cw.append(task, "clarify", payload={"name": target8["name"]})
-            return (f"Found '{target8['name']}' both as an installed app and a "
-                    f"website — which one, the app or the site?")
+            question = (f"Found '{target8['name']}' both as an installed app and a "
+                        f"website — which one, the app or the site?")
+            try:                             # one place knows every open question
+                import dialogue_state
+                dialogue_state.ask("app_or_site", question, {"name": target8["name"]}, owner="tools")
+            except Exception:
+                pass
+            return question
         if kind8 == "app":
             result = execute_tool("open_application", {"app": target8})
             if cw is not None:
@@ -4457,6 +4467,14 @@ def open_application(app: str, action: str = None, query: str = None,
                     _names = ", ".join(k for k, _ in _launchable_cands[:5])
                     _audit_log("open_application", requested, "AMBIGUOUS",
                                result=f"{len(_launchable_cands)} candidates")
+                    try:                     # "the second one" / "codium" answers it
+                        import dialogue_state
+                        dialogue_state.ask("pick", "Which one should I open?",
+                                           {"verb": "open",
+                                            "options": [k for k, _ in _launchable_cands[:5]]},
+                                           owner="tools")
+                    except Exception:
+                        pass
                     return (f"[NEEDS_PICK] \"{requested}\" matches "
                             f"{len(_launchable_cands)} applications: {_names}. "
                             f"Which one should I open?")

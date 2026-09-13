@@ -185,8 +185,6 @@ def decide(text, snapshot, apps, llm=None):
 
 # --------------------------------------------------------------- leading --
 
-_YES_RE = re.compile(r"^(?:yes|yeah|yep|yup|sure|ok(?:ay)?|go ahead|do it|please|confirm)\b", re.I)
-_NO_RE = re.compile(r"^(?:no|nope|nah|don'?t|cancel|never ?mind|forget it|stop)\b", re.I)
 
 
 def worth_asking(text, snapshot, apps):
@@ -276,15 +274,16 @@ def answer_pending_ability(text):
     p = dialogue_state.pending("ability")
     if not p:
         return None
-    t = (text or "").strip()
-    if _YES_RE.match(t):
+    import consent
+    reply = consent.read(text, soft=True)
+    if reply.kind == "yes":
         import app_abilities
         dialogue_state.answered()
         pl = p.get("payload") or {}
         apps = app_abilities.load_apps()["apps"]
         reply, _ = _run_ability(pl.get("app"), pl.get("id"), pl.get("args"), apps)
         return reply
-    if _NO_RE.match(t):
+    if reply.kind == "no":
         dialogue_state.answered()
         return "Okay, sir. I won't."
     return None
