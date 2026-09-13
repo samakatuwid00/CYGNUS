@@ -40,6 +40,7 @@ import os
 import time
 import queue
 import threading
+from collections import deque
 
 import logging
 from logging.handlers import RotatingFileHandler
@@ -55,6 +56,11 @@ import re
 # g and the vowel are required, so "signs", "signal", "sinus" and "sickness"
 # never count. The HUD's WAKE_RE is the same pattern.
 WAKE_RE = re.compile(r"(?:^|[\s,])(?:hey)?[cs][iy]gn[aeiu][sz]{1,2}e?(?=$|[\s.,!?;:])", re.I)
+# Whisper's other spellings of it, heard from the owner in logs/wake_debug.log
+# (2026-09-13): "signals", "Sign us", "Seagmus". "signals" is also a real word
+# ("more color signals"), so these count only as the whole utterance, with or
+# without "hey". The HUD's WAKE_BARE_RE is the same pattern.
+WAKE_BARE_RE = re.compile(r"^(?:hey[\s,]*)?(?:signals?|sign\s*us|seagmus|sickness)$", re.I)
 
 # Silence gate: mean |amplitude| of the loudest BURST_S slice of the window must
 # reach this floor or the window is skipped. Measured on the loudest slice, not
@@ -67,6 +73,12 @@ BURST_S = 0.5
 # taken), and a dead stream is reopened at most this often.
 SILENT_STREAM_S = 5.0
 REOPEN_EVERY_S = 10.0
+# The listener hears Cygnus's own voice. While a reply plays, a wake counts
+# unless something said in the last ECHO_WINDOW_S holds the wake word (then it
+# is the echo, not the owner cutting in). A lost "stopped speaking" ends the
+# speaking state after SPEAKING_CAP_S.
+ECHO_WINDOW_S = 120.0
+SPEAKING_CAP_S = 90.0
 
 # Every decoded window, hit or miss, and every change in why the listener is
 # not decoding go to logs/wake_debug.log, so a missed wake shows what Whisper
@@ -93,7 +105,10 @@ def _debug_logger():
 def wake_word_in(text):
     """Mirror of the HUD's wakeWordIn() so server and browser agree on what the
     wake word is."""
-    return bool(text) and bool(WAKE_RE.search(text.strip()))
+    if not text:
+        return False
+    t = text.strip()
+    return bool(WAKE_RE.search(t) or WAKE_BARE_RE.match(re.sub(r"[^\w\s]", "", t).strip()))
 
 
 def wake_targets(clients, remote, desktop):
@@ -137,6 +152,8 @@ class WakeEngine:
         self._last_reopen = 0.0
         self._gate = None      # why the listener is not decoding; None = decoding
         self._log = self._write_debug
+        self._speaking_until = 0.0
+        self._spoken = deque(maxlen=8)   # (time, text) of what Cygnus said lately
 
     # -- external signals ---------------------------------------------------
     def set_callback(self, cb):
@@ -178,6 +195,24 @@ class WakeEngine:
     def note_browser_wake(self):
         """The browser's own Web Speech listener fired — don't double-trigger."""
         self._last_browser_wake = time.time()
+
+    def speaking(self, on):
+        """The HUD started or stopped playing Cygnus's voice."""
+        self._speaking_until = time.time() + SPEAKING_CAP_S if on else 0.0
+        if not on:
+            self.suspend()        # the last syllables still ring in the room
+
+    def note_spoken(self, text):
+        """A line Cygnus is about to say (every TTS passes through here)."""
+        if text:
+            self._spoken.append((time.time(), text))
+
+    def _own_voice(self, now):
+        """A wake heard now is Cygnus's own voice: it is talking, and something
+        it just said holds the wake word. Otherwise a wake while it talks is
+        the owner cutting in, and counts."""
+        return now < self._speaking_until and any(
+            now - ts < ECHO_WINDOW_S and wake_word_in(said) for ts, said in self._spoken)
 
     def note(self, msg):
         """One line in the wake debug log (the server adds what the HUD did)."""
@@ -326,8 +361,10 @@ class WakeEngine:
                 print(f"[WakeEngine] transcribe error: {e!r}", flush=True)
             return True
         hit = wake_word_in(text)
-        self._log(f"heard {text!r} (level {level:.4f}){' -> WAKE' if hit else ''}")
-        if hit:
+        echo = hit and self._own_voice(now)
+        self._log(f"heard {text!r} (level {level:.4f})"
+                  + (" -> ignored: its own reply says the wake word" if echo else " -> WAKE" if hit else ""))
+        if hit and not echo:
             print(f"[WakeEngine] wake word detected: {text!r}", flush=True)
             delivered = True
             if self._callback:

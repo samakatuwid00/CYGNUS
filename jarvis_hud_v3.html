@@ -1872,7 +1872,8 @@
   // Not named lastWakeAt: that var (the wake de-dupe timestamp) replaced this
   // function at load, so every browser wake threw "not a function".
   function wakeWordIndex(words) {
-    for (var j = words.length - 1; j >= 0; j--) if (wakeWordIn(words[j])) return j;
+    // WAKE_RE only: one word "signals" inside a sentence is not a wake.
+    for (var j = words.length - 1; j >= 0; j--) if (WAKE_RE.test(words[j])) return j;
     return words.length;
   }
   // One user line per turn. The server emits a transcript for typed input too,
@@ -2650,8 +2651,14 @@
   var WAKE_DEAD_MS = 4000;      // ended and not restarted for this long -> restart
   var WAKE_STALE_MS = 90000;    // running but silent this long -> assume wedged
 
+  // Whisper's other spellings of it ("signals", "Sign us", "Seagmus"), counted
+  // only as the whole utterance: "signals" is also a real word. Same pattern
+  // as wake_engine.WAKE_BARE_RE.
+  var WAKE_BARE_RE = /^(?:hey[\s,]*)?(?:signals?|sign\s*us|seagmus|sickness)$/i;
   function wakeWordIn(text) {
-    return !!text && WAKE_RE.test(String(text).trim());
+    if (!text) return false;
+    var t = String(text).trim();
+    return WAKE_RE.test(t) || WAKE_BARE_RE.test(t.replace(/[^\w\s]/g, '').trim());
   }
 
   function startWakeListener() {

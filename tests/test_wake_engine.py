@@ -7,7 +7,7 @@ import time
 import numpy as np
 import pytest
 
-from wake_engine import WakeEngine, wake_targets
+from wake_engine import WakeEngine, wake_targets, wake_word_in
 
 
 @pytest.fixture(autouse=True)
@@ -164,10 +164,10 @@ def _logged(engine):
 
 
 def test_a_miss_is_logged_with_what_whisper_heard():
-    engine = WakeEngine(_Voice("signals"))
+    engine = WakeEngine(_Voice("more color signals"))
     lines = _logged(engine)
     engine._tick([_loud()] * 25, 1000.0)
-    assert any("heard 'signals'" in line and "WAKE" not in line for line in lines)
+    assert any("heard 'more color signals'" in line and "WAKE" not in line for line in lines)
 
 
 def test_a_hit_is_logged_with_whether_a_hud_got_it():
@@ -189,3 +189,34 @@ def test_why_it_is_not_decoding_is_logged_once_per_change():
     engine._tick([_loud()], 1003.1)
     assert [line for line in lines if line.startswith("listener:")] == [
         "listener: paused: a command turn is running", "listener: decoding"]
+
+
+# --- what counts as the wake word, and whose voice said it ------------------
+
+@pytest.mark.parametrize("text, wake", [
+    ("signals.", True), ("Sign us.", True), ("Hey, Seagmus.", True), ("Hey Cygnus.", True),
+    ("more color signals.", False), ("the input of the signal.", False), ("Sign this.", False)])
+def test_whispers_other_spellings_count_only_on_their_own(text, wake):
+    assert wake_word_in(text) is wake
+
+
+def test_its_own_reply_saying_the_wake_word_does_not_wake_it():
+    engine = WakeEngine(_Voice("Cygnus."))
+    lines = _logged(engine)
+    fired = []
+    engine.set_callback(lambda: fired.append(1))
+    engine.note_spoken("I'm Cygnus, sir.")
+    engine.speaking(True)
+    engine._tick([_loud()] * 25, time.time())
+    assert fired == []
+    assert any("its own reply says the wake word" in line for line in lines)
+
+
+def test_the_owner_cutting_in_while_it_talks_still_wakes_it():
+    engine = WakeEngine(_Voice("Hey Cygnus."))
+    fired = []
+    engine.set_callback(lambda: fired.append(1))
+    engine.note_spoken("The weather is sunny today, sir.")
+    engine.speaking(True)
+    engine._tick([_loud()] * 25, time.time())
+    assert fired == [1]

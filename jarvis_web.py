@@ -513,6 +513,10 @@ async def tts_to_b64(text: str) -> str:
     JARVIS_TTS_ENGINE=piper; falls back to edge automatically on any failure.
     """
     text = strip_ai_artifacts(text)
+    try:
+        wake_engine.note_spoken(text)   # a wake in its own voice is not the owner's
+    except Exception:
+        pass
     if _TTS_ENGINE == "kokoro":
         kokoro = _get_kokoro()
         if kokoro is not None:
@@ -1878,6 +1882,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Phase C: duck music while JARVIS speaks, restore when done.
                 # Failsafe auto-unduck guards against a lost "end" message.
                 state = (message.get("state") or "").strip().lower()
+                if state in ("start", "end"):
+                    try:
+                        wake_engine.speaking(state == "start")   # tells its own voice from the owner's
+                    except Exception:
+                        pass
                 try:
                     if state == "start":
                         await asyncio.to_thread(voice_ducking.duck)
