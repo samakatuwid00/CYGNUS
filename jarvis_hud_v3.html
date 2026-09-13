@@ -1559,8 +1559,11 @@
         if (wk.healthy) setVal(stWake, 'Server live', 'ok');
         else if (wk.error) setVal(stWake, 'Server off: ' + wk.error, 'warn');
         else setVal(stWake, 'Server off', 'warn');
-        // Active Tasks from before this page opened (cards arrive live after).
-        if (!jobsLoaded && s.job_cards) { jobsLoaded = true; s.job_cards.forEach(renderJobCard); }
+        // Active Tasks as the server has them: when the page opens and again
+        // after every reconnect (cards arrive live in between). A page left
+        // open across a backend restart kept "Working" for jobs the restart
+        // had cut off (2026-09-13).
+        if (!jobsLoaded && s.job_cards) { jobsLoaded = true; syncJobCards(s.job_cards); }
       })
       .catch(function () { setVal(stBrain, 'unreachable', 'bad'); syncBrainPill(); });
   }
@@ -2060,6 +2063,8 @@
       pingInterval = setInterval(function () {
         if (ws && ws.readyState === 1) ws.send(JSON.stringify({type:'ping'}));
       }, 15000);
+      jobsLoaded = false;              // the server may have restarted: re-sync Active Tasks
+      refreshServerStats();
       if (mode === 'boot') return;
       goIdle();
     };
@@ -2295,6 +2300,16 @@
     clearTimeout(c._keep);
     c.remove(); delete jobCards[id];
     syncTaskCount();
+  }
+  // The server's list wins over what this page believed: a card still
+  // Working or Needs you that the server no longer lists is a job it lost.
+  function syncJobCards(list) {
+    var listed = {};
+    list.forEach(function (ev) { listed[ev.id] = true; renderJobCard(ev); });
+    for (var id in jobCards) {
+      var t = jobCards[id].dataset.tone;
+      if (!listed[id] && (t === 'run' || t === 'ask')) dropJobCard(id);
+    }
   }
   function answerJob(card, word) {
     card.querySelectorAll('.job-btn').forEach(function (b) { b.disabled = true; });

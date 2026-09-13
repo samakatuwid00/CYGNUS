@@ -202,6 +202,8 @@ def announce_job(event: dict) -> str | None:
         first = _first_sentence(body)
         return f"Done: {_sentence(title)}" + (f" {first}" if first else "")
     if state == "error":
+        if _interrupted(event):
+            return f"“{title}” was interrupted by a restart, so I lost its answer."
         return f"“{title}” didn't finish: {_reason(event.get('error') or event.get('summary'))}."
     if state == "timeout":
         if "superseded" in note:        # re-confirmed: the same task runs as a new job
@@ -231,6 +233,13 @@ def _detail(note: str) -> str:
     return "Started"
 
 
+def _interrupted(job: dict) -> bool:
+    """The backend restarted under it: the work may have finished, but its
+    answer never came back."""
+    import jobs
+    return job.get("state") == "error" and job.get("error") == jobs.INTERRUPTED
+
+
 def card(job: dict) -> dict:
     """What the Active Tasks card shows for a job or job event: a short title,
     a state label, a tone for its look, a one-line detail, and whether it waits
@@ -256,6 +265,9 @@ def card(job: dict) -> dict:
                     "detail": "It only described the work; nothing in Cygnus's folder changed."}
         return {**out, "label": "Done, not checked", "tone": "warn",
                 "detail": "It finished, but the result wasn't double-checked."}
+    if state == "error" and _interrupted(job):
+        return {**out, "label": "Interrupted", "tone": "bad",
+                "detail": "Cygnus restarted while it ran, so its answer was lost."}
     if state == "error":
         why = _reason(job.get("error") or job.get("summary"))
         return {**out, "label": "Didn't finish", "tone": "bad", "detail": why[0].upper() + why[1:] + "."}
@@ -306,7 +318,8 @@ def job_status(now: float | None = None) -> str:
     if not recent:
         return "Nothing is running, and there are no recent tasks."
     j = recent[0]
-    outcome = {"done": "finished", "error": "didn't finish", "timeout": "ran out of time",
-               "unverified": "finished but wasn't double-checked"}.get(j.get("state"), j.get("state"))
+    outcome = "was interrupted by a restart" if _interrupted(j) else \
+        {"done": "finished", "error": "didn't finish", "timeout": "ran out of time",
+         "unverified": "finished but wasn't double-checked"}.get(j.get("state"), j.get("state"))
     ended = (j.get("started") or now) + (j.get("elapsed") or 0)
     return f"Nothing is running. The last task, “{short_task(j.get('task'))}”, {outcome} {_ago(now - ended)}."

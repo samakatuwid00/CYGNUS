@@ -41,6 +41,11 @@ _loaded = False
 STALE_TTL_SECONDS = float(os.getenv("JARVIS_JOB_STALE_TTL", "600"))
 _STALE_STATES = ("queued", "waiting-on-confirm")
 
+# The error of a job whose process died under it (a backend restart). The work
+# may well have finished; only its answer was lost, so the replies say that
+# rather than "didn't finish" (2026-09-13).
+INTERRUPTED = "interrupted by restart"
+
 
 # ---------------------------------------------------------------------------
 # Persistence
@@ -90,7 +95,10 @@ def _load_history() -> None:
     for j in _jobs.values():
         if j.get("state") == "running":
             j["state"] = "error"
-            j["error"] = "interrupted by restart"
+            j["error"] = INTERRUPTED
+            # On record, so the log agrees with "status?" and the next restart
+            # does not find it running again.
+            _append_log({"id": j["id"], "ts": time.time(), "state": "error", "error": INTERRUPTED})
 
 
 # ---------------------------------------------------------------------------

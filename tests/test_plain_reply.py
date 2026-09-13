@@ -157,3 +157,29 @@ def test_status_when_nothing_runs(monkeypatch):
     monkeypatch.setattr(jobs, "recent", lambda n: [{"task": "read the HUD file", "state": "error",
                                                     "started": now - 600, "elapsed": 300}])
     assert pr.job_status(now) == "Nothing is running. The last task, “read the HUD file”, didn't finish 5 minutes ago."
+
+
+def test_a_job_cut_off_by_a_restart_says_so(monkeypatch):
+    now = time.time()
+    job = {"task": "check the skills folder", "state": "error", "error": jobs.INTERRUPTED,
+           "started": now - 300, "elapsed": None}
+    monkeypatch.setattr(jobs, "active", lambda: [])
+    monkeypatch.setattr(jobs, "recent", lambda n: [job])
+    assert pr.job_status(now) == ("Nothing is running. The last task, “check the skills folder”, "
+                                  "was interrupted by a restart 5 minutes ago.")
+    assert (pr.card(job)["label"], pr.card(job)["tone"]) == ("Interrupted", "bad")
+    assert pr.announce_job(job) == "“check the skills folder” was interrupted by a restart, so I lost its answer."
+
+
+def test_a_restart_records_the_job_it_cut_off(tmp_path, monkeypatch):
+    import json
+    log = tmp_path / "jobs.jsonl"
+    log.write_text(json.dumps({"id": "j1", "ts": 1.0, "task": "look around", "tier": "hermes",
+                               "state": "running"}) + "\n", encoding="utf-8")
+    monkeypatch.setattr(jobs, "_LOG_PATH", log)
+    monkeypatch.setattr(jobs, "_jobs", {})
+    monkeypatch.setattr(jobs, "_loaded", False)
+    assert jobs.active() == []
+    assert jobs.get("j1")["error"] == jobs.INTERRUPTED
+    last = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+    assert (last["id"], last["state"], last["error"]) == ("j1", "error", jobs.INTERRUPTED)
