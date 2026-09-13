@@ -1061,6 +1061,14 @@ You are running on the user's computer as a voice-activated assistant. You can:
 - Open applications
 - Provide information and answer questions
 
+Where you live: a desktop app with three views the user switches between from the tray icon or
+the buttons on your top bar. The Panel is a small window at the top-right of the screen. The
+Full HUD fills the screen, with side columns for tasks, music and system stats. The Mini orb is
+a small black hole at the bottom-right; clicking it opens the Panel. Ctrl+Alt+J brings you up
+and starts listening, and saying "Cygnus" wakes you in any view, even hidden in the tray. The
+same interface runs on the user's phone. When the user says "the panel", "full HUD" (or "full
+HD"), "mini panel" or "the orb", they mean these views of you.
+
 ABSOLUTE RULE — SPOKEN OUTPUT ONLY:
 Never use asterisks, parentheses, brackets, or any markup to describe actions, gestures, or
 non-verbal sounds. Do NOT write things like "*clears throat*", "*ahem*", "(sighs)", "[pauses]",
@@ -1568,13 +1576,19 @@ for _consent_tool in ("desktop_control", "run_opencli", "delegate_to_hermes",
 
 # A bare confirm utterance: ONLY the confirm words, nothing else. Must never
 # match sentences that merely CONTAIN "yes"/"confirm" — those route normally.
-_BARE_CONFIRM_RE = re.compile(r"^(?:confirm(?:ed)?|proceed|go ahead|do it|yes)[.!\s]*$", re.I)
+# A bare yes to the confirm just asked, in the owner's own words: "yeah",
+# "sure, go ahead", "sige" (Tagalog). A bare "ok" is only an acknowledgement,
+# never consent to a gated task. Anything else after the yes is a command.
+_BARE_CONFIRM_RE = re.compile(
+    r"^(?:confirm(?:ed)?|proceed|go ahead|go for it|do it|yes|yeah|yep|yup|sure|oo|sige)"
+    r"(?:[\s,.!]+(?:please|sir|cygnus|jarvis|do it|go ahead|proceed|confirm(?:ed)?|na))*[.!\s]*$",
+    re.I)
 # "no" / "no, cancel that" / "nope, don't do it": a no to the waiting confirm.
 # Only decline words may follow, so "no, I meant open spotify" stays a
 # correction and "No Time to Die" stays a title. A bare "stop" is left to the
 # music and job controls.
 _BARE_DECLINE_RE = re.compile(
-    r"^(?:no|nope|nah|cancel|don'?t|do\s+not|never\s*mind|forget\s+it)\b"
+    r"^(?:no|nope|nah|cancel|don'?t|do\s+not|never\s*mind|forget\s+it|hindi|huwag|wag)\b"
     r"(?:[\s,.!]+(?:no|cancel|stop|don'?t|do\s+not|that|it|this|do\s+it|run\s+it|thanks|"
     r"thank\s+you|please|sir|jarvis|cygnus|never\s*mind|forget\s+it))*[\s,.!]*$", re.I)
 # A model reply that reports an action. Only true when a tool ran this turn.
@@ -2049,6 +2063,14 @@ class JarvisBrain:
                     self.last_backend = backend
                     self.last_stats = {"backend": backend, "intent": "confirm"}
                     return out
+                # A confirm for a question that already timed out: say so,
+                # rather than let the model guess what "yes" was about.
+                late = _t.expired_confirm_reply()
+                if late:
+                    self.conversation.append({"role": "assistant", "content": late})
+                    self.last_backend = "instant"
+                    self.last_stats = {"backend": "instant", "intent": "confirm_expired"}
+                    return late
             except Exception as e:
                 print(f"[JARVIS] confirm-release failed ({e}); falling back...")
 

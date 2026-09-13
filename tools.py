@@ -2054,6 +2054,40 @@ _PENDING_HERMES_CALL: dict | None = None
 # desktop_control call is gated — no lexical detection, unconditional.
 _PENDING_DESKTOP = {"task": None, "foreground": False}
 
+# A confirm answers the question just asked. The job card timed out after
+# jobs.STALE_TTL_SECONDS while the latch stayed armed, so a "confirm" hours
+# later still ran the task (2026-09-13). They now expire together.
+_LAST_EXPIRED = {"task": None, "at": 0.0}
+
+
+def _expire_confirms() -> None:
+    """Drop the Hermes-family and autonomous latches once their confirm
+    window has passed, remembering what was dropped for the next "confirm"."""
+    global _PENDING_HERMES_CALL
+    import jobs as _jobs
+    now = time.time()
+    hermes = _PENDING_HERMES_CALL
+    if hermes and hermes.get("ts") and now - hermes["ts"] > _jobs.STALE_TTL_SECONDS:
+        _PENDING_HERMES_CALL = None
+        _PENDING_DESTRUCTIVE["task"] = None
+        _LAST_EXPIRED.update(task=hermes.get("raw_task") or hermes.get("task"), at=now)
+    goal, goal_ts = _PENDING_DESTRUCTIVE.get("autonomous"), _PENDING_DESTRUCTIVE.get("autonomous_ts")
+    if goal and goal_ts and now - goal_ts > _jobs.STALE_TTL_SECONDS:
+        _PENDING_DESTRUCTIVE["autonomous"] = None
+        _PENDING_DESTRUCTIVE["autonomous_ts"] = 0.0
+        _LAST_EXPIRED.update(task=goal, at=now)
+
+
+def expired_confirm_reply() -> str | None:
+    """What a "confirm" that came too late is told, once; None otherwise."""
+    _expire_confirms()
+    task = _LAST_EXPIRED.get("task")
+    if not task or time.time() - _LAST_EXPIRED["at"] > 3600:
+        return None
+    _LAST_EXPIRED.update(task=None, at=0.0)
+    return (f"That request timed out before you confirmed it, sir, so I didn't run "
+            f"“{str(task)[:80]}”. Ask me again if you still want it.")
+
 
 # Hard-blocked content classes: never executed even with confirmation.
 # Mirrors cua-driver policy; checked on the task text before release.
@@ -2502,6 +2536,7 @@ def delegate_to_hermes(task: str, timeout: int = 300, max_turns: int = 15,
 
 def pending_confirm_task() -> str | None:
     """The raw user task currently latched awaiting confirm, or None."""
+    _expire_confirms()
     return (_PENDING_HERMES_CALL or {}).get("raw_task")
 
 
@@ -2514,6 +2549,7 @@ def decline_pending() -> str | None:
     that request" while the task stayed latched, and "no, cancel that" lost
     its "no," to the correction stripper and became a NEW gated task."""
     global _PENDING_HERMES_CALL
+    _expire_confirms()
     hermes = _PENDING_HERMES_CALL
     goal = _PENDING_DESTRUCTIVE.get("autonomous")
     if not hermes and not goal:
@@ -2536,6 +2572,7 @@ def decline_pending() -> str | None:
 
 def pending_autonomous_goal() -> str | None:
     """The goal currently latched for autonomous-run confirmation, or None."""
+    _expire_confirms()
     return _PENDING_DESTRUCTIVE.get("autonomous")
 
 
@@ -2551,6 +2588,7 @@ def confirm_pending(on_done=None, progress_cb=None, background: bool | None = No
     routing.
     """
     global _PENDING_HERMES_CALL
+    _expire_confirms()
     kw = _PENDING_HERMES_CALL
     if not kw:
         return None
@@ -3492,6 +3530,7 @@ def run_autonomous(goal: str, timeout: int = 1800, confirm: bool = False) -> str
 
 def confirm_autonomous() -> str | None:
     """Run the goal waiting for the user's confirm; None when none is."""
+    _expire_confirms()
     goal = _PENDING_DESTRUCTIVE.get("autonomous")
     if not goal:
         return None

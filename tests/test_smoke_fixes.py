@@ -4,6 +4,7 @@ that never ran, "search X there" uses the site's own search, and a clear
 "never close X" rule needs no question and blocks in plain words."""
 
 import json
+import time
 
 import pytest
 
@@ -35,10 +36,19 @@ def test_registry_is_read_once_per_change(tmp_path, monkeypatch):
     ("no", True), ("no, cancel that", True), ("nope, don't do it", True),
     ("cancel", True), ("no thanks", True), ("never mind", True),
     ("no, I meant open spotify", False), ("stop the music", False),
-    ("No Time to Die", False), ("stop", False)])
+    ("No Time to Die", False), ("stop", False), ("hindi", True), ("huwag", True)])
 def test_what_counts_as_a_no(text, declines):
     import brain_gemini
     assert bool(brain_gemini._BARE_DECLINE_RE.match(text)) is declines
+
+
+@pytest.mark.parametrize("text, confirms", [
+    ("confirm", True), ("yes", True), ("yeah", True), ("yes please", True),
+    ("sure, go ahead", True), ("sige", True), ("oo", True), ("go for it", True),
+    ("ok", False), ("okay", False), ("yes, open spotify", False), ("sure thing", False)])
+def test_what_counts_as_a_yes_to_a_confirm(text, confirms):
+    import brain_gemini
+    assert bool(brain_gemini._BARE_CONFIRM_RE.match(text)) is confirms
 
 
 def test_no_cancels_the_waiting_hermes_task(monkeypatch):
@@ -49,7 +59,7 @@ def test_no_cancels_the_waiting_hermes_task(monkeypatch):
     monkeypatch.setattr(tools, "_audit_log", lambda *a, **k: None)
     monkeypatch.setattr(tools, "_PENDING_HERMES_CALL",
                         {"raw_task": "delete x.txt", "task": "CONTEXT delete x.txt",
-                         "jid": "j1", "ts": 5.0})
+                         "jid": "j1", "ts": time.time() - 5})
     monkeypatch.setitem(tools._PENDING_DESTRUCTIVE, "task", "CONTEXT delete x.txt")
     out = tools.decline_pending()
     assert out == "Cancelled, sir. I won't run “delete x.txt”."
@@ -61,12 +71,34 @@ def test_no_cancels_the_waiting_hermes_task(monkeypatch):
 def test_no_cancels_the_newest_of_two_latches(monkeypatch):
     import tools
     monkeypatch.setattr(tools, "_audit_log", lambda *a, **k: None)
-    monkeypatch.setattr(tools, "_PENDING_HERMES_CALL", {"raw_task": "old task", "ts": 1.0})
+    monkeypatch.setattr(tools, "_PENDING_HERMES_CALL", {"raw_task": "old task", "ts": time.time() - 20})
     monkeypatch.setitem(tools._PENDING_DESTRUCTIVE, "autonomous", "clean my downloads")
-    monkeypatch.setitem(tools._PENDING_DESTRUCTIVE, "autonomous_ts", 9.0)
+    monkeypatch.setitem(tools._PENDING_DESTRUCTIVE, "autonomous_ts", time.time() - 10)
     assert "clean my downloads" in tools.decline_pending()
     assert tools.pending_autonomous_goal() is None
     assert tools.pending_confirm_task() == "old task"
+
+
+def test_a_confirm_long_after_the_question_runs_nothing_and_says_why(monkeypatch):
+    import jobs
+    import tools
+    stale = time.time() - jobs.STALE_TTL_SECONDS - 5
+    monkeypatch.setattr(tools, "_audit_log", lambda *a, **k: None)
+    monkeypatch.setattr(tools, "_LAST_EXPIRED", {"task": None, "at": 0.0})
+    monkeypatch.setattr(tools, "delegate_to_hermes", lambda **k: pytest.fail("ran an expired confirm"))
+    monkeypatch.setattr(tools, "_PENDING_HERMES_CALL",
+                        {"raw_task": "delete x.txt", "task": "delete x.txt", "ts": stale})
+    monkeypatch.setitem(tools._PENDING_DESTRUCTIVE, "task", "delete x.txt")
+    monkeypatch.setitem(tools._PENDING_DESTRUCTIVE, "autonomous", None)
+    assert tools.confirm_pending() is None
+    assert tools._PENDING_DESTRUCTIVE["task"] is None
+    assert tools.expired_confirm_reply() == (
+        "That request timed out before you confirmed it, sir, so I didn't run “delete x.txt”. "
+        "Ask me again if you still want it.")
+    assert tools.expired_confirm_reply() is None           # said once
+    monkeypatch.setitem(tools._PENDING_DESTRUCTIVE, "autonomous", "clean my downloads")
+    monkeypatch.setitem(tools._PENDING_DESTRUCTIVE, "autonomous_ts", stale)
+    assert tools.confirm_autonomous() is None
 
 
 # ---------------------------------------------------------- honest reply --
