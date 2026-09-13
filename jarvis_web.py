@@ -2270,6 +2270,28 @@ def _note_answering_model(stats: dict, backend: str | None) -> None:
         _LAST_ANSWERED["model"] = OLLAMA_MODEL
 
 
+def _warm_running():
+    """The first scan reads every process's command line (seconds); later
+    ones reuse them (~0.1 s). Take the slow one at startup, off any request."""
+    try:
+        import running_apps
+        running_apps.inventory()
+    except Exception as e:
+        print(f"[running] warm-up failed: {e!r}", flush=True)
+
+
+threading.Thread(target=_warm_running, daemon=True, name="running-warm").start()
+
+
+@app.get("/running")
+async def get_running():
+    """What is running on this machine and what it is doing (running_apps).
+    Read-only; the HUD polls it while its Running Now section is visible."""
+    import running_apps
+    rows = await asyncio.to_thread(running_apps.inventory)
+    return _no_cache(JSONResponse({"rows": rows, "ts": time.time()}))
+
+
 @app.get("/status")
 async def get_status():
     """Report the backend actually in use, not a hardcoded guess."""

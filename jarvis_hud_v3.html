@@ -876,6 +876,26 @@
      state class that setState() puts on it. */
   html[data-desk="mini"] body > #jv-mini-orb { display: block !important; position: fixed; inset: 12px;
     cursor: pointer; touch-action: none; background: transparent; }
+
+  /* Running Now (running_apps): what is on this machine and what it is doing. */
+  .run-grp { margin: 12px 0 4px; font: 700 10px/1 var(--font-display); letter-spacing: .14em;
+    text-transform: uppercase; color: #b08d5e; }
+  .run-grp:first-child { margin-top: 2px; }
+  .run-row { padding: 6px 0; border-top: 1px solid var(--hairline); cursor: pointer; }
+  .run-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .run-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: #6d6253; }
+  .run-dot.is-working { background: #ffb454; box-shadow: 0 0 6px #ffb454; }
+  .run-dot.is-waiting { background: var(--holo); box-shadow: 0 0 6px var(--holo); }
+  .run-dot.is-stuck { background: #ef7b64; }
+  .run-name { min-width: 0; font-weight: 600; color: #ffe1bb; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; }
+  .run-flag { flex: 0 0 auto; padding: 1px 6px; border-radius: 6px; font-size: 10px; color: #ef7b64;
+    border: 1px solid rgba(239, 123, 100, .4); }
+  .run-doing { margin: 2px 0 0 14px; font-size: 12px; color: #d8b98a; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .run-detail { margin: 4px 0 0 14px; font-size: 11.5px; color: #cdb592; white-space: pre-wrap;
+    word-break: break-word; }
+  .run-detail[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -1031,6 +1051,13 @@
         <div id="job-tray"></div>
       </div>
 
+      <div class="jv-sec" id="jv-running">
+        <div class="jv-st-title" style="display:flex; align-items:center; justify-content:space-between">
+          Running Now <span id="jv-runcount" class="jv-pill">0</span>
+        </div>
+        <div id="run-list"><div class="run-doing">Looking…</div></div>
+      </div>
+
       <div class="jv-sec" id="jv-np">
         <div class="jv-st-title">Now Playing</div>
         <div class="jv-st-row"><span class="jv-st-k">Source</span><span class="jv-st-v" id="np-source">—</span></div>
@@ -1078,6 +1105,7 @@
       </div>
       <div id="jv-drawer-tabs" role="tablist" aria-label="Panels">
         <button type="button" role="tab" data-tab="tasks">Tasks<span id="jv-tab-count" hidden></span></button>
+        <button type="button" role="tab" data-tab="running">Running</button>
         <button type="button" role="tab" data-tab="music">Music</button>
         <button type="button" role="tab" data-tab="voice">Voice</button>
         <button type="button" role="tab" data-tab="system">System</button>
@@ -1667,6 +1695,7 @@
   // long scroll. Last Turn rides with System Status.
   var DRAWER_TABS = [
     [document.getElementById('job-tray').parentNode, 'tasks'],             // Active Tasks
+    [document.getElementById('jv-running'), 'running'],                    // Running Now
     [document.getElementById('jv-np'), 'music'],
     [document.getElementById('jv-vf'), 'voice'],
     [statsEl, 'system'],
@@ -1683,6 +1712,7 @@
     try { localStorage.setItem('cy-panels-tab', tab); } catch (e) {}
     drawerTabs.forEach(function (b) { b.setAttribute('aria-selected', b.dataset.tab === tab ? 'true' : 'false'); });
     DRAWER_TABS.forEach(function (pair) { pair[0].classList.toggle('jv-tab-off', pair[1] !== tab); });
+    if (tab === 'running') refreshRunning();
   }
   drawerTabs.forEach(function (b) { b.onclick = function () { showTab(b.dataset.tab); }; });
 
@@ -2379,6 +2409,79 @@
     if (JOB_KEEP_MS[tone]) card._keep = setTimeout(function () { dropJobCard(ev.id); }, JOB_KEEP_MS[tone]);
     syncTaskCount();
   }
+
+  // ------------------------------------------------- running now
+  // What is running on this machine and what each program is doing
+  // (running_apps, RUNNING_APPS_PLAN.md). Read-only: a row opens its detail,
+  // nothing more. Fetched only while the section is on screen.
+  var runEl = document.getElementById('jv-running');
+  var runList = document.getElementById('run-list');
+  var runCount = document.getElementById('jv-runcount');
+  var RUN_GROUPS = [['agents', 'Agents'], ['servers', 'Servers'], ['apps', 'Apps'], ['background', 'Background']];
+  var RUN_APPS_SHOWN = 8;
+  var runOpen = {};                         // row id -> its detail is open
+
+  function runRow(r) {
+    var row = document.createElement('div');
+    row.className = 'run-row';
+    var head = document.createElement('div');
+    head.className = 'run-head';
+    var dot = document.createElement('span');
+    dot.className = 'run-dot is-' + (r.status || 'running');
+    dot.title = r.status || '';
+    var name = document.createElement('span');
+    name.className = 'run-name';
+    name.textContent = r.name;
+    head.appendChild(dot); head.appendChild(name);
+    (r.flags || []).forEach(function (f) {
+      var flag = document.createElement('span');
+      flag.className = 'run-flag';
+      flag.textContent = f;
+      head.appendChild(flag);
+    });
+    var doing = document.createElement('div');
+    doing.className = 'run-doing';
+    doing.textContent = r.doing || '';
+    doing.title = r.doing || '';
+    var detail = document.createElement('div');
+    detail.className = 'run-detail';
+    detail.textContent = (r.detail || []).join('\n');
+    detail.hidden = !runOpen[r.id];
+    row.appendChild(head); row.appendChild(doing); row.appendChild(detail);
+    row.onclick = function () { runOpen[r.id] = detail.hidden; detail.hidden = !detail.hidden; };
+    return row;
+  }
+
+  function renderRunning(rows) {
+    runList.innerHTML = '';
+    runCount.textContent = String(rows.filter(function (r) { return r.group === 'agents'; }).length);
+    RUN_GROUPS.forEach(function (g) {
+      var mine = rows.filter(function (r) { return r.group === g[0]; });
+      if (!mine.length) return;
+      var head = document.createElement('div');
+      head.className = 'run-grp';
+      head.textContent = g[1] + ' · ' + mine.length;
+      runList.appendChild(head);
+      var shown = g[0] === 'apps' ? mine.slice(0, RUN_APPS_SHOWN) : mine;
+      shown.forEach(function (r) { runList.appendChild(runRow(r)); });
+      if (shown.length < mine.length) {
+        var more = document.createElement('div');
+        more.className = 'run-doing';
+        more.textContent = '+ ' + (mine.length - shown.length) + ' more';
+        runList.appendChild(more);
+      }
+    });
+    if (!rows.length) runList.innerHTML = '<div class="run-doing">Nothing of note is running.</div>';
+  }
+
+  function refreshRunning() {
+    if (DEMO || document.hidden || !runEl || runEl.offsetParent === null) return;
+    fetch('/running', { cache: 'no-store' }).then(function (r) { return r.json(); })
+      .then(function (d) { renderRunning(d.rows || []); })
+      .catch(function () {});
+  }
+  setInterval(refreshRunning, 5000);
+  refreshRunning();
 
   // ------------------------------------------------- speech-reactive visuals
   // A second, playback-only AudioContext taps the TTS <audio> element and turns

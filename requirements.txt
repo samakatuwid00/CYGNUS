@@ -6,6 +6,8 @@ sounddevice>=0.4.6
 soundfile>=0.12.1
 numpy>=1.24.0
 faster-whisper>=0.10.0
+# What is running on this machine (running_apps)
+psutil>=5.9
 edge-tts>=6.1.0
 # Resampling clips whose rate differs from Whisper's (voice_engine)
 scipy>=1.18.1

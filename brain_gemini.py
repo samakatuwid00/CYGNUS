@@ -499,6 +499,14 @@ def classify_intent(text: str) -> str:
        re.search(r"\b(jarvis|cygnus|my apps|from my apps)\b", t) and \
        re.search(r"\b(tool|twitch|studio|editor|player|browser|coder|code|vscode|notepad|chrome|brave|edge|spotify|excel|word|powerpoint|git|python|node|docker|terminal|calc|calculator|paint|obs|vlc|discord|telegram|slack|teams|snipping)\b", t, re.I):
         return "app_uninstall"
+    # running (RUNNING_APPS_PLAN.md): the machine's programs, not Cygnus's own
+    # jobs, and before list_installed: "what apps are running" is not "what
+    # apps do I have". "Explain what Claude is doing" may use the answering model.
+    if re.search(r"\bwhat'?s\s+(running|open)\b|\bwhat\s+(is|are)\s+(running|open)\b"
+                 r"|\b(what|which)\s+(apps|programs|processes)\s+(are\s+)?(running|open)\b"
+                 r"|\bwhat\s+(is\s+|are\s+)?(claude|hermes|opencode|gemini|codex)(\s+is|\s+are)?\s+"
+                 r"(doing|working on|up to)\b", t, re.I):
+        return "running_explain" if re.search(r"\b(explain|in detail)\b", t, re.I) else "running"
     # list_installed: "what apps do I have?", "list my installed apps", "what can I open".
     if re.search(r"\b(what apps|list.*apps|installed apps|my apps|apps do i have|what can i open|show me my apps)\b", t):
         return "list_installed"
@@ -1840,6 +1848,7 @@ class JarvisBrain:
         self._lead_record = None
         self._ask_remember = None
         self._gate = None
+        self._shared_out = False
         _progress_local.grounded = None
         try:
             import command_chain
@@ -1861,6 +1870,11 @@ class JarvisBrain:
                 msg["content"] = original
                 _progress_local.grounded = None
         reply = self._with_remember_question(reply)
+        if self._shared_out and isinstance(reply, str):     # the owner hears that it left the machine
+            note = " I shared those recent steps with my answering model to explain them."
+            if self.conversation and self.conversation[-1].get("content") == reply:
+                self.conversation[-1]["content"] = reply + note
+            reply += note
         if self._gate is not None:          # what the gate would do, next to what ran
             try:
                 import action_gate
@@ -1885,6 +1899,24 @@ class JarvisBrain:
             except Exception as e:
                 print(f"[shadow] observer failed: {type(e).__name__}", flush=True)
         return reply
+
+    def _ground_running(self, text):
+        """Attach the agents' state and recent steps (running_apps) to this
+        turn's user message for the model to explain; think() puts the
+        original back and tells the owner the steps left the machine."""
+        if not self.conversation or self.conversation[-1].get("role") != "user":
+            return
+        try:
+            import running_apps
+            facts = running_apps.explain_context(running_apps.inventory(), running_apps.focus_of(text))
+        except Exception:
+            return
+        if not facts:
+            return
+        msg = self.conversation[-1]
+        _progress_local.grounded = (msg, msg["content"])
+        msg["content"] = msg["content"] + "\n\n[What is running, read from this machine]\n" + facts
+        self._shared_out = True
 
     def _with_remember_question(self, reply):
         """The reply, plus "Should I remember that …?" when the turn held a
@@ -2197,6 +2229,19 @@ class JarvisBrain:
         # answer instantly from local state without touching Hermes, the cloud
         # chain, or any tool-call round-trip. Mirrors the instant-path contract
         # (last_backend="instant").
+        # "What's running?" (running_apps): answered here, from this machine,
+        # with no model call.
+        if intent == "running":
+            try:
+                import running_apps
+                out = running_apps.summary(running_apps.inventory(),
+                                           focus=running_apps.focus_of(user_input))
+                self.conversation.append({"role": "assistant", "content": out})
+                self.last_backend = "instant"
+                self.last_stats = {"backend": "instant", "intent": intent}
+                return out
+            except Exception as e:
+                print(f"[JARVIS] running apps failed ({type(e).__name__}: {e}); falling back...")
         if intent in ("job_status", "job_stop", "remember"):
             try:
                 if intent == "remember":
@@ -2240,6 +2285,11 @@ class JarvisBrain:
         if _asks_about_own_work(user_input):
             _conversational = True
             self._ground_own_work()
+        # "Explain what Claude is doing": its recent steps ride along to the
+        # answering model (the owner allowed it; think() says they were shared).
+        if intent == "running_explain":
+            _conversational = True
+            self._ground_running(user_input)
         # Phase 5: the understand-first router leads where the old code was
         # about to delegate or guess. It runs an ability or a rule it is
         # confident about (asking first when the user marked it "ask");
