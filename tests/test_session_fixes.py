@@ -112,6 +112,7 @@ def test_weeks_old_confirms_are_not_active(monkeypatch):
     monkeypatch.setattr(jobs, "_load_history", lambda: None)
     monkeypatch.setattr(jobs, "_append_log", lambda rec: None)
     monkeypatch.setattr(jobs, "_emit", lambda rec: None)
+    monkeypatch.setattr(jobs, "_owner", True)
     monkeypatch.setattr(jobs, "_jobs", {
         "old": {"id": "old", "state": "waiting-on-confirm", "started": time.time() - 30 * 86400,
                 "task": "x", "progress": []},

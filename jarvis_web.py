@@ -199,6 +199,11 @@ wake_engine.set_error_callback(
     lambda msg: print(f"[WakeEngine] error: {msg}", flush=True))
 wake_engine.start()
 
+# This process runs Cygnus's jobs, so it alone may call a job the log still
+# shows running "interrupted by restart" (jobs.claim_ownership).
+import jobs as _jobs_owner
+_jobs_owner.claim_ownership()
+
 # Phase 2: pre-warm Hermes session at boot so the first voice query doesn't
 # pay the full cold-start cost. Runs in a background thread to avoid blocking
 # server startup. The session is persisted on disk and survives JARVIS restarts.

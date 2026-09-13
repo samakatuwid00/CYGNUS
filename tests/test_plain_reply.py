@@ -190,7 +190,23 @@ def test_a_restart_records_the_job_it_cut_off(tmp_path, monkeypatch):
     monkeypatch.setattr(jobs, "_LOG_PATH", log)
     monkeypatch.setattr(jobs, "_jobs", {})
     monkeypatch.setattr(jobs, "_loaded", False)
+    monkeypatch.setattr(jobs, "_owner", True)
     assert jobs.active() == []
     assert jobs.get("j1")["error"] == jobs.INTERRUPTED
     last = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
     assert (last["id"], last["state"], last["error"]) == ("j1", "error", jobs.INTERRUPTED)
+
+
+def test_only_the_backend_calls_a_running_job_interrupted(tmp_path, monkeypatch):
+    import json
+    log = tmp_path / "jobs.jsonl"
+    log.write_text(json.dumps({"id": "j2", "ts": 1.0, "task": "look around", "tier": "hermes",
+                               "state": "running"}) + "\n", encoding="utf-8")
+    monkeypatch.setattr(jobs, "_LOG_PATH", log)
+    monkeypatch.setattr(jobs, "_jobs", {})
+    monkeypatch.setattr(jobs, "_loaded", False)
+    monkeypatch.setattr(jobs, "_owner", False)
+    assert [j["id"] for j in jobs.active()] == ["j2"]           # a reader: still running as far as it knows
+    assert len(log.read_text(encoding="utf-8").splitlines()) == 1    # and it wrote nothing
+    jobs.claim_ownership()                                        # the backend starting up
+    assert jobs.get("j2")["error"] == jobs.INTERRUPTED

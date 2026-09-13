@@ -30,6 +30,19 @@ _lock = threading.Lock()
 _jobs: dict[str, dict] = {}
 _listeners: list = []          # callables(event: dict) -> None
 _loaded = False
+# Only the process that runs the jobs (the backend) may call a job it lost
+# "interrupted by restart" or expire a stale confirm. Any other process that
+# reads the log (a check run from a terminal) sees jobs the backend is still
+# running: two live jobs got "interrupted" records that way on 2026-09-13.
+_owner = False
+
+
+def claim_ownership() -> None:
+    """Called once, at startup, by the process that starts and finishes jobs."""
+    global _owner
+    _owner = True
+    if _loaded:
+        _mark_interrupted()
 
 # queued / waiting-on-confirm jobs never reach a terminal state on their own,
 # so without expiry they pile up in active() forever (real case: 26 stale
@@ -92,12 +105,18 @@ def _load_history() -> None:
                 _jobs[jid] = merged
     except Exception:
         return
+    if _owner:
+        _mark_interrupted()
+
+
+def _mark_interrupted() -> None:
+    """Jobs the log shows running, loaded by the process that runs jobs, were
+    cut off by its restart. On record, so the log agrees with "status?" and
+    the next restart does not find them running again."""
     for j in _jobs.values():
         if j.get("state") == "running":
             j["state"] = "error"
             j["error"] = INTERRUPTED
-            # On record, so the log agrees with "status?" and the next restart
-            # does not find it running again.
             _append_log({"id": j["id"], "ts": time.time(), "state": "error", "error": INTERRUPTED})
 
 
@@ -144,6 +163,8 @@ def _emit(job: dict) -> None:
 
 def _expire_stale() -> None:
     """Mark stale queued / waiting-on-confirm jobs as timeout (read-side sweep)."""
+    if not _owner:
+        return                  # a reader outside the backend leaves its jobs alone
     now = time.time()
     with _lock:
         stale = [jid for jid, j in _jobs.items()
