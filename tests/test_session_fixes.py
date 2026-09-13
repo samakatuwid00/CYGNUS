@@ -131,6 +131,50 @@ def test_commands_are_not_saved_as_preferences(text, pref):
     assert brain_gemini._looks_like_preference(text) is pref
 
 
+@pytest.mark.parametrize("text, kind", [
+    ("I prefer lo-fi while coding", "save"), ("my favorite editor is VS Code", "save"),
+    ("for coding I usually prefer lo-fi", "ask"),
+    # the three requests that were saved as facts on 2026-09-13
+    ("What I mean is since you have a version like Minipanel or Full HD, I want you to "
+     "utilize yourself not only the", None),
+    ("I mean, I want you to access my Facebook account, but you should only read online", None),
+    ("On the second brain vault there's a pending inbox folder and I want you to open the "
+     "parked md notes then tell me what is it", None),
+    ("I don't know", None), ("do I like jazz?", None), ("play some of my favorite on spotify", None)])
+def test_only_preferences_said_outright_are_saved_unasked(text, kind):
+    import brain_gemini
+    assert brain_gemini.preference_kind(text) == kind
+
+
+def test_an_unclear_preference_is_asked_about_and_yes_saves_it(monkeypatch):
+    import brain_gemini
+    import dialogue_state
+    import tools
+    dialogue_state.reset()
+    saved = []
+    monkeypatch.setattr(tools, "remember_fact",
+                        lambda t: saved.append(t) or f"Noted, sir. I'll remember: {t}.")
+    assert brain_gemini.remember_question("for coding I usually prefer lo-fi") == \
+        "Should I remember that “for coding I usually prefer lo-fi”?"
+    assert brain_gemini.remember_question("I usually hate alarms") == ""    # one question at a time
+    assert brain_gemini.answer_remember("open spotify") is None             # a new command
+    assert brain_gemini.answer_remember("yes") == \
+        "Noted, sir. I'll remember: for coding I usually prefer lo-fi."
+    assert saved == ["for coding I usually prefer lo-fi"]
+    assert dialogue_state.pending() is None
+
+
+def test_no_drops_the_unclear_preference(monkeypatch):
+    import brain_gemini
+    import dialogue_state
+    import tools
+    dialogue_state.reset()
+    monkeypatch.setattr(tools, "remember_fact", lambda t: pytest.fail("saved after a no"))
+    brain_gemini.remember_question("for coding I usually prefer lo-fi")
+    assert brain_gemini.answer_remember("no") == "Okay, I won't remember that."
+    assert dialogue_state.pending() is None
+
+
 # ------------------------------------------------------------ rule slot --
 
 def test_rule_slot_drops_that_site_for_and_instead():

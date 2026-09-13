@@ -874,6 +874,73 @@ def _looks_like_preference(t):
     return bool(_PREF_RE.search(t)) and len(t.split()) <= 40 and not _COMMAND_LEAD_RE.match(t)
 
 
+# A request, a correction or a question is never a preference, however many
+# "I want"s it holds: "What I mean is ... I want you to utilize yourself" and
+# "I want you to access my Facebook account" were saved as facts about the
+# owner (2026-09-13).
+_REQUEST_RE = re.compile(
+    r"\b(?:want|need|like) you to\b|\b(?:can|could|would|will) you\b|\bhelp me\b"
+    r"|^\s*(?:i mean|what i mean|i meant|actually)\b", re.I)
+# Said outright, it is saved without asking. "I want" and "I need" lead
+# requests as often as tastes, so they never count on their own.
+_PREF_LEAD_RE = re.compile(
+    r"^\s*(?:(?:and|also|so|well|oh)[,\s]+)*"
+    r"(?:i (?:prefer|like|love|hate|always|never|usually|don'?t like|do not like)"
+    r"|i'?m into|i am into|my (?:favou?rite|preferred|default))\b", re.I)
+_PREF_STRONG_RE = re.compile(
+    r"\b(?:i (?:prefer|like|love|hate|always|never|usually)|i'?m into|i am into"
+    r"|my (?:favou?rite|preferred|default))\b", re.I)
+
+
+def preference_kind(t):
+    """'save' for a preference said outright ("I prefer lo-fi"), 'ask' for one
+    that only might be ("for coding I usually prefer lo-fi"), None for the
+    rest: commands, requests, corrections and questions."""
+    t = (t or "").strip()
+    if not _looks_like_preference(t) or t.endswith("?") or _REQUEST_RE.search(t):
+        return None
+    if _PREF_LEAD_RE.match(t):
+        return "save"
+    return "ask" if _PREF_STRONG_RE.search(t) else None
+
+
+def _asks_something(reply):
+    """The reply already puts a question or a confirm to the owner."""
+    r = (reply or "").strip()
+    return r.endswith("?") or "[NEEDS_CONFIRM" in r or r.startswith("[NEEDS_PICK]") or r.startswith("⟳")
+
+
+def remember_question(text):
+    """Ask before saving a preference that only might be one. The question,
+    or '' when another question is already open (one at a time)."""
+    import dialogue_state
+    if dialogue_state.pending():
+        return ""
+    words = text.split()
+    short = " ".join(words[:14]) + ("…" if len(words) > 14 else "")
+    question = f"Should I remember that “{short.rstrip('.')}”?"
+    dialogue_state.ask("remember", question, {"text": text}, owner="brain")
+    return question
+
+
+def answer_remember(text):
+    """Yes or no to "Should I remember that …?", else None: anything longer
+    is a new turn and routes as one."""
+    import dialogue_state
+    asked = dialogue_state.pending("remember")
+    if not asked:
+        return None
+    import tools
+    t = (text or "").strip()
+    if tools._PREF_YES_RE.match(t):
+        dialogue_state.answered()
+        return tools.remember_fact(asked["payload"]["text"])
+    if tools._PREF_NO_RE.match(t):
+        dialogue_state.answered()
+        return "Okay, I won't remember that."
+    return None
+
+
 def fast_path_answer(text: str):
     """Answer a trivial intent locally. Returns (answer, intent) or (None, intent)
     when the intent is not handled by the fast path."""
@@ -1745,6 +1812,7 @@ class JarvisBrain:
         except Exception:
             pass
         self._lead_record = None
+        self._ask_remember = None
         _progress_local.grounded = None
         try:
             import command_chain
@@ -1765,6 +1833,7 @@ class JarvisBrain:
                 msg, original = grounded
                 msg["content"] = original
                 _progress_local.grounded = None
+        reply = self._with_remember_question(reply)
         if started is not None:
             try:
                 fixed = honest_reply(reply, intent_router._audit_since(started["audit_pos"]),
@@ -1781,6 +1850,20 @@ class JarvisBrain:
             except Exception as e:
                 print(f"[shadow] observer failed: {type(e).__name__}", flush=True)
         return reply
+
+    def _with_remember_question(self, reply):
+        """The reply, plus "Should I remember that …?" when the turn held a
+        preference that only might be one and the reply asks nothing itself."""
+        text = getattr(self, "_ask_remember", None)
+        if not text or not isinstance(reply, str) or _asks_something(reply):
+            return reply
+        question = remember_question(text)
+        if not question:
+            return reply
+        asked = reply.rstrip() + " " + question
+        if self.conversation and self.conversation[-1].get("content") == reply:
+            self.conversation[-1]["content"] = asked
+        return asked
 
     def _run_chain(self, clauses, on_hermes_done=None, progress_cb=None):
         """Each command of "open Spotify and play X" in turn, each routed on
@@ -1850,6 +1933,17 @@ class JarvisBrain:
         except Exception as e:
             print(f"[JARVIS] ability consent failed ({e}); routing normally...")
 
+        # The answer to "Should I remember that …?" (think() asked it).
+        try:
+            _kept = answer_remember(user_input)
+            if _kept is not None:
+                self.conversation.append({"role": "assistant", "content": _kept})
+                self.last_backend = "instant"
+                self.last_stats = {"backend": "instant", "intent": "remember_consent"}
+                return _kept
+        except Exception as e:
+            print(f"[JARVIS] remember consent failed ({e}); routing normally...")
+
         # A no to the confirm JARVIS just asked for. Runs before the
         # correction stripper, which would turn "no, cancel that" into a new
         # task "cancel that". A multi-step rule's own question (and a rule's
@@ -1901,21 +1995,25 @@ class JarvisBrain:
             self.last_stats = {"backend": "instant", "intent": "rule_action"}
             return _rule_out
 
-        # Phase 23: passive preference capture — quietly remember stated preferences
-        # as a NON-BLOCKING side-effect. Pure side-effect: never alters the answer.
+        # Phase 23: passive preference capture, a NON-BLOCKING side-effect. A
+        # preference said outright is saved; one that only might be is asked
+        # about after the answer (think() adds the question); requests,
+        # corrections and questions are never saved.
         try:
-            _pref_intent = classify_intent(user_input)
-            if _looks_like_preference(user_input) and _pref_intent not in ("remember", "recall_memory"):
+            _pref_kind = None
+            if classify_intent(user_input) not in ("remember", "recall_memory"):
+                _pref_kind = preference_kind(user_input)
+            if _pref_kind == "save":
                 _pref_text = user_input.strip()
-                # Guardrail: skip pure questions (no preference marker mid-sentence).
-                if not (_pref_text.rstrip().endswith("?") and not _PREF_RE.search(_pref_text)):
-                    def _capture_pref():
-                        try:
-                            import tools as _tools
-                            _tools.remember_fact(_pref_text)
-                        except Exception:
-                            pass
-                    _threading.Thread(target=_capture_pref, daemon=True).start()
+                def _capture_pref():
+                    try:
+                        import tools as _tools
+                        _tools.remember_fact(_pref_text)
+                    except Exception:
+                        pass
+                _threading.Thread(target=_capture_pref, daemon=True).start()
+            elif _pref_kind == "ask":
+                self._ask_remember = user_input.strip()
         except Exception:
             pass
 
