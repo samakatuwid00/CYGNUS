@@ -499,6 +499,22 @@ def classify_intent(text: str) -> str:
        re.search(r"\b(jarvis|cygnus|my apps|from my apps)\b", t) and \
        re.search(r"\b(tool|twitch|studio|editor|player|browser|coder|code|vscode|notepad|chrome|brave|edge|spotify|excel|word|powerpoint|git|python|node|docker|terminal|calc|calculator|paint|obs|vlc|discord|telegram|slack|teams|snipping)\b", t, re.I):
         return "app_uninstall"
+    # Seeing and acting on what is running (RUNNING_APPS_PLAN.md phases 4-5).
+    # A stop that names a task or a job is Cygnus's own job control, below.
+    if re.search(r"\b(bring|put|pull)\b.{0,40}\b(to\s+the\s+)?(front|forward|foreground)\b"
+                 r"|\b(bring\s+up|switch\s+to|show\s+me)\s+(the\s+|my\s+)?.{1,30}\bwindow\b", t, re.I):
+        return "running_front"
+    if re.search(r"\b(stop|kill|end|terminate|shut\s+down)\b.{0,40}\b(duplicates?|leftovers?|servers?|watchers?"
+                 r"|background|process(es)?|tails?|grep|port\s+\d+)\b", t, re.I) \
+            and not re.search(r"\b(tasks?|jobs?|goals?)\b", t, re.I):
+        return "running_stop"
+    if re.search(r"\bread\s+(me\s+)?(the\s+|my\s+)?(terminal|console)\b"
+                 r"|\bwhat\s+(does|is)\s+(the|my)\s+(terminal|console)\s+(say|show(ing)?)\b"
+                 r"|\bwhat'?s\s+(on|in)\s+(the|my)\s+(terminal|console)\b|\bread\s+(the\s+)?.{1,30}\bwindow\b", t, re.I):
+        return "running_text"
+    if re.search(r"\b(describe|look\s+at)\s+(the\s+|my\s+|that\s+)?.{0,30}\b(window|screen)\b"
+                 r"|\bwhat'?s\s+(on|in)\s+(the|my|that)\s+.{0,30}\b(window|screen)\b", t, re.I):
+        return "running_describe"
     # running (RUNNING_APPS_PLAN.md): the machine's programs, not Cygnus's own
     # jobs, and before list_installed: "what apps are running" is not "what
     # apps do I have". "Explain what Claude is doing" may use the answering model.
@@ -946,6 +962,24 @@ def answer_remember(text):
     if reply.kind == "no":
         dialogue_state.answered()
         return "Okay, I won't remember that."
+    return None
+
+
+def answer_running_stop(text):
+    """Yes or no to "I'll stop ... Say confirm", else None. Read strictly: a
+    bare "ok" does not stop anything."""
+    import dialogue_state
+    asked = dialogue_state.pending("running_stop")
+    if not asked:
+        return None
+    reply = _consent.read(text)
+    if reply.kind == "yes":
+        dialogue_state.answered()
+        import running_apps
+        return running_apps.stop_now(asked["payload"])
+    if reply.kind == "no":
+        dialogue_state.answered()
+        return "Okay, sir. I'll leave it running."
     return None
 
 
@@ -1833,12 +1867,14 @@ class JarvisBrain:
             trimmed.pop(0)
         self.conversation = trimmed
 
-    def think(self, user_input: str, on_hermes_done=None, progress_cb=None, client=None) -> str:
+    def think(self, user_input: str, on_hermes_done=None, progress_cb=None, client=None,
+              remote=False) -> str:
         """One turn, then its observers: the conversation state records it and
         the understand-first router decides in shadow (in the background,
         after the reply - never in its way). `client` names whose conversation
         the turn belongs to; every thread sets it before touching history."""
         _progress_local.client = client or "default"
+        _progress_local.remote = bool(remote)        # the phone: it may look, not act
         started = None
         try:
             import intent_router
@@ -2010,6 +2046,17 @@ class JarvisBrain:
                 return _kept
         except Exception as e:
             print(f"[JARVIS] remember consent failed ({e}); routing normally...")
+
+        # The answer to "I'll stop ... Say confirm" (running_apps).
+        try:
+            _stopped = answer_running_stop(user_input)
+            if _stopped is not None:
+                self.conversation.append({"role": "assistant", "content": _stopped})
+                self.last_backend = "instant"
+                self.last_stats = {"backend": "instant", "intent": "running_stop_consent"}
+                return _stopped
+        except Exception as e:
+            print(f"[JARVIS] running stop consent failed ({e}); routing normally...")
 
         # The reply to "Which one should I open?" or a clarify question: the
         # chosen request routes from here as if it had been said outright.
@@ -2229,13 +2276,18 @@ class JarvisBrain:
         # answer instantly from local state without touching Hermes, the cloud
         # chain, or any tool-call round-trip. Mirrors the instant-path contract
         # (last_backend="instant").
-        # "What's running?" (running_apps): answered here, from this machine,
-        # with no model call.
-        if intent == "running":
+        # "What's running?", "bring Chrome to the front", "stop the leftover
+        # tail", "read the terminal", "describe the Chrome window"
+        # (running_apps): answered here. A stop is only planned; it waits for
+        # a confirm (answer_running_stop). From the phone only the list.
+        if intent in ("running", "running_front", "running_stop", "running_text", "running_describe"):
             try:
                 import running_apps
-                out = running_apps.summary(running_apps.inventory(),
-                                           focus=running_apps.focus_of(user_input))
+                out, plan = running_apps.handle(intent, user_input,
+                                                remote=getattr(_progress_local, "remote", False))
+                if plan:
+                    import dialogue_state
+                    dialogue_state.ask("running_stop", out, plan, owner="brain")
                 self.conversation.append({"role": "assistant", "content": out})
                 self.last_backend = "instant"
                 self.last_stats = {"backend": "instant", "intent": intent}

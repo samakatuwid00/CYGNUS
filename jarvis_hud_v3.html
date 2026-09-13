@@ -895,7 +895,20 @@
     overflow: hidden; text-overflow: ellipsis; }
   .run-detail { margin: 4px 0 0 14px; font-size: 11.5px; color: #cdb592; white-space: pre-wrap;
     word-break: break-word; }
-  .run-detail[hidden] { display: none; }
+  .run-detail[hidden], .run-box[hidden] { display: none; }
+  .run-thumb { display: block; max-width: calc(100% - 14px); margin: 6px 0 0 14px; border-radius: 6px;
+    border: 1px solid var(--hairline); }
+  .run-acts { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0 14px; }
+  .run-btn { cursor: pointer; border-radius: 7px; padding: 5px 10px; font: 700 10px/1.2 var(--font-display);
+    letter-spacing: .1em; text-transform: uppercase; border: 1px solid var(--hairline); background: transparent;
+    color: #d8b98a; }
+  .run-btn:hover { color: #ffe7c4; }
+  .run-btn.stop { color: #ef7b64; border-color: rgba(239, 123, 100, .4); }
+  .run-btn.confirm { color: #9fe6ba; border-color: rgba(125, 219, 160, .6); background: rgba(125, 219, 160, .14); }
+  @media (pointer: coarse) { .run-btn { min-height: 40px; } }
+  .run-out { margin: 6px 0 0 14px; padding: 6px 8px; border-radius: 6px; background: rgba(0, 0, 0, .25);
+    font-size: 11.5px; color: #e8d3b0; white-space: pre-wrap; word-break: break-word; max-height: 220px;
+    overflow-y: auto; }
 </style>
 </head>
 <body>
@@ -2420,6 +2433,54 @@
   var RUN_GROUPS = [['agents', 'Agents'], ['servers', 'Servers'], ['apps', 'Apps'], ['background', 'Background']];
   var RUN_APPS_SHOWN = 8;
   var runOpen = {};                         // row id -> its detail is open
+  // Acting on a row is for the laptop: from the phone the list is read-only.
+  var RUN_LOCAL = /^(127\.0\.0\.1|localhost|\[::1\])$/.test(location.hostname);
+  var runRows = [];
+  var runExtra = {};                        // row id -> {out, thumb, token}: what an action left under it
+
+  function runButton(label, cls, fn) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'run-btn' + (cls ? ' ' + cls : '');
+    b.textContent = label;
+    b.onclick = function (e) { e.stopPropagation(); fn(); };
+    return b;
+  }
+
+  function runAction(r, kind) {
+    var ex = runExtra[r.id] = runExtra[r.id] || {};
+    var id = encodeURIComponent(r.id);
+    function done(text) { ex.out = text; renderRunning(runRows); }
+    function fail() { done('That didn’t work.'); }
+    function post(url, body) {
+      return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(body || {}) }).then(function (res) { return res.json(); });
+    }
+    function get(url) { return fetch(url, { cache: 'no-store' }).then(function (res) { return res.json(); }); }
+    if (kind === 'cancel') { ex.token = null; done('Left it running.'); return; }
+    ex.out = kind === 'describe' ? 'Looking at it…' : '…';
+    renderRunning(runRows);
+    if (kind === 'front') post('/running/front?id=' + id).then(function (d) { done(d.text); }).catch(fail);
+    else if (kind === 'text') get('/running/text?id=' + id).then(function (d) {
+      done(d.text || 'No text I can read in that window.'); }).catch(fail);
+    else if (kind === 'describe') get('/running/describe?id=' + id).then(function (d) {
+      done(d.text + (d.model ? '\n(A picture of the window went to ' + d.model + ' to read it.)' : '')); }).catch(fail);
+    else if (kind === 'stop') post('/running/stop', { id: r.id }).then(function (d) {
+      ex.token = d.token || null; done(d.confirm || d.text); }).catch(fail);
+    else if (kind === 'confirm') post('/running/stop', { token: ex.token }).then(function (d) {
+      ex.token = null; done(d.text); refreshRunning(); }).catch(fail);
+  }
+
+  // The desktop app shows a live thumbnail of a row's window (Electron's
+  // desktopCapturer, keyed by window handle); the phone and a tab show none.
+  function runThumb(r) {
+    if (!IS_DESKTOP || !window.jarvisDesktop || !jarvisDesktop.windowThumbs || !(r.windows || []).length) return;
+    jarvisDesktop.windowThumbs().then(function (list) {
+      var want = r.windows.map(function (w) { return 'window:' + w.hwnd + ':0'; });
+      var hit = (list || []).filter(function (s) { return want.indexOf(s.id) >= 0 && s.img; })[0];
+      if (hit) { (runExtra[r.id] = runExtra[r.id] || {}).thumb = hit.img; renderRunning(runRows); }
+    }).catch(function () {});
+  }
 
   function runRow(r) {
     var row = document.createElement('div');
@@ -2443,16 +2504,56 @@
     doing.className = 'run-doing';
     doing.textContent = r.doing || '';
     doing.title = r.doing || '';
+    var box = document.createElement('div');
+    box.className = 'run-box';
+    box.hidden = !runOpen[r.id];
     var detail = document.createElement('div');
     detail.className = 'run-detail';
     detail.textContent = (r.detail || []).join('\n');
-    detail.hidden = !runOpen[r.id];
-    row.appendChild(head); row.appendChild(doing); row.appendChild(detail);
-    row.onclick = function () { runOpen[r.id] = detail.hidden; detail.hidden = !detail.hidden; };
+    box.appendChild(detail);
+    var ex = runExtra[r.id] || {};
+    if (ex.thumb) {
+      var img = document.createElement('img');
+      img.className = 'run-thumb';
+      img.alt = 'Window of ' + r.name;
+      img.src = ex.thumb;
+      box.appendChild(img);
+    }
+    if (RUN_LOCAL) {
+      var acts = document.createElement('div');
+      acts.className = 'run-acts';
+      if ((r.windows || []).length) {
+        acts.appendChild(runButton('Show', '', function () { runAction(r, 'front'); }));
+        acts.appendChild(runButton('Read text', '', function () { runAction(r, 'text'); }));
+        acts.appendChild(runButton('Describe', '', function () { runAction(r, 'describe'); }));
+      }
+      if (r.group === 'servers' || r.group === 'background') {
+        if (ex.token) {
+          acts.appendChild(runButton('Confirm stop', 'confirm', function () { runAction(r, 'confirm'); }));
+          acts.appendChild(runButton('Cancel', '', function () { runAction(r, 'cancel'); }));
+        } else {
+          acts.appendChild(runButton('Stop…', 'stop', function () { runAction(r, 'stop'); }));
+        }
+      }
+      if (acts.children.length) box.appendChild(acts);
+    }
+    if (ex.out) {
+      var out = document.createElement('div');
+      out.className = 'run-out';
+      out.textContent = ex.out;
+      box.appendChild(out);
+    }
+    row.appendChild(head); row.appendChild(doing); row.appendChild(box);
+    row.onclick = function () {
+      runOpen[r.id] = box.hidden;
+      box.hidden = !box.hidden;
+      if (!box.hidden && !ex.thumb) runThumb(r);
+    };
     return row;
   }
 
   function renderRunning(rows) {
+    runRows = rows;
     runList.innerHTML = '';
     runCount.textContent = String(rows.filter(function (r) { return r.group === 'agents'; }).length);
     RUN_GROUPS.forEach(function (g) {

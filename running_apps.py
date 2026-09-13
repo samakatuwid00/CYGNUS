@@ -30,6 +30,13 @@ BUSY_S = 120            # Hermes counts as working this long after a model call 
 LEFTOVER_S = 86400      # a background program running over a day...
 LEFTOVER_CPU = 0.001    # ...that used under 0.1% of that time on the CPU
 MAX_SERVERS_SAID = 4
+# Models that read images, through the local router, tried in order for
+# "describe that window": these read a test image on 2026-09-13, when the
+# router's default (a Gemini model) was out of quota for three days.
+VISION_MODELS = [m.strip() for m in os.getenv("JARVIS_VISION_MODELS",
+                                              "cx/gpt-5.6-luna,cx/gpt-5.5,cx/gpt-5.6-terra").split(",") if m.strip()]
+TEXT_LINES = 40         # a window's text: this many last lines
+SPOKEN_LINES = 6        # of which Cygnus reads out this many
 GROUPS = ("agents", "servers", "apps", "background")
 _STATUS_ORDER = {"stuck": 0, "waiting": 1, "working": 2, "running": 3, "idle": 4}
 
@@ -391,7 +398,10 @@ def build_rows(procs, windows, ports, now, jobs=()):
     A launcher and its child are one row, an agent's shells roll into it (an
     agent it starts keeps a row of its own), and a launcher chain
     ("npm run dev" -> node -> vite) belongs to the server or app it started."""
-    windows = {pid: real for pid, ts in windows.items() if (real := [t for t in ts if not _IDENT_TITLE.match(t)])}
+    # A window is (handle, title); a bare title (tests, older callers) has no handle.
+    pairs = {pid: [(None, w) if isinstance(w, str) else tuple(w) for w in ws] for pid, ws in windows.items()}
+    pairs = {pid: real for pid, ws in pairs.items() if (real := [(h, t) for h, t in ws if not _IDENT_TITLE.match(t)])}
+    windows = {pid: [t for _, t in ws] for pid, ws in pairs.items()}
     kind = {}
     for pid, p in procs.items():
         if _agent_name(p):
@@ -518,6 +528,8 @@ def build_rows(procs, windows, ports, now, jobs=()):
         detail.append(f"Running {since}; CPU {cpu:.0f} s, memory {mem:.0f} MB")
         rows.append({"id": str(root), "group": group, "name": name, "status": status, "doing": doing,
                      "detail": detail, "flags": [], "since": since, "pids": sorted(pids),
+                     "windows": [{"hwnd": h, "title": t} for m in pids for h, t in pairs.get(m, []) if h],
+                     "started": p["started"],
                      "uptime": now - p["started"], "cpu_s": cpu,
                      "key": (group, name, " ".join(p["cmdline"][1:]).lower())})
 
@@ -619,6 +631,339 @@ def focus_of(text):
     return next((w for w in ("claude", "hermes", "opencode", "gemini", "codex") if w in t), None)
 
 
+# ------------------------------------------------ phase 4: seeing more --
+
+def window_text(row, lines=TEXT_LINES):
+    """What a row's window shows as text, through Windows UI Automation: a
+    terminal's buffer (its TextPattern), else the window's own text labels.
+    '' when there is none (a canvas, a video, a window with no UIA text)."""
+    if not row or not row.get("windows"):
+        return ""
+    from pywinauto import Desktop
+    from pywinauto.uia_defines import IUIA
+    uia = IUIA()
+    for w in row["windows"]:
+        try:
+            found, labels = None, []
+            for c in Desktop(backend="uia").window(handle=w["hwnd"]).descendants(depth=8):
+                info = c.element_info
+                if info.class_name in ("TermControl", "TermControl2") or info.control_type in ("Document", "Edit"):
+                    try:
+                        pattern = info.element.GetCurrentPattern(uia.UIA_dll.UIA_TextPatternId)
+                        text = pattern.QueryInterface(uia.UIA_dll.IUIAutomationTextPattern).DocumentRange.GetText(-1)
+                    except Exception:
+                        continue
+                    if text.strip():
+                        found = text
+                        break
+                elif info.control_type == "Text" and info.name:
+                    labels.append(info.name)
+            kept = [line.rstrip() for line in (found or "\n".join(labels)).splitlines() if line.strip()]
+            if kept:
+                return "\n".join(kept[-lines:])
+        except Exception:
+            continue
+    return ""
+
+
+def capture_window(hwnd, max_side=1280):
+    """PNG bytes of a window, drawn by the window itself (PrintWindow), so it
+    works when other windows cover it; None when it cannot be captured."""
+    import ctypes
+    import io
+    from ctypes import wintypes
+    from PIL import Image
+    user32, gdi32 = ctypes.windll.user32, ctypes.windll.gdi32
+    before = user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))   # real pixels on a scaled screen
+    try:
+        rect = wintypes.RECT()
+        if not user32.IsWindow(hwnd) or not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+            return None
+        w, h = rect.right - rect.left, rect.bottom - rect.top
+        if w <= 0 or h <= 0:
+            return None
+        hdc = user32.GetWindowDC(hwnd)
+        mdc = gdi32.CreateCompatibleDC(hdc)
+        bmp = gdi32.CreateCompatibleBitmap(hdc, w, h)
+        try:
+            gdi32.SelectObject(mdc, bmp)
+            user32.PrintWindow(hwnd, mdc, 2)                  # PW_RENDERFULLCONTENT
+
+            class BitmapInfo(ctypes.Structure):
+                _fields_ = [("biSize", wintypes.DWORD), ("biWidth", wintypes.LONG), ("biHeight", wintypes.LONG),
+                            ("biPlanes", wintypes.WORD), ("biBitCount", wintypes.WORD),
+                            ("biCompression", wintypes.DWORD), ("biSizeImage", wintypes.DWORD),
+                            ("biXPelsPerMeter", wintypes.LONG), ("biYPelsPerMeter", wintypes.LONG),
+                            ("biClrUsed", wintypes.DWORD), ("biClrImportant", wintypes.DWORD)]
+            info = BitmapInfo(ctypes.sizeof(BitmapInfo), w, -h, 1, 32, 0, 0, 0, 0, 0, 0)
+            pixels = ctypes.create_string_buffer(w * h * 4)
+            gdi32.GetDIBits(mdc, bmp, 0, h, pixels, ctypes.byref(info), 0)
+            image = Image.frombuffer("RGBA", (w, h), pixels, "raw", "BGRA", 0, 1).convert("RGB")
+        finally:
+            gdi32.DeleteObject(bmp)
+            gdi32.DeleteDC(mdc)
+            user32.ReleaseDC(hwnd, hdc)
+    finally:
+        user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(before))
+    image.thumbnail((max_side, max_side))
+    out = io.BytesIO()
+    image.save(out, "PNG")
+    return out.getvalue()
+
+
+def describe_window(row, question=None):
+    """What a row's window shows, in plain words, from a picture of it sent to
+    a model that reads images, through the local router (allowed on request).
+    (answer, model), or (None, why not)."""
+    if not row or not row.get("windows"):
+        return None, "it has no window to look at"
+    png = capture_window(row["windows"][0]["hwnd"])
+    if not png:
+        return None, "I couldn't capture that window"
+    import base64
+    from openai import OpenAI
+    from config import ROUTER_API_KEY, ROUTER_BASE_URL
+    client = OpenAI(base_url=ROUTER_BASE_URL, api_key=ROUTER_API_KEY or "none", timeout=40, max_retries=0)
+    ask = question or ("Describe what this window shows and what the program seems to be doing, in two or "
+                       "three short spoken sentences. No markup, no lists.")
+    picture = {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(png).decode()}}
+    for model in VISION_MODELS:
+        try:
+            reply = client.chat.completions.create(model=model, max_tokens=300, messages=[
+                {"role": "user", "content": [{"type": "text", "text": ask}, picture]}])
+            text = (reply.choices[0].message.content or "").strip()
+        except Exception:
+            continue
+        if text:
+            return text, model
+    return None, "no model that reads images answered"
+
+
+# ------------------------------------------------------- phase 5: acting --
+
+# Words that ask for something rather than name a program.
+_REQUEST_WORDS = {
+    "stop", "kill", "end", "terminate", "shut", "down", "bring", "put", "pull", "to", "the", "a", "an", "that",
+    "this", "those", "these", "please", "cygnus", "front", "forward", "foreground", "show", "me", "window",
+    "windows", "switch", "on", "port", "running", "program", "programs", "process", "processes", "read", "what",
+    "whats", "is", "in", "describe", "look", "at", "my", "screen", "copies", "copy", "of", "and", "all", "it",
+    "them", "duplicate", "duplicates", "leftover", "leftovers", "stuck", "say", "says", "does", "can", "you",
+    "for", "sir", "s", "up", "one", "ones", "hey"}
+
+
+def find_rows(rows, text):
+    """The rows a spoken request names: a process id ("process 1234"), a port
+    ("8788"), a flag ("the leftover tail", "the duplicates") or the words of a
+    row's name and what it is doing ("the web server", "visual studio code")."""
+    t = (text or "").lower()
+    m = re.search(r"\bprocess\s+(\d+)\b", t)
+    if m:
+        return [r for r in rows if int(m.group(1)) in r.get("pids", [])]
+    flags = [f for f in ("duplicate", "leftover", "stuck") if f in t]
+    pool = [r for r in rows if not flags or any(f in r["flags"] for f in flags)]
+    ports = re.findall(r"\b\d{2,5}\b", t)
+    if ports:
+        hit = [r for r in pool if any(re.search(rf"\b{p}\b", r["doing"]) for p in ports)]
+        if hit:
+            return hit
+    said = [w for w in re.findall(r"[a-z0-9]+", t) if w not in _REQUEST_WORDS]
+    if not said:
+        return pool if flags else []
+    # A row answers to the words of its name, what it is doing, and its
+    # group ("server", "app"): "the backend server" is Cygnus's backend,
+    # "the web server" the web servers.
+    group_word = {"servers": "server", "apps": "app", "agents": "agent", "background": "background"}
+    words = {r["id"]: set(re.findall(r"[a-z0-9]+", f"{r['name']} {r['doing']}".lower())) | {group_word[r["group"]]}
+             for r in pool}
+    has = lambda w, ws: w in ws or (w.endswith("s") and len(w) > 3 and w[:-1] in ws)
+    if any(not any(has(w, ws) for ws in words.values()) for w in said):
+        return []                       # it names something not running ("the redis server")
+    score = {r["id"]: sum(has(w, words[r["id"]]) for w in said) for r in pool}
+    best = max(score.values(), default=0)
+    return [r for r in pool if best and score[r["id"]] == best]
+
+
+def _front_row(rows):
+    """The row of the window on top that is not Cygnus's own: "my screen"."""
+    import ctypes
+    from ctypes import wintypes
+    by_hwnd = {w["hwnd"]: r for r in rows for w in r.get("windows", []) if r["name"] != "Cygnus"}
+    found = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def each(hwnd, _):
+        if hwnd in by_hwnd:
+            found.append(by_hwnd[hwnd])
+            return False
+        return True
+
+    ctypes.windll.user32.EnumWindows(each, 0)                  # top of the z-order first
+    return found[0] if found else None
+
+
+def bring_to_front(row):
+    """Raise a row's window, restoring it if minimized. (ok, what to say)."""
+    import ctypes
+    if not row or not row.get("windows"):
+        return False, f"{row['name'] if row else 'That'} has no window to bring up, sir."
+    user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+    hwnd = row["windows"][0]["hwnd"]
+    if not user32.IsWindow(hwnd):
+        return False, f"{row['name']}'s window has closed, sir."
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, 9)                            # SW_RESTORE
+    # Windows lets only the foreground's own thread raise another window;
+    # joining its input queue for a moment makes this process count.
+    front_thread = user32.GetWindowThreadProcessId(user32.GetForegroundWindow(), None)
+    mine = kernel32.GetCurrentThreadId()
+    user32.AttachThreadInput(front_thread, mine, True)
+    try:
+        user32.BringWindowToTop(hwnd)
+        ok = bool(user32.SetForegroundWindow(hwnd))
+    finally:
+        user32.AttachThreadInput(front_thread, mine, False)
+    return ok, (f"{row['name']} is in front, sir." if ok else f"Windows wouldn't let me bring {row['name']} forward.")
+
+
+def _identity(pids):
+    """[[pid, start time]] of the processes still running, to check at the confirm."""
+    import psutil
+    out = []
+    for pid in pids:
+        try:
+            out.append([pid, psutil.Process(pid).create_time()])
+        except Exception:
+            pass
+    return out
+
+
+def _protected():
+    """This process and the ones that started it (Cygnus's app, its shell)."""
+    import psutil
+    me = psutil.Process()
+    return {me.pid} | {p.pid for p in me.parents()}
+
+
+def stop_plan(row):
+    """What stopping a row would end: ({what, pids}, None), or (None, why not).
+    Only servers and background programs; never Cygnus itself."""
+    if not row:
+        return None, "it isn't running any more"
+    if row["group"] not in ("servers", "background"):
+        kind = "an app with a window; close it instead" if row["group"] == "apps" else "an agent"
+        return None, f"it is {kind}"
+    if row["name"] == "Cygnus backend" or _protected() & set(row.get("pids", [])):
+        return None, "it is Cygnus itself"
+    pids = _identity(row.get("pids", []))
+    if not pids:
+        return None, "it has already stopped"
+    what = row["doing"] if row["name"].lower() in row["doing"].lower() else f"{row['name']}, {row['doing']}"
+    return {"what": f"the {what}" if row["group"] == "servers" else what, "pids": pids}, None
+
+
+def _alive(plan):
+    """The plan's processes that are still the same ones (id and start time)."""
+    import psutil
+    procs = []
+    for pid, started in plan["pids"]:
+        try:
+            p = psutil.Process(pid)
+            if abs(p.create_time() - started) < 0.01:
+                procs.append(p)
+        except Exception:
+            pass
+    return procs
+
+
+def stop_now(plan):
+    """Stop a confirmed plan: gently, then forcibly after a few seconds.
+    A process that ended, or whose id was reused, is left alone."""
+    import psutil
+    procs = _alive(plan)
+    if not procs:
+        return f"{_cap(plan['what'])} had already stopped."
+    for p in procs:
+        try:
+            p.terminate()
+        except Exception:
+            pass
+    _, alive = psutil.wait_procs(procs, timeout=3)
+    for p in alive:
+        try:
+            p.kill()
+        except Exception:
+            pass
+    _, still = psutil.wait_procs(alive, timeout=2) if alive else ([], [])
+    if still:
+        return f"I couldn't stop all of {plan['what']}: {len(still)} process{'es' if len(still) != 1 else ''} still running."
+    return f"Stopped {plan['what']}."
+
+
+def _stop_request(targets, text):
+    """(question, plan) for stopping the targets; with "duplicate" the oldest
+    copy of each keeps running."""
+    if not targets:
+        return "I couldn't tell which program to stop, sir.", None
+    if "duplicate" in text.lower():
+        oldest = {}
+        for r in sorted(targets, key=lambda r: r.get("started", 0)):
+            oldest.setdefault((r["group"], r["name"], r["doing"]), r)
+        targets = [r for r in targets if oldest[(r["group"], r["name"], r["doing"])] is not r]
+        if not targets:
+            return "There's only one of those running, sir.", None
+    plans, refused = [], []
+    for r in targets:
+        plan, why = stop_plan(r)
+        if plan:
+            plans.append(plan)
+        else:
+            refused.append((r["name"], why))
+    if not plans:
+        return "I won't stop that, sir: " + _join([f"{n} {why}" for n, why in refused]) + ".", None
+    merged = {"what": _join([p["what"] for p in plans]), "pids": [pid for p in plans for pid in p["pids"]]}
+    n = len(merged["pids"])
+    question = (f"I'll stop {merged['what']}. That ends {n} process{'es' if n != 1 else ''}. "
+                "Say confirm to go ahead, or no to leave it.")
+    if refused:
+        question = f"I'll leave {_join([n for n, _ in refused])} alone. " + question
+    return question, merged
+
+
+def _speakable(text):
+    return ". ".join(line.strip() for line in text.splitlines()[-SPOKEN_LINES:])
+
+
+def handle(intent, text, remote=False):
+    """A spoken request about what is running: (reply, stop plan to confirm or
+    None). From the phone only the list itself is answered."""
+    rows = inventory()
+    if intent == "running":
+        return summary(rows, focus=focus_of(text)), None
+    if remote:
+        return "From the phone I can only tell you what's running, sir. Do that from the laptop.", None
+    targets = find_rows(rows, text)
+    if intent == "running_stop":
+        return _stop_request(targets, text)
+    windowed = [r for r in targets if r.get("windows")]
+    if not targets and intent in ("running_text", "running_describe"):
+        front = _front_row(rows)
+        windowed = [front] if front else []
+    if not windowed:
+        return ("I don't see a window for that, sir." if targets else
+                "I couldn't tell which window you mean, sir."), None
+    row = windowed[0]
+    if intent == "running_front":
+        return bring_to_front(row)[1], None
+    if intent == "running_text":
+        seen = window_text(row)
+        return (f"{row['name']} shows: {_speakable(seen)}" if seen else
+                f"{row['name']} shows no text I can read, sir."), None
+    answer, model = describe_window(row)
+    if answer is None:
+        return f"I couldn't see {row['name']}: {model}.", None
+    return f"{answer} I sent a picture of {row['name']} to {model} to see it.", None
+
+
 # --------------------------------------------------------------- snapshot --
 
 # (pid, start time) -> (exe, command line): they never change for a process,
@@ -682,7 +1027,7 @@ def _windows():
         user32.GetWindowTextW(hwnd, buf, n + 1)
         pid = wintypes.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        found.setdefault(pid.value, []).append(buf.value)
+        found.setdefault(pid.value, []).append((hwnd, buf.value))
         return True
 
     user32.EnumWindows(each, 0)

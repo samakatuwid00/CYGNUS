@@ -2,8 +2,11 @@
 
 Status: phases 1-3 built 2026-09-13 (`running_apps.py`, `GET /running`, the
 HUD's Running Now section and Running tab, "what's running?" and "explain what
-Claude is doing"). Phase 4 (seeing more) and phase 5 (acting) are not built;
-phase 5 needs its own approval. A scan takes about 0.1 s once the first one
+Claude is doing"). Phases 4-5 built the same day, the owner's "build now
+what's not built yet" standing as phase 5's approval: window text, thumbnails,
+"describe that window" (vision through the router: cx/gpt-5.6-luna,
+cx/gpt-5.5, cx/gpt-5.6-terra, JARVIS_VISION_MODELS), bring to front, and stop
+with a confirm; all laptop-only. A scan takes about 0.1 s once the first one
 (about 6 s, done at backend startup) has read every command line.
 
 ## Goal
@@ -126,6 +129,31 @@ keeps the full suite green, and is its own commit.
 - Controlling any app, closing or killing anything (phase 5, later)
 - Other users' processes and Windows services
 - Recording the screen (screenpipe is installed but not running; not needed)
+
+## Phases 4-5 as built (owner said "build now what's not built yet", 2026-09-13)
+
+Phase 4, seeing more, each only when asked:
+- **Window text**: a terminal's visible text through Windows UI Automation's
+  TextPattern (Windows Terminal answers in about 0.1 s); other windows give
+  their UI Automation text where they expose it.
+- **Thumbnails**: the desktop app captures live window thumbnails
+  (Electron's desktopCapturer) for the rows that have a window. The phone and
+  a browser tab show none.
+- **Describe a window**: the window is captured (PrintWindow, so it works when
+  covered) and sent with a question to the answering model through the local
+  router; Cygnus says the picture left the machine. No local vision model is
+  installed, so this needs the router.
+
+Phase 5, acting:
+- **Bring to front** acts at once: it is harmless and undone by a click.
+  (A deviation from "always behind the confirm step" above.)
+- **Stop** always asks first, naming the program, its folder or port and its
+  process, and checks at the confirm that the process is still the same one
+  (id and start time). A stop ends the process and its children, gently
+  first, then forcibly after a few seconds.
+- **What stop may touch**: servers and background programs. Never Cygnus
+  itself, never an interactive Claude Code session, never a desktop app with a
+  window (closing apps has its own tool), never Windows' own processes.
 
 ## Decisions (owner, 2026-09-13)
 

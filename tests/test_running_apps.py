@@ -216,6 +216,91 @@ def test_explain_context_carries_the_agents_steps():
     assert ra.explain_context(rows, "claude").startswith("Claude Code in jarvis-demo: working, editing tools.py")
 
 
+# ------------------------------------------------------------------ acting --
+
+def acting_rows():
+    web = "python -m http.server 8788 --directory C:\\sites\\notes"
+    return rows_of([proc(10, "python.exe", web, started=NOW - 900), proc(11, "python.exe", web, started=NOW - 300),
+                    proc(12, "tail.exe", "tail -F agent.log", started=NOW - 3 * 86400, cpu=0.1),
+                    proc(5, "python.exe", "python jarvis_web.py", ppid=0),
+                    proc(30, "Code.exe", "Code.exe")],
+                   windows={30: [(4242, "tools.py - jarvis-demo - Visual Studio Code")]},
+                   ports={10: [8788], 11: [8788], 5: [8001]})
+
+
+@pytest.fixture
+def acting(monkeypatch):
+    monkeypatch.setattr(ra, "inventory", lambda use_cache=True: acting_rows())
+    monkeypatch.setattr(ra, "_identity", lambda pids: [[p, 1.0] for p in pids])
+    monkeypatch.setattr(ra, "_protected", lambda: {5})
+
+
+def test_a_row_keeps_its_window_handle():
+    code = next(r for r in acting_rows() if r["name"] == "Visual Studio Code")
+    assert code["windows"] == [{"hwnd": 4242, "title": "tools.py - jarvis-demo - Visual Studio Code"}]
+
+
+def test_a_spoken_request_finds_its_rows():
+    rows = acting_rows()
+    ids = lambda text: {r["id"] for r in ra.find_rows(rows, text)}
+    assert ids("stop the web server on port 8788") == {"10", "11"}
+    assert ids("stop the leftover tail") == {"12"}
+    assert ids("bring visual studio code to the front") == {"30"}
+    assert ids("stop process 11") == {"11"}
+    assert ids("stop the redis server") == set()
+
+
+def test_stopping_duplicates_keeps_the_oldest_and_asks_first(acting):
+    reply, plan = ra.handle("running_stop", "stop the duplicate web server")
+    assert plan["pids"] == [[11, 1.0]]
+    assert reply == ("I'll stop the web server on port 8788 serving notes. That ends 1 process. "
+                     "Say confirm to go ahead, or no to leave it.")
+
+
+def test_stop_refuses_apps_and_cygnus_itself(acting):
+    reply, plan = ra.handle("running_stop", "stop the visual studio code process")
+    assert plan is None and reply.startswith("I won't stop that, sir: Visual Studio Code it is an app")
+    reply, plan = ra.handle("running_stop", "stop the cygnus backend server")
+    assert plan is None and "Cygnus backend it is Cygnus itself" in reply
+
+
+def test_the_phone_can_look_but_not_act(acting):
+    assert ra.handle("running_stop", "stop the leftover tail", remote=True) == (
+        "From the phone I can only tell you what's running, sir. Do that from the laptop.", None)
+    assert ra.handle("running", "what's running?", remote=True)[0].startswith("Servers:")
+
+
+def test_a_stop_leaves_a_process_that_is_no_longer_the_same_one(monkeypatch):
+    monkeypatch.setattr(ra, "_alive", lambda plan: [])
+    assert ra.stop_now({"what": "tail -F agent.log", "pids": [[12, 1.0]]}) == "Tail -F agent.log had already stopped."
+
+
+def test_confirming_a_stop_runs_it_and_no_leaves_it(monkeypatch):
+    import brain_gemini
+    import dialogue_state
+    dialogue_state.reset()
+    stopped = []
+    monkeypatch.setattr(ra, "stop_now", lambda plan: stopped.append(plan) or "Stopped tail.")
+    plan = {"what": "tail -F agent.log", "pids": [[12, 1.0]]}
+    dialogue_state.ask("running_stop", "I'll stop tail. Say confirm to go ahead, or no to leave it.", plan)
+    assert brain_gemini.answer_running_stop("ok") is None           # "ok" stops nothing
+    assert brain_gemini.answer_running_stop("yes") == "Stopped tail." and stopped == [plan]
+    dialogue_state.ask("running_stop", "I'll stop tail.", plan)
+    assert brain_gemini.answer_running_stop("no") == "Okay, sir. I'll leave it running."
+    assert len(stopped) == 1
+    dialogue_state.reset()
+
+
+@pytest.mark.parametrize("text, intent", [
+    ("bring visual studio code to the front", "running_front"), ("show me the chrome window", "running_front"),
+    ("stop the leftover tail", "running_stop"), ("stop the web server on port 8788", "running_stop"),
+    ("stop the background task", "job_stop"), ("read the terminal", "running_text"),
+    ("what's on my screen", "running_describe"), ("describe the chrome window", "running_describe")])
+def test_routing_seeing_and_acting(text, intent):
+    import brain_gemini
+    assert brain_gemini.classify_intent(text) == intent
+
+
 @pytest.mark.parametrize("text, intent", [
     ("what's running?", "running"), ("what apps are running on my laptop", "running"),
     ("what is claude doing", "running"), ("explain what claude is doing", "running_explain"),

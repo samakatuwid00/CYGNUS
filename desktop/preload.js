@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('jarvisDesktop', {
   onMode: fn => ipcRenderer.on('desk:mode', (_e, mode) => fn(mode)),
   setMode: mode => ipcRenderer.send('desk:setMode', mode),
   surface: () => ipcRenderer.send('desk:surface'),
+  windowThumbs: () => ipcRenderer.invoke('desk:thumbs'),
   dragStart: () => ipcRenderer.send('desk:dragStart'),
   dragMove: (dx, dy) => ipcRenderer.send('desk:dragMove', { dx, dy }),
   dragEnd: () => ipcRenderer.send('desk:dragEnd')

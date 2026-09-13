@@ -3,7 +3,7 @@
 // Brain). The backend stays in the repo: this process starts, watches and
 // stops it, or attaches to one already running (ELECTRON_PLAN.md, phase 2
 // and "Development workflow").
-const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, powerMonitor, screen, session, shell } = require('electron')
+const { app, BrowserWindow, Tray, Menu, desktopCapturer, globalShortcut, ipcMain, nativeImage, powerMonitor, screen, session, shell } = require('electron')
 const { spawn, execFileSync } = require('child_process')
 const fs = require('fs')
 const http = require('http')
@@ -405,6 +405,14 @@ ipcMain.on('desk:dragMove', (_e, d) => {
 ipcMain.on('desk:dragEnd', () => {
   if (dragOrigin && mode === 'sticky') stickyBounds = win.getBounds()
   dragOrigin = null
+})
+
+// Live thumbnails of open windows for the HUD's Running Now rows. The page is
+// sandboxed and cannot capture windows itself; a source id is
+// "window:<handle>:0", which the rows carry. Only when a row is opened.
+ipcMain.handle('desk:thumbs', async () => {
+  const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 360, height: 225 } })
+  return sources.map(s => ({ id: s.id, name: s.name, img: s.thumbnail.isEmpty() ? '' : s.thumbnail.toDataURL() }))
 })
 
 // ---------------------------------------------------------------- tray

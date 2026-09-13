@@ -2044,7 +2044,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Off the event loop: a turn that drives the browser can run for
                     # a minute, and blocking here stalls the WebSocket for its duration.
                     response = await asyncio.to_thread(
-                        brain.think, text.strip(), on_hermes_done, _push_progress, client=client_key)
+                        brain.think, text.strip(), on_hermes_done, _push_progress, client=client_key,
+                        remote=_ws_is_remote(websocket))
                     _t["brain"] = time.time()
                     _wd.stop()
                     _arm_phase_b(websocket, vf, response)
@@ -2197,7 +2198,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             deliver_result(websocket, result, speak, client=client_key), loop)
 
                     response = await asyncio.to_thread(
-                        brain.think, user_text, on_hermes_done, _push_progress, client=client_key)
+                        brain.think, user_text, on_hermes_done, _push_progress, client=client_key,
+                        remote=_ws_is_remote(websocket))
                     _wd.stop()
                     _arm_phase_b(websocket, vf, response)
                     sstore_log("user", user_text)
@@ -2295,6 +2297,85 @@ async def get_running():
     import running_apps
     rows = await asyncio.to_thread(running_apps.inventory)
     return _no_cache(JSONResponse({"rows": rows, "ts": time.time()}))
+
+
+# Acting on a row (phases 4-5): the laptop only. The phone's list is read-only.
+def _http_is_remote(request: Request) -> bool:
+    """_ws_is_remote for a plain request: proxied, or not addressed as loopback."""
+    if request.headers.get("x-forwarded-for"):
+        return True
+    return _hostname(request.headers.get("host", "")) not in ("127.0.0.1", "localhost", "[::1]")
+
+
+def _laptop_only():
+    return JSONResponse({"text": "From the phone the list is read-only."}, status_code=403)
+
+
+def _running_row(row_id):
+    import running_apps
+    return next((r for r in running_apps.inventory() if r["id"] == str(row_id)), None)
+
+
+_STOP_TOKENS: dict = {}          # token -> (plan, time): a stop waiting for the HUD's confirm
+_STOP_TOKEN_S = 120
+
+
+@app.get("/running/text")
+async def running_text(request: Request, id: str):
+    if _http_is_remote(request):
+        return _laptop_only()
+    import running_apps
+    row = await asyncio.to_thread(_running_row, id)
+    text = await asyncio.to_thread(running_apps.window_text, row) if row else ""
+    return _no_cache(JSONResponse({"text": text}))
+
+
+@app.post("/running/front")
+async def running_front(request: Request, id: str):
+    if _http_is_remote(request):
+        return _laptop_only()
+    import running_apps
+    row = await asyncio.to_thread(_running_row, id)
+    ok, text = await asyncio.to_thread(running_apps.bring_to_front, row)
+    return JSONResponse({"ok": ok, "text": text})
+
+
+@app.get("/running/describe")
+async def running_describe(request: Request, id: str):
+    if _http_is_remote(request):
+        return _laptop_only()
+    import running_apps
+    row = await asyncio.to_thread(_running_row, id)
+    answer, model = await asyncio.to_thread(running_apps.describe_window, row)
+    return _no_cache(JSONResponse({"text": answer or f"I couldn't see it: {model}.",
+                                   "model": model if answer else None}))
+
+
+@app.post("/running/stop")
+async def running_stop(request: Request):
+    """Two steps: {id} returns what would stop and a token; {token} within two
+    minutes stops exactly that (running_apps.stop_now checks the processes)."""
+    if _http_is_remote(request):
+        return _laptop_only()
+    import secrets
+    import running_apps
+    body = await request.json()
+    for t in [t for t, (_, at) in _STOP_TOKENS.items() if time.time() - at > _STOP_TOKEN_S]:
+        del _STOP_TOKENS[t]
+    if body.get("token"):
+        held = _STOP_TOKENS.pop(str(body["token"]), None)
+        if not held:
+            return JSONResponse({"text": "That stop request expired. Ask again."})
+        return JSONResponse({"done": True, "text": await asyncio.to_thread(running_apps.stop_now, held[0])})
+    row = await asyncio.to_thread(_running_row, body.get("id"))
+    plan, why = await asyncio.to_thread(running_apps.stop_plan, row)
+    if not plan:
+        return JSONResponse({"text": f"I won't stop that: {why}."})
+    token = secrets.token_hex(8)
+    _STOP_TOKENS[token] = (plan, time.time())
+    n = len(plan["pids"])
+    return JSONResponse({"token": token,
+                         "confirm": f"Stop {plan['what']}? That ends {n} process{'es' if n != 1 else ''}."})
 
 
 @app.get("/status")
