@@ -3088,12 +3088,73 @@ def _cli_command(task: str, name: str) -> list | None:
     return launch + args + flag + [task]
 
 
+# "... and open it in Chrome so I can see its output": the request asks to
+# see what the job makes. Only then does Cygnus open it afterwards.
+_OPEN_ASKED_RE = re.compile(
+    r"\b(open|show|display|pull\s+up)\b.{0,40}?\b(chrome|browser|brave|edge|firefox)\b"
+    r"|\b(open|show)\s+(it|them)\s+(to\s+me|for\s+me)\b", re.I)
+_RESULT_FILE_RE = re.compile(
+    r"`([^`\n]+?\.(?:html?|svg|png|jpe?g|pdf))`"
+    r"|([A-Za-z]:\\[^\s`'\"<>|*?]+?\.(?:html?|svg|png|jpe?g|pdf))\b"
+    r"|((?<![\w\\/:.-])[\w.-]+(?:[\\/][\w.-]+)*\.(?:html?|svg|png|jpe?g|pdf))\b", re.I)
+
+
+def _result_file(result: str) -> str | None:
+    """The file a job's answer names that exists, pages before pictures:
+    `running_panel_mockup.html`, playwright_shots\\x.png, C:\\...\\page.html."""
+    found = []
+    for m in _RESULT_FILE_RE.finditer(result or ""):
+        name = next(g for g in m.groups() if g).strip().strip("'\"")
+        path = name if os.path.isabs(name) else os.path.join(_REPO_DIR, name)
+        if os.path.isfile(path):
+            found.append(os.path.abspath(path))
+    pages = [p for p in found if p.lower().endswith((".html", ".htm"))]
+    return (pages or found or [None])[0]
+
+
+def open_after_job(asked: str, result: str) -> str:
+    """Open the file a finished job made, when the request asked to see it.
+    The agent can't: `claude -p` runs with nobody to approve starting a
+    program, and on 2026-09-14 all three of Claude's tries to open Chrome
+    were refused. Returns what to add to the answer; '' when not asked."""
+    m = _OPEN_ASKED_RE.search(asked or "")
+    if not m:
+        return ""
+    path = _result_file(result)
+    if not path:
+        return "You asked to see it, but the answer names no file I could open."
+    which = (re.search(r"\b(chrome|brave|edge|firefox)\b", m.group(0), re.I) or [None, "chrome"])[1].lower()
+    exe = None
+    if which == "chrome":
+        try:
+            import browser_agent
+            exe = browser_agent._chrome_exe()
+        except Exception:
+            exe = None
+    else:
+        exe = (_load_app_registry().get(which) or {}).get("bin")
+    try:
+        if exe and os.path.isfile(exe):
+            subprocess.Popen([exe, path], close_fds=True,
+                             creationflags=getattr(subprocess, "DETACHED_PROCESS", 0)
+                             | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+            where = _browser_label(which) if which != "chrome" else "Chrome"
+        else:
+            os.startfile(path)
+            where = "your default browser"
+    except Exception as e:
+        return f"I couldn't open {os.path.basename(path)}: {e}"
+    _audit_log("open_after_job", path, "opened", extra={"browser": which})
+    return f"I've opened {os.path.basename(path)} in {where} for you."
+
+
 def _start_cli_job(task: str, name: str, raw_task: str = None, on_done=None,
                    jid: str = None, timeout: int = CLI_JOB_TIMEOUT) -> str:
     """Run `task` through CLI agent `name` in the background; returns the ack.
     `jid`: the job that waited for the confirm, so the same card carries on."""
     import jobs as jobreg
     label = _cli_label(name)
+    asked = f"{raw_task or ''}\n{task}"          # "... and open it in Chrome" is read at the end
     try:
         import context_assembler as ca
         prompt = ca.assemble_brief(task, delegate=name) + task
@@ -3130,6 +3191,10 @@ def _start_cli_job(task: str, name: str, raw_task: str = None, on_done=None,
             else:
                 result = out or f"{label} finished and had nothing to add."
                 jobreg.update(jid, state="done", result=result[-6000:], summary=result[:200])
+                opened = open_after_job(asked, result)
+                if opened:
+                    result = f"{result}\n\n{opened}"
+                    jobreg.update(jid, note=opened)
         if on_done:
             try:
                 on_done(result)

@@ -2037,7 +2037,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     def on_hermes_done(result):
                         # Called from the background Hermes thread; hop back to the
-                        # event loop to ship the answer to the client.
+                        # event loop to ship the answer to the client. The
+                        # answer also joins that client's history.
+                        brain.note_late_result(result, client=client_key)
                         asyncio.run_coroutine_threadsafe(
                             deliver_result(websocket, result, speak=True, client=client_key), loop)
 
@@ -2194,6 +2196,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     reader_task = asyncio.create_task(_progress_reader())
 
                     def on_hermes_done(result):
+                        brain.note_late_result(result, client=client_key)   # joins the history
                         asyncio.run_coroutine_threadsafe(
                             deliver_result(websocket, result, speak, client=client_key), loop)
 

@@ -501,7 +501,13 @@ def classify_intent(text: str) -> str:
         return "app_uninstall"
     # Seeing and acting on what is running (RUNNING_APPS_PLAN.md phases 4-5).
     # A stop that names a task or a job is Cygnus's own job control, below.
-    if re.search(r"\b(bring|put|pull)\b.{0,40}\b(to\s+the\s+)?(front|forward|foreground)\b"
+    # A request handed to an agent is not a command about a window, whatever
+    # it quotes: "Delegate to Claude Code: ... Keep the phone features: Show,
+    # Read text, Describe and the window picture ..." read a window's text
+    # instead of delegating (2026-09-14). Window commands are short.
+    _handoff = bool(re.search(r"\b(delegate|hand\s+(?:it\s+|this\s+|that\s+)?(?:off|over)|ask|have|tell|get|use)\b"
+                              r".{0,25}\b(claude|codex|gemini|hermes|opencode)\b", t)) or len(t.split()) > 24
+    if not _handoff and re.search(r"\b(bring|put|pull)\b.{0,40}\b(to\s+the\s+)?(front|forward|foreground)\b"
                  r"|\b(bring\s+up|switch\s+to|show\s+me)\s+(the\s+|my\s+)?.{1,30}\bwindow\b", t, re.I):
         return "running_front"
     # "Show on screen PowerPoint", "put PowerPoint on the screen", "show me
@@ -510,20 +516,20 @@ def classify_intent(text: str) -> str:
     # open_application and a second PowerPoint opened (2026-09-14).
     _show = re.match(r"^(?:(?:please|hey|ok(?:ay)?|jarvis|cygnus|can\s+you|could\s+you)[,\s]+)*"
                      r"(?:show|display|put|bring\s+up|pull\s+up)\s+(?:me\s+)?(?P<rest>.+?)\s*[.!?]*$", t, re.I)
-    if _show and not re.search(r"\b(what'?s|apps|programs|processes|running|installed)\b", t, re.I):
+    if _show and not _handoff and not re.search(r"\b(what'?s|apps|programs|processes|running|installed)\b", t, re.I):
         rest = _show.group("rest")
         if re.search(r"\bon(?:to)?\s+(?:the\s+|my\s+)?screen\b", rest, re.I) \
                 or (len(rest.split()) <= 3 and re.search(r"\b(" + _APP_WORDS + r")\b", rest, re.I)):
             return "running_front"
-    if re.search(r"\b(stop|kill|end|terminate|shut\s+down)\b.{0,40}\b(duplicates?|leftovers?|servers?|watchers?"
+    if not _handoff and re.search(r"\b(stop|kill|end|terminate|shut\s+down)\b.{0,40}\b(duplicates?|leftovers?|servers?|watchers?"
                  r"|background|process(es)?|tails?|grep|port\s+\d+)\b", t, re.I) \
             and not re.search(r"\b(tasks?|jobs?|goals?)\b", t, re.I):
         return "running_stop"
-    if re.search(r"\bread\s+(me\s+)?(the\s+|my\s+)?(terminal|console)\b"
+    if not _handoff and re.search(r"\bread\s+(me\s+)?(the\s+|my\s+)?(terminal|console)\b"
                  r"|\bwhat\s+(does|is)\s+(the|my)\s+(terminal|console)\s+(say|show(ing)?)\b"
                  r"|\bwhat'?s\s+(on|in)\s+(the|my)\s+(terminal|console)\b|\bread\s+(the\s+)?.{1,30}\bwindow\b", t, re.I):
         return "running_text"
-    if re.search(r"\b(describe|look\s+at)\s+(the\s+|my\s+|that\s+)?.{0,30}\b(window|screen)\b"
+    if not _handoff and re.search(r"\b(describe|look\s+at)\s+(the\s+|my\s+|that\s+)?.{0,30}\b(window|screen)\b"
                  r"|\bwhat'?s\s+(on|in)\s+(the|my|that)\s+.{0,30}\b(window|screen)\b", t, re.I):
         return "running_describe"
     # running (RUNNING_APPS_PLAN.md): the machine's programs, not Cygnus's own
@@ -1864,10 +1870,32 @@ class JarvisBrain:
         """
         if not IDLE_RESET_MINUTES:
             return
+        # Not idle while a task it handed off is still running: the owner
+        # waited out a 7-minute Claude job, came back to approve the next
+        # step, and found the conversation wiped (2026-09-14).
+        try:
+            import jobs
+            if jobs.active():
+                return
+        except Exception:
+            pass
         idle = time.time() - self._last_turn_ts
         if idle > IDLE_RESET_MINUTES * 60:
             self.reset()
             print(f"[JARVIS] context reset after {idle/60:.1f} min idle", flush=True)
+
+    def note_late_result(self, text, client=None):
+        """A background job's answer joins the asking client's history, and
+        counts as activity for the idle reset. It used to reach only the
+        screen, so "I approved it! Proceed" had nothing to refer to and
+        Cygnus asked what task was meant (2026-09-14)."""
+        if not text:
+            return
+        _progress_local.client = client or "default"
+        self.conversation.append({"role": "assistant",
+                                  "content": "[A task I handed off finished. Its answer:]\n" + str(text)[-3000:]})
+        self._cap_conversation()
+        self._last_turn_ts = time.time()
 
     def _cap_conversation(self, keep: int = 60) -> None:
         """Bound the replayed history. The per-call replay paths trim their own
