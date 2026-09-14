@@ -77,13 +77,23 @@ function readEnv (name) {
 }
 
 // What answers on the port: 'jarvis' (the HUD page), 'other', or 'free'.
+// The HUD's own shell element, not its title: the title is branding. It sits
+// past the page's long <style>: keeping only the first chunk (64 KB) missed
+// it once the Running panel's styles pushed it to char 66,837, and the window
+// showed "did not answer within 3 minutes" over a backend that was up
+// (2026-09-14). Read until the marker turns up, at most 1 MB.
+const HUD_MARK = 'id="jv-shell"'
 function probe () {
   return new Promise(resolve => {
     const req = http.get(HUD_URL, { timeout: 1500 }, res => {
       let body = ''
-      res.on('data', chunk => { if (body.length < 4096) body += chunk })
-      // The HUD's own shell element, not its title: the title is branding.
-      res.on('end', () => resolve(res.statusCode === 200 && body.includes('id="jv-shell"') ? 'jarvis' : 'other'))
+      let found = false
+      res.on('data', chunk => {
+        if (found || body.length > 1048576) return
+        body += chunk
+        found = body.includes(HUD_MARK)
+      })
+      res.on('end', () => resolve(res.statusCode === 200 && found ? 'jarvis' : 'other'))
     })
     req.on('timeout', () => req.destroy())
     req.on('error', () => resolve('free'))
