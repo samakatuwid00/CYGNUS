@@ -46,73 +46,6 @@
       radial-gradient(140% 110% at 50% 42%, transparent 55%, rgba(0, 0, 0, .5) 100%),
       repeating-linear-gradient(0deg, rgba(255, 214, 150, .022) 0 1px, transparent 1px 5px); }
 
-  /* ---- background job cards (task tray, top-right) ---------------------- */
-  #job-tray {
-    display: flex; flex-direction: column; gap: 10px;
-  }
-  .job-card {
-      background: rgba(7, 10, 14, .92);
-      border: 1px solid var(--hairline);
-      border-radius: 10px;
-      padding: 9px 12px 10px;
-      font-family: var(--font-body);
-      color: #f2ead9;
-      animation: jobIn .22s ease-out;
-    }
-    @keyframes jobIn { from { opacity: 0; transform: translateX(16px); } }
-    /* Row layout matching System Status: title left, state right. */
-    .job-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
-      font: 500 11.5px/1.5 var(--font-body); letter-spacing: .04em; }
-    /* Status glyph is drawn by CSS per state; the JS-set text glyph is muted so the
-       drawn icon is the only mark. Keeps the JS contract intact, upgrades the icon. */
-    .job-icon  { font-size: 0; width: 18px; height: 18px; flex: 0 0 auto; align-self: center;
-      display: inline-flex; align-items: center; justify-content: center;
-      border-radius: 6px; background: rgba(255, 180, 84, .12);
-      color: transparent; position: relative; }
-  .job-icon::before { content: ''; width: 12px; height: 12px; display: block;
-    background: currentColor; -webkit-mask: var(--glyph) center / contain no-repeat;
-            mask: var(--glyph) center / contain no-repeat; }
-  .job-card.is-running .job-icon { --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffb454' stroke-width='2.6' stroke-linecap='round' stroke-dasharray='44 22'%3E%3Cpath d='M12 3a9 9 0 1 0 9 9'/%3E%3C/svg%3E"); color: #e8a74d; }
-  .job-card.is-running .job-icon::before { animation: jobSpin 1.1s linear infinite; }
-  .job-card.is-done    { border-color: rgba(125, 219, 160, .35); }
-  .job-card.is-done .job-icon { --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237ddba0' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.5l5 5 10-11'/%3E%3C/svg%3E"); color: #7ddba0; background: rgba(125, 219, 160, .1); }
-  .job-card.is-error,
-  .job-card.is-timeout { border-color: rgba(239, 123, 100, .4); }
-  .job-card.is-error .job-icon,
-  .job-card.is-timeout .job-icon { --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ef7b64' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6L6 18'/%3E%3C/svg%3E"); color: #ef7b64; background: rgba(239, 123, 100, .1); }
-  /* Plain words from the server (plain_reply.card): a short title, a state
-     label, a sentence of detail. States: working, needs you, done, done but
-     not checked, didn't finish, never confirmed. */
-  .job-title { color: #d8b98a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      font: 600 12px/1.5 var(--font-body); letter-spacing: .01em; flex: 1; }
-    .job-state { font: 700 10px/1.5 var(--font-display); letter-spacing: .14em; text-transform: uppercase;
-      color: #ffe1bb; text-align: right; white-space: nowrap; }
-    .job-note { font: 500 12px/1.45 var(--font-body); color: #e8d9bd; margin-top: 4px;
-      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-    .job-note:empty { display: none; }
-  .job-card.is-done .job-state { color: #9fe6ba; }
-  .job-card.is-error .job-state { color: #ef7b64; }
-  .job-card.is-ask { border-color: rgba(255, 193, 77, .55); }
-  .job-card.is-ask .job-state, .job-card.is-warn .job-state { color: #ffc14d; }
-  .job-card.is-ask .job-icon { --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffc14d' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M12 5v9M12 19h.01'/%3E%3C/svg%3E"); color: #ffc14d; background: rgba(255, 193, 77, .12); }
-  .job-card.is-warn { border-color: rgba(255, 193, 77, .3); }
-  .job-card.is-warn .job-icon { --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffc14d' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.5l5 5 10-11'/%3E%3C/svg%3E"); color: #ffc14d; background: rgba(255, 193, 77, .1); }
-  .job-card.is-muted { opacity: .62; }
-  .job-card.is-muted .job-icon { --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d8b98a' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M6 12h12'/%3E%3C/svg%3E"); color: #d8b98a; }
-  .job-x { flex: 0 0 auto; align-self: center; background: none; border: 0; cursor: pointer;
-    color: #8a7a5e; font: 400 15px/1 var(--font-body); padding: 0 2px; }
-  .job-x:hover { color: #ffe7c4; }
-  .job-card.is-running .job-x { display: none; }
-  .job-actions { display: flex; gap: 8px; margin-top: 9px; }
-  .job-actions:empty { display: none; }
-  .job-btn { cursor: pointer; border-radius: 8px; padding: 6px 14px; font: 700 10.5px/1 var(--font-display);
-    letter-spacing: .14em; text-transform: uppercase; border: 1px solid var(--hairline);
-    background: transparent; color: #d8b98a; }
-  .job-btn.confirm { border-color: rgba(125, 219, 160, .6); background: rgba(125, 219, 160, .14); color: #9fe6ba; }
-  .job-btn:disabled { opacity: .5; cursor: default; }
-  .job-btn:focus-visible, .job-x:focus-visible { outline: 2px solid var(--holo); outline-offset: 2px; }
-  @media (pointer: coarse) { .job-btn { min-height: 40px; } .job-x { min-width: 32px; min-height: 32px; } }
-
   /* Page = HUD only. The glow and the status strip float over it; the glow is
      pointer-events:none, the strip is a thin non-blocking overlay. */
   #stage { position: fixed; inset: 0; width: 100%; height: 100%; }
@@ -673,7 +606,6 @@
   /* Lucide icon sizing */
   svg.lucide { width: 14px; height: 14px; stroke-width: 2; vertical-align: -2px; }
   .jv-qa svg.lucide { width: 15px; height: 15px; margin-right: 7px; }
-  .job-icon svg.lucide { width: 12px; height: 12px; }
   .jv-gate-btn svg.lucide { width: 13px; height: 13px; margin-right: 6px; }
   .jv-npbtn svg.lucide { width: 13px; height: 13px; margin-right: 6px; }
 
@@ -734,9 +666,6 @@
     padding: 5px 10px; border-radius: 999px; border: 1px solid var(--hairline);
     color: #ffe7c4; display: inline-flex; align-items: center; gap: 5px; }
   .jv-cuechip svg.lucide { width: 11px; height: 11px; color: var(--holo); }
-
-  /* Job tray lives in the right column now. */
-  #job-tray { position: static; width: auto; pointer-events: auto; }
 
   /* Panel drawer. Below 1100px the side columns collapse and their sections
      move in here (see placePanels): a right-hand sheet on tablets, a bottom
@@ -877,38 +806,123 @@
   html[data-desk="mini"] body > #jv-mini-orb { display: block !important; position: fixed; inset: 12px;
     cursor: pointer; touch-action: none; background: transparent; }
 
-  /* Running Now (running_apps): what is on this machine and what it is doing. */
-  .run-grp { margin: 12px 0 4px; font: 700 10px/1 var(--font-display); letter-spacing: .14em;
-    text-transform: uppercase; color: #b08d5e; }
-  .run-grp:first-child { margin-top: 2px; }
-  .run-row { padding: 6px 0; border-top: 1px solid var(--hairline); cursor: pointer; }
-  .run-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
-  .run-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: #6d6253; }
-  .run-dot.is-working { background: #ffb454; box-shadow: 0 0 6px #ffb454; }
-  .run-dot.is-waiting { background: var(--holo); box-shadow: 0 0 6px var(--holo); }
-  .run-dot.is-stuck { background: #ef7b64; }
-  .run-name { min-width: 0; font-weight: 600; color: #ffe1bb; white-space: nowrap; overflow: hidden;
-    text-overflow: ellipsis; }
-  .run-flag { flex: 0 0 auto; padding: 1px 6px; border-radius: 6px; font-size: 10px; color: #ef7b64;
-    border: 1px solid rgba(239, 123, 100, .4); }
-  .run-doing { margin: 2px 0 0 14px; font-size: 12px; color: #d8b98a; white-space: nowrap;
-    overflow: hidden; text-overflow: ellipsis; }
-  .run-detail { margin: 4px 0 0 14px; font-size: 11.5px; color: #cdb592; white-space: pre-wrap;
-    word-break: break-word; }
-  .run-detail[hidden], .run-box[hidden] { display: none; }
-  .run-thumb { display: block; max-width: calc(100% - 14px); margin: 6px 0 0 14px; border-radius: 6px;
-    border: 1px solid var(--hairline); }
-  .run-acts { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0 14px; }
-  .run-btn { cursor: pointer; border-radius: 7px; padding: 5px 10px; font: 700 10px/1.2 var(--font-display);
-    letter-spacing: .1em; text-transform: uppercase; border: 1px solid var(--hairline); background: transparent;
-    color: #d8b98a; }
-  .run-btn:hover { color: #ffe7c4; }
-  .run-btn.stop { color: #ef7b64; border-color: rgba(239, 123, 100, .4); }
-  .run-btn.confirm { color: #9fe6ba; border-color: rgba(125, 219, 160, .6); background: rgba(125, 219, 160, .14); }
-  @media (pointer: coarse) { .run-btn { min-height: 40px; } }
-  .run-out { margin: 6px 0 0 14px; padding: 6px 8px; border-radius: 6px; background: rgba(0, 0, 0, .25);
-    font-size: 11.5px; color: #e8d3b0; white-space: pre-wrap; word-break: break-word; max-height: 220px;
-    overflow-y: auto; }
+  /* Running panel: Cygnus's tasks and what runs on this machine, one row
+     design for both (running_panel_mockup.html). Each status sets --c once;
+     the tile, the word, the filter chip and the tags read it, and a status
+     is always an icon and a word, never colour alone. */
+  #jv-running { --rp-needs: #ffc14d; --rp-idle: #8d8272; --rp-dim: #8a7a5e; --rp-label: #d8b98a; --rp-bright: #ffe1bb; }
+  #jv-running [data-s="working"] { --c: var(--holo); }
+  #jv-running [data-s="needs"], #jv-running [data-s="warn"] { --c: var(--rp-needs); }
+  #jv-running [data-s="stuck"], #jv-running [data-s="failed"] { --c: var(--bad); }
+  #jv-running [data-s="done"], #jv-running [data-s="running"] { --c: var(--ok); }
+  #jv-running [data-s="idle"], #jv-running [data-s="muted"] { --c: var(--rp-idle); }
+  .rp-head { display: flex; align-items: center; gap: 8px; }
+  #jv-running .rp-head .jv-st-title { margin: 0; }
+  .rp-count { margin-left: auto; padding: 5px 10px; }
+  .rp-sub { margin-top: 3px; font-size: 12px; color: var(--rp-dim); }
+  .rp-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .rp-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 8px; border-radius: 999px;
+    border: 1px solid var(--hairline-soft); background: rgba(255, 255, 255, .02); color: var(--c); cursor: pointer;
+    font: 700 10.5px/1 var(--font-display); letter-spacing: .12em; text-transform: uppercase; }
+  .rp-chip svg { width: 13px; height: 13px; }
+  .rp-chip b { font: 600 11px/1 var(--font-data); letter-spacing: 0; color: var(--rp-bright); }
+  .rp-chip:hover { border-color: var(--hairline); }
+  .rp-chip[aria-pressed="true"] { border-color: currentColor; background: color-mix(in srgb, currentColor 12%, transparent); }
+  .rp-chip:focus-visible, .rp-rowhead:focus-visible, .rp-btn:focus-visible, .rp-grp-head:focus-visible,
+  .rp-more:focus-visible, .rp-out-h button:focus-visible { outline: 2px solid var(--holo); outline-offset: 2px; }
+  /* Whatever needs the user, pinned above the groups. */
+  .rp-attn { margin-top: 12px; border: 1px solid rgba(255, 193, 77, .45); border-radius: 10px; padding: 2px 12px;
+    background: linear-gradient(180deg, rgba(255, 193, 77, .08), rgba(255, 193, 77, .02)); }
+  .rp-attn-t { display: flex; align-items: center; gap: 6px; padding: 9px 0 4px; font: 700 10px/1 var(--font-display);
+    letter-spacing: .18em; text-transform: uppercase; color: var(--rp-needs); }
+  .rp-attn-t svg { width: 13px; height: 13px; }
+  .rp-attn .rp-row { border-top-color: rgba(255, 193, 77, .18); }
+  .rp-attn .rp-attn-t + .rp-row { border-top: 0; }
+  .rp-grp { margin-top: 12px; }
+  .rp-grp-head { width: 100%; display: flex; align-items: center; gap: 8px; padding: 6px 0; background: none; border: 0;
+    border-bottom: 1px solid var(--hairline); cursor: pointer; color: #b08d5e;
+    font: 700 10px/1 var(--font-display); letter-spacing: .18em; text-transform: uppercase; }
+  .rp-grp-head .chev { width: 12px; height: 12px; transition: transform .15s; }
+  .rp-grp.closed .chev { transform: rotate(-90deg); }
+  .rp-grp.closed .rp-grp-rows { display: none; }
+  .rp-grp-head .n { margin-left: auto; font: 500 11px/1 var(--font-data); letter-spacing: 0; color: var(--rp-label); }
+  .rp-more { width: 100%; margin-top: 2px; padding: 8px 0 8px 40px; background: none; border: 0; cursor: pointer;
+    text-align: left; font: 600 12px var(--font-body); color: var(--rp-label); }
+  .rp-more:hover { color: var(--rp-bright); }
+  /* The row: [status tile 28px] [name / what it is doing] [status word, time]. */
+  .rp-row { border-top: 1px solid var(--hairline-soft); }
+  .rp-grp-rows .rp-row:first-child { border-top: 0; }
+  .rp-rowhead { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center;
+    padding: 10px 4px 10px 0; cursor: pointer; border-radius: 8px; }
+  .rp-rowhead:hover { background: rgba(255, 180, 84, .045); }
+  .rp-row.open .rp-rowhead { background: rgba(255, 180, 84, .06); }
+  .rp-tile { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: var(--c);
+    background: color-mix(in srgb, var(--c) 13%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 28%, transparent); }
+  .rp-tile svg { width: 15px; height: 15px; }
+  .rp-tile.spin svg { animation: rpSpin 1.1s linear infinite; }
+  @keyframes rpSpin { to { transform: rotate(360deg); } }
+  .rp-text { display: block; min-width: 0; }
+  .rp-name { display: block; font: 600 13px/1.3 var(--font-body); color: var(--rp-bright);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rp-doing { display: block; margin-top: 2px; font-size: 12px; line-height: 1.35; color: var(--rp-label);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rp-row.open .rp-doing { white-space: normal; overflow-wrap: anywhere; }
+  .rp-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+  .rp-word { font: 700 10px/1 var(--font-display); letter-spacing: .14em; text-transform: uppercase;
+    color: var(--c); white-space: nowrap; }
+  .rp-time { font: 500 11px/1 var(--font-data); color: var(--rp-dim); white-space: nowrap; }
+  .rp-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+  .rp-tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 999px;
+    font: 600 10.5px/1.3 var(--font-body); color: var(--c); border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); }
+  .rp-tag svg { width: 10px; height: 10px; }
+  #jv-running .rp-tag.is-duplicate { --c: var(--info); }
+  #jv-running .rp-tag.is-leftover { --c: var(--rp-idle); }
+  .rp-bar { grid-column: 2 / -1; height: 2px; border-radius: 2px; overflow: hidden; margin-top: -4px;
+    background: rgba(255, 180, 84, .12); }
+  .rp-bar i { display: block; height: 100%; width: 35%; background: var(--holo); animation: rpSlide 1.6s ease-in-out infinite; }
+  @keyframes rpSlide { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+  @media (prefers-reduced-motion: reduce) { .rp-tile.spin svg, .rp-bar i { animation: none; } }
+  /* Opened: indented to the text column; facts, picture, buttons, result. */
+  .rp-body { display: none; padding: 0 4px 12px 40px; }
+  .rp-row.open .rp-body, .rp-body.rp-inline { display: block; }
+  .rp-inline .rp-acts { margin-top: 0; }
+  .rp-kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 14px; font-size: 11.5px; }
+  .rp-kv dt { color: var(--rp-dim); text-transform: uppercase; letter-spacing: .06em; font-size: 10.5px; padding-top: 1px; }
+  .rp-kv dd { font: 11px/1.45 var(--font-data); color: var(--rp-bright); overflow-wrap: anywhere; }
+  .rp-kv .rp-wide { grid-column: 1 / -1; font: 11.5px/1.45 var(--font-body); color: #cdb592; }
+  .rp-thumb { margin-top: 12px; }
+  .rp-thumb img { display: block; max-width: 100%; border-radius: 8px; border: 1px solid var(--hairline); }
+  .rp-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .rp-acts .push { margin-left: auto; }
+  .rp-btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border-radius: 8px;
+    cursor: pointer; font: 700 10.5px/1 var(--font-display); letter-spacing: .12em; text-transform: uppercase;
+    border: 1px solid var(--hairline); background: rgba(255, 255, 255, .02); color: var(--rp-label); }
+  .rp-btn svg { width: 13px; height: 13px; }
+  .rp-btn:hover { color: var(--rp-bright); border-color: color-mix(in srgb, var(--holo) 40%, transparent); }
+  .rp-btn:disabled { opacity: .5; cursor: default; }
+  .rp-btn.primary { color: #0b0805; background: var(--ok); border-color: var(--ok); }
+  .rp-btn.danger { color: var(--bad); border-color: rgba(239, 123, 100, .45); }
+  .rp-btn.danger.solid { color: #1a0703; background: var(--bad); border-color: var(--bad); }
+  .rp-confirm { margin-top: 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(239, 123, 100, .45);
+    background: rgba(239, 123, 100, .07); font-size: 12px; line-height: 1.45; color: #f2ead9; }
+  .rp-confirm .rp-acts { margin-top: 8px; }
+  .rp-out { margin-top: 12px; border-radius: 8px; background: rgba(0, 0, 0, .3); border: 1px solid var(--hairline-soft); }
+  .rp-out-h { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px;
+    border-bottom: 1px solid var(--hairline-soft); font: 700 9.5px/1 var(--font-display); letter-spacing: .18em;
+    text-transform: uppercase; color: var(--rp-dim); }
+  .rp-out-h button { background: none; border: 0; color: var(--rp-dim); cursor: pointer; font: inherit;
+    letter-spacing: inherit; text-transform: inherit; }
+  .rp-out-h button:hover { color: var(--rp-bright); }
+  .rp-out p { padding: 8px 10px; font-size: 12px; line-height: 1.5; color: #e8d3b0; white-space: pre-wrap;
+    overflow-wrap: anywhere; max-height: 220px; overflow-y: auto; }
+  .rp-empty { padding: 18px 0 6px; text-align: center; font-size: 12px; color: var(--rp-dim); }
+  /* Touch: rows 52px tall, every control at least 44px. */
+  @media (pointer: coarse) {
+    .rp-rowhead { min-height: 52px; }
+    .rp-btn, .rp-chip, .rp-grp-head, .rp-more { min-height: 44px; }
+    .rp-out-h button { min-width: 44px; min-height: 44px; }
+  }
 </style>
 </head>
 <body>
@@ -1057,18 +1071,13 @@
 
     <!-- RIGHT: tasks + actions -->
     <aside id="jv-col-right">
-      <div class="jv-sec">
-        <div class="jv-st-title" style="display:flex; align-items:center; justify-content:space-between">
-          Active Tasks <span id="jv-taskcount" class="jv-pill">0</span>
-        </div>
-        <div id="job-tray"></div>
-      </div>
-
+      <!-- Cygnus's tasks and what runs on this machine, one list (see renderPanel). -->
       <div class="jv-sec" id="jv-running">
-        <div class="jv-st-title" style="display:flex; align-items:center; justify-content:space-between">
-          Running Now <span id="jv-runcount" class="jv-pill">0</span>
+        <div class="rp-head">
+          <span class="jv-st-title">Running</span>
+          <span class="jv-pill rp-count" title="Working and needs you"><span id="jv-runcount">0</span>&nbsp;active</span>
         </div>
-        <div id="run-list"><div class="run-doing">Looking…</div></div>
+        <div id="run-list"></div>
       </div>
 
       <div class="jv-sec" id="jv-np">
@@ -1117,8 +1126,7 @@
         <button id="jv-drawer-close" class="jv-btn" type="button" aria-label="Close panels" title="Close">×</button>
       </div>
       <div id="jv-drawer-tabs" role="tablist" aria-label="Panels">
-        <button type="button" role="tab" data-tab="tasks">Tasks<span id="jv-tab-count" hidden></span></button>
-        <button type="button" role="tab" data-tab="running">Running</button>
+        <button type="button" role="tab" data-tab="running">Running<span id="jv-tab-count" hidden></span></button>
         <button type="button" role="tab" data-tab="music">Music</button>
         <button type="button" role="tab" data-tab="voice">Voice</button>
         <button type="button" role="tab" data-tab="system">System</button>
@@ -1707,8 +1715,7 @@
   // One section per tab, so each fits the phone and the widget without a
   // long scroll. Last Turn rides with System Status.
   var DRAWER_TABS = [
-    [document.getElementById('job-tray').parentNode, 'tasks'],             // Active Tasks
-    [document.getElementById('jv-running'), 'running'],                    // Running Now
+    [document.getElementById('jv-running'), 'running'],                    // tasks + programs
     [document.getElementById('jv-np'), 'music'],
     [document.getElementById('jv-vf'), 'voice'],
     [statsEl, 'system'],
@@ -1716,9 +1723,10 @@
     [leftEl, 'model']
   ];
   var drawerTabs = [].slice.call(document.querySelectorAll('#jv-drawer-tabs [data-tab]'));
-  var activeTab = 'tasks';
-  try { activeTab = localStorage.getItem('cy-panels-tab') || 'tasks'; } catch (e) {}
-  if (!drawerTabs.some(function (b) { return b.dataset.tab === activeTab; })) activeTab = 'tasks';
+  var activeTab = 'running';
+  try { activeTab = localStorage.getItem('cy-panels-tab') || 'running'; } catch (e) {}
+  // "tasks" was a tab of its own until it merged into Running.
+  if (!drawerTabs.some(function (b) { return b.dataset.tab === activeTab; })) activeTab = 'running';
 
   function showTab(tab) {
     activeTab = tab;
@@ -1762,19 +1770,16 @@
   narrowMq.addEventListener('change', placePanels);
   placePanels();
 
-  // The Panels button carries the running-task count, so a job finishing
-  // is visible without opening the drawer.
-  var taskCountEl = document.getElementById('jv-taskcount');
+  // The Panels button and the Running tab carry the running-task count
+  // (syncTaskCount), so a job finishing is visible without opening the drawer.
   var panelsBadge = document.getElementById('jv-panels-badge');
-  function syncPanelsBadge() {
-    var n = parseInt(taskCountEl.textContent, 10) || 0;
+  function syncPanelsBadge(n) {
     panelsBadge.textContent = String(n);
     panelsBadge.hidden = n === 0;
     var tabCount = document.getElementById('jv-tab-count');
     if (tabCount) { tabCount.textContent = String(n); tabCount.hidden = n === 0; }
   }
-  new MutationObserver(syncPanelsBadge).observe(taskCountEl, { childList: true, characterData: true, subtree: true });
-  syncPanelsBadge();
+  syncPanelsBadge(0);
 
   window.addEventListener('resize', function () {
     positionHudLine(); positionLeft(); positionStats(); positionSidePanel();
@@ -2310,17 +2315,63 @@
     }
   }
 
-  // ------------------------------------------------- background job cards
-  // One card per background task, in the plain words the server sends with
-  // each job event (plain_reply.card): title, label, tone, detail. Tones: run
-  // (working), ask (needs you), ok (done), warn (done, not checked), bad
-  // (didn't finish), muted (never confirmed), gone (replaced: card removed).
-  // Done cards stay a minute; the rest stay until dismissed or replaced by a
-  // retry of the same task, so a failed first try no longer outlives the
-  // second one that worked (it did on 2026-09-12).
-  var jobCards = {};                      // id -> card element
-  var JOB_TONE_CLASS = { run: 'is-running', ask: 'is-ask', ok: 'is-done', warn: 'is-warn',
-                         bad: 'is-error', muted: 'is-muted' };
+  // ------------------------------------------------- running panel
+  // One panel for Cygnus's own tasks and for what is running on this machine,
+  // one row design for both (running_panel_mockup.html): a status tile, the
+  // name and what it is doing, the status word and how long. Whatever needs
+  // the user is pinned on top.
+  //
+  // Tasks arrive as job events in the server's plain words (plain_reply.card):
+  // title, label, tone, detail. Tones: run (working), ask (needs you), ok
+  // (done), warn (done, not checked), bad (didn't finish), muted (never
+  // confirmed), gone (replaced: row removed). Done tasks stay a minute; the
+  // rest stay until dismissed or replaced by a retry of the same task, so a
+  // failed first try no longer outlives the second one that worked (it did on
+  // 2026-09-12).
+  //
+  // Programs come from /running (running_apps, RUNNING_APPS_PLAN.md), fetched
+  // only while the panel is on screen.
+  var runEl = document.getElementById('jv-running');
+  var runList = document.getElementById('run-list');
+  var runCount = document.getElementById('jv-runcount');
+
+  var RP_ICON = {
+    working: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9"/></svg>',
+    needs:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M12 5v9M12 19h.01"/></svg>',
+    stuck:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h8l5 5v8l-5 5H8l-5-5V8z"/><path d="M12 8v5M12 16.5h.01"/></svg>',
+    failed:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    done:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5 10-11"/></svg>',
+    running: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5l12 7-12 7z"/></svg>',
+    idle:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M7 5v14M17 5v14"/></svg>',
+    muted:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M6 12h12"/></svg>',
+    alert:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"/><path d="M12 10v4M12 17.5h.01"/></svg>',
+    chev:    '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+    eye:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8"/></svg>',
+    text:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>',
+    spark:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/></svg>',
+    stop:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
+    dup:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V4h12"/></svg>',
+    clock:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'
+  };
+  RP_ICON.warn = RP_ICON.done;              // done, not checked: the same tick in amber
+  var RP_WORD = { working: 'Working', needs: 'Needs you', stuck: 'Stuck', running: 'Running', idle: 'Idle',
+                  done: 'Done', warn: 'Not checked', failed: 'Didn’t finish', muted: 'Not confirmed' };
+  // Inside a group: needs you, stuck, working, then the rest; ties by name.
+  var RP_ORDER = { needs: 0, stuck: 1, working: 2, failed: 3, warn: 4, running: 5, done: 6, idle: 7, muted: 8 };
+  var RP_GROUPS = [['tasks', 'Cygnus tasks'], ['agents', 'Agents'], ['servers', 'Servers'],
+                   ['apps', 'Apps'], ['background', 'Background']];
+  var RP_FILTERS = ['needs', 'stuck', 'working', 'running', 'idle'];
+  var TONE_STATUS = { run: 'working', ask: 'needs', ok: 'done', warn: 'warn', bad: 'failed', muted: 'muted' };
+  var RUN_STATUS = { working: 'working', waiting: 'needs', stuck: 'stuck', running: 'running', idle: 'idle' };
+  var RUN_APPS_SHOWN = 5;
+  var rp = { filter: null, open: {}, closed: {}, moreApps: false };   // what the user opened, closed, filtered
+  // Showing, reading and describing a window work from the phone too;
+  // stopping a program is the laptop's.
+  var RUN_LOCAL = /^(127\.0\.0\.1|localhost|\[::1\])$/.test(location.hostname);
+  var runRows = [], runTs = 0, runAt = 0;   // the last /running list, its server time, when it came
+  var runExtra = {};                        // row id -> {out, thumb, full, node, token, ask}: what an action left
+
+  var jobs = {};                            // job id -> {ev, tone, name, t0, tEnd, keep, answered}
   var JOB_KEEP_MS = { ok: 60000, muted: 20000 };
   var jobsLoaded = false;
 
@@ -2328,45 +2379,46 @@
     return state === 'done' ? 'ok' : state === 'waiting-on-confirm' ? 'ask'
       : (state === 'error' || state === 'timeout') ? 'bad' : 'run';
   }
-  // The Active Tasks pill (and the Panels badge that mirrors it): tasks that
-  // are working or waiting on the user.
+  // The Panels badge counts Cygnus's tasks that are working or waiting on the
+  // user. Tasks arrive live; programs are fetched only while the panel shows,
+  // so counting them would leave a stale number behind a closed drawer.
   function syncTaskCount() {
     var n = 0;
-    for (var id in jobCards) {
-      var t = jobCards[id].dataset.tone;
-      if (t === 'run' || t === 'ask') n++;
-    }
-    taskCountEl.textContent = String(n);
+    for (var id in jobs) if (jobs[id].tone === 'run' || jobs[id].tone === 'ask') n++;
+    syncPanelsBadge(n);
   }
   function dropJobCard(id) {
-    var c = jobCards[id];
-    if (!c) return;
-    clearTimeout(c._keep);
-    c.remove(); delete jobCards[id];
+    var j = jobs[id];
+    if (!j) return;
+    clearTimeout(j.keep);
+    delete jobs[id]; delete rp.open['task:' + id];
     syncTaskCount();
+    renderPanel();
   }
-  // The server's list wins over what this page believed: a card still
+  // The server's list wins over what this page believed: a task still
   // Working or Needs you that the server no longer lists is a job it lost.
   function syncJobCards(list) {
     var listed = {};
     list.forEach(function (ev) { listed[ev.id] = true; renderJobCard(ev); });
-    for (var id in jobCards) {
-      var t = jobCards[id].dataset.tone;
+    for (var id in jobs) {
+      var t = jobs[id].tone;
       if (!listed[id] && (t === 'run' || t === 'ask')) dropJobCard(id);
     }
   }
-  function answerJob(card, word) {
-    card.querySelectorAll('.job-btn').forEach(function (b) { b.disabled = true; });
+  function answerJob(id, word) {
+    if (!jobs[id]) return;
+    jobs[id].answered = true;
+    renderPanel();
     chatInput.value = word; autosizeInput(); sendTyped();
   }
   // A job is created "queued" and, when it needs a confirm, turns "waiting on
-  // confirm" a moment later: drawn at once, its card flashed Working before
-  // Needs you. A brand-new queued card waits briefly for the next event.
+  // confirm" a moment later: drawn at once, its row flashed Working before
+  // Needs you. A brand-new queued job waits briefly for the next event.
   var queuedWait = {};                    // id -> timer
   var QUEUED_WAIT_MS = 400;
   function renderJobCard(ev) {
     if (queuedWait[ev.id]) { clearTimeout(queuedWait[ev.id]); delete queuedWait[ev.id]; }
-    if (ev.state === 'queued' && !jobCards[ev.id] && !ev._waited) {
+    if (ev.state === 'queued' && !jobs[ev.id] && !ev._waited) {
       queuedWait[ev.id] = setTimeout(function () {
         delete queuedWait[ev.id];
         renderJobCard(Object.assign({}, ev, { _waited: true }));
@@ -2376,234 +2428,299 @@
     var tone = ev.tone || legacyJobTone(ev.state);
     if (tone === 'gone') { dropJobCard(ev.id); return; }
     var name = ev.title || ev.task || 'Task';
-    for (var other in jobCards) {        // a retry replaces the earlier attempt
-      if (other !== ev.id && jobCards[other].dataset.title === name &&
-          jobCards[other].dataset.tone !== 'run') dropJobCard(other);
+    for (var other in jobs) {             // a retry replaces the earlier attempt
+      if (other !== ev.id && jobs[other].name === name && jobs[other].tone !== 'run') dropJobCard(other);
     }
-    var card = jobCards[ev.id];
-    if (!card) {
-      card = document.createElement('div');
-      card.className = 'job-card';
-      card.innerHTML =
-        '<div class="job-head"><span class="job-icon"></span>' +
-        '<span class="job-title"></span><span class="job-state"></span>' +
-        '<button class="job-x" type="button" aria-label="Dismiss" title="Dismiss">×</button></div>' +
-        '<div class="job-note"></div><div class="job-actions"></div>';
-      card.querySelector('.job-x').onclick = function () { dropJobCard(ev.id); };
-      var host = document.getElementById('job-tray');
-      if (!host) {                        // lazy-create the tray once
-        host = document.createElement('div');
-        host.id = 'job-tray';
-        document.body.appendChild(host);
-      }
-      host.appendChild(card);
-      jobCards[ev.id] = card;
-    }
-    card.dataset.title = name;
-    card.dataset.tone = tone;
-    for (var t in JOB_TONE_CLASS) card.classList.remove(JOB_TONE_CLASS[t]);
-    card.classList.add(JOB_TONE_CLASS[tone] || 'is-running');
-    var titleEl = card.querySelector('.job-title');
-    titleEl.textContent = name;
-    titleEl.title = ev.task || name;      // the whole request on hover
-    card.querySelector('.job-state').textContent = ev.label || ev.state || '';
-    card.querySelector('.job-note').textContent = ev.detail != null ? ev.detail : (ev.note || '');
-    var actions = card.querySelector('.job-actions');
-    actions.innerHTML = '';
-    if (ev.confirm) {
-      [['Confirm', 'confirm', 'confirm'], ['Cancel', 'no', 'cancel']].forEach(function (b) {
-        var btn = document.createElement('button');
-        btn.type = 'button'; btn.className = 'job-btn ' + b[2]; btn.textContent = b[0];
-        btn.onclick = function () { answerJob(card, b[1]); };
-        actions.appendChild(btn);
-      });
-    }
-    clearTimeout(card._keep);
-    if (JOB_KEEP_MS[tone]) card._keep = setTimeout(function () { dropJobCard(ev.id); }, JOB_KEEP_MS[tone]);
+    var j = jobs[ev.id] = jobs[ev.id] || { t0: Date.now() };
+    var live = tone === 'run' || tone === 'ask';
+    // "elapsed" is the server's count since the job started, so the time
+    // shown does not depend on this device's clock.
+    if (live && ev.elapsed != null) j.t0 = Date.now() - ev.elapsed * 1000;
+    if (live) j.tEnd = 0; else if (!j.tEnd) j.tEnd = Date.now();
+    if (tone !== j.tone) j.answered = false;
+    j.ev = ev; j.tone = tone; j.name = name;
+    clearTimeout(j.keep);
+    if (JOB_KEEP_MS[tone]) j.keep = setTimeout(function () { dropJobCard(ev.id); }, JOB_KEEP_MS[tone]);
     syncTaskCount();
+    renderPanel();
   }
 
-  // ------------------------------------------------- running now
-  // What is running on this machine and what each program is doing
-  // (running_apps, RUNNING_APPS_PLAN.md). Read-only: a row opens its detail,
-  // nothing more. Fetched only while the section is on screen.
-  var runEl = document.getElementById('jv-running');
-  var runList = document.getElementById('run-list');
-  var runCount = document.getElementById('jv-runcount');
-  var RUN_GROUPS = [['agents', 'Agents'], ['servers', 'Servers'], ['apps', 'Apps'], ['background', 'Background']];
-  var RUN_APPS_SHOWN = 8;
-  var runOpen = {};                         // row id -> its detail is open
-  // Acting on a row is for the laptop: from the phone the list is read-only.
-  var RUN_LOCAL = /^(127\.0\.0\.1|localhost|\[::1\])$/.test(location.hostname);
-  var runRows = [];
-  var runExtra = {};                        // row id -> {out, thumb, token}: what an action left under it
+  // 45s, 12m, 3h, 2d; precise adds the seconds under ten minutes (2m 14s).
+  function fmtAge(s, precise) {
+    s = Math.max(0, Math.floor(s));
+    if (s < 60) return s + 's';
+    var m = Math.floor(s / 60);
+    if (m < 60) return precise && m < 10 ? m + 'm ' + (s % 60) + 's' : m + 'm';
+    var h = Math.floor(m / 60);
+    return h < 48 ? h + 'h' : Math.floor(h / 24) + 'd';
+  }
 
-  function runButton(label, cls, fn) {
-    var b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'run-btn' + (cls ? ' ' + cls : '');
-    b.textContent = label;
-    b.onclick = function (e) { e.stopPropagation(); fn(); };
-    return b;
+  // Tasks and programs become the same shape: {id, group, name, s (status),
+  // word, time, doing, facts [[key, value] | [null, line]], tags}.
+  function taskModel(id) {
+    var j = jobs[id], ev = j.ev, s = TONE_STATUS[j.tone] || 'working';
+    var live = j.tone === 'run' || j.tone === 'ask';
+    var age = (Date.now() - (live ? j.t0 : j.tEnd)) / 1000;
+    var facts = [];
+    if (ev.task && ev.task !== j.name) facts.push(['Request', ev.task]);
+    if (typeof ev.agent === 'string' && ev.agent) facts.push(['Runner', ev.agent]);
+    if (!live && ev.elapsed != null) facts.push(['Took', fmtAge(ev.elapsed, true)]);
+    return { id: 'task:' + id, job: id, group: 'tasks', name: j.name, s: s, word: ev.label || RP_WORD[s],
+      time: live ? fmtAge(age, true) : (age < 45 ? 'just now' : fmtAge(age) + ' ago'),
+      doing: ev.detail != null ? ev.detail : (ev.note || ''), facts: facts, tags: [],
+      ask: !!ev.confirm && j.tone === 'ask', answered: !!j.answered };
+  }
+  function runModel(r) {
+    var s = RUN_STATUS[r.status] || 'running';
+    // "Window: Inbox", "Model: haiku" read as key and value; the rest as a line.
+    var facts = (r.detail || []).map(function (d) {
+      var kv = /^([A-Z][A-Za-z ]{0,18}): (.+)$/.exec(d);
+      return kv ? [kv[1], kv[2]] : [null, d];
+    });
+    var pids = r.pids || [];
+    if (pids.length) facts.push([pids.length > 1 ? 'PIDs' : 'PID',
+      pids.slice(0, 6).join(', ') + (pids.length > 6 ? ' +' + (pids.length - 6) : '')]);
+    return { id: r.id, run: r, group: r.group, name: r.name, s: s, word: RP_WORD[s],
+      // Server time minus server start time: right even when the phone's clock is off.
+      time: r.started ? fmtAge(runTs - r.started + (Date.now() - runAt) / 1000) : '',
+      doing: r.doing || '', facts: facts,
+      tags: (r.flags || []).filter(function (f) { return f === 'duplicate' || f === 'leftover'; }) };
+  }
+  function panelModels() {
+    var out = [];
+    for (var id in jobs) out.push(taskModel(id));
+    runRows.forEach(function (r) {
+      if (/^job-/.test(r.id) && jobs[r.id.slice(4)]) return;   // already a Cygnus task row
+      out.push(runModel(r));
+    });
+    return out;
+  }
+  function rpAttn(m) { return m.s === 'needs' || m.s === 'stuck'; }
+  function rpSort(a, b) { return RP_ORDER[a.s] - RP_ORDER[b.s] || a.name.localeCompare(b.name); }
+  function runById(id) { return runRows.filter(function (r) { return r.id === id; })[0]; }
+
+  function rpEsc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return '&#' + c.charCodeAt(0) + ';'; });
+  }
+  function rpBtn(act, id, label, icon, cls, disabled) {
+    return '<button type="button" class="rp-btn' + (cls ? ' ' + cls : '') + '" data-act="' + act +
+      '" data-id="' + rpEsc(id) + '"' + (disabled ? ' disabled' : '') + '>' + (icon ? RP_ICON[icon] : '') + label + '</button>';
+  }
+
+  function rowHTML(m) {
+    var open = !!rp.open[m.id], ex = runExtra[m.id] || {}, r = m.run;
+    var tags = m.tags.map(function (t) {
+      return '<span class="rp-tag is-' + t + '">' + RP_ICON[t === 'duplicate' ? 'dup' : 'clock'] + t + '</span>';
+    }).join('');
+    var h = '<div class="rp-row' + (open ? ' open' : '') + '" data-s="' + m.s + '">' +
+      '<div class="rp-rowhead" role="button" tabindex="0" aria-expanded="' + open + '" data-act="toggle" data-id="' + rpEsc(m.id) + '">' +
+        '<span class="rp-tile' + (m.s === 'working' ? ' spin' : '') + '" aria-hidden="true">' + RP_ICON[m.s] + '</span>' +
+        '<span class="rp-text"><span class="rp-name" title="' + rpEsc(m.name) + '">' + rpEsc(m.name) + '</span>' +
+          '<span class="rp-doing" title="' + rpEsc(m.doing) + '">' + rpEsc(m.doing) + '</span>' +
+          (tags ? '<span class="rp-tags">' + tags + '</span>' : '') + '</span>' +
+        '<span class="rp-side"><span class="rp-word">' + rpEsc(m.word) + '</span>' +
+          (m.time ? '<span class="rp-time">' + m.time + '</span>' : '') + '</span>' +
+        (m.s === 'working' && m.group === 'tasks' ? '<span class="rp-bar" aria-hidden="true"><i></i></span>' : '') +
+      '</div>';
+
+    var acts = '';
+    if (m.ask) {
+      acts = rpBtn('job-yes', m.job, 'Confirm', 'done', 'primary', m.answered) + rpBtn('job-no', m.job, 'Cancel', '', '', m.answered);
+    } else if (m.group === 'tasks') {
+      if (m.s !== 'working') acts = rpBtn('job-x', m.job, 'Dismiss');
+    } else {
+      if ((r.windows || []).length) {
+        acts += rpBtn('front', m.id, 'Show', 'eye') + rpBtn('text', m.id, 'Read text', 'text') +
+          rpBtn('describe', m.id, 'Describe', 'spark');
+        if (ex.full) acts += rpBtn('picture', m.id, 'Refresh picture');
+      }
+      if (RUN_LOCAL && (m.group === 'servers' || m.group === 'background') && !ex.token)
+        acts += rpBtn('stop', m.id, 'Stop…', 'stop', 'danger push');
+    }
+    // A task that needs the user shows its buttons without opening the row.
+    if (m.ask && !open) return h + '<div class="rp-body rp-inline"><div class="rp-acts">' + acts + '</div></div></div>';
+
+    // Opened: facts, the window picture, the buttons, the result. Always that order.
+    var body = '';
+    if (m.facts.length) body += '<dl class="rp-kv">' + m.facts.map(function (f) {
+      return f[0] ? '<dt>' + rpEsc(f[0]) + '</dt><dd>' + rpEsc(f[1]) + '</dd>' : '<dd class="rp-wide">' + rpEsc(f[1]) + '</dd>';
+    }).join('') + '</dl>';
+    if (ex.thumb) body += '<div class="rp-thumb" data-thumb="' + rpEsc(m.id) + '"></div>';
+    if (acts) body += '<div class="rp-acts">' + acts + '</div>';
+    if (ex.token && RUN_LOCAL) body += '<div class="rp-confirm">' + rpEsc(ex.ask) + '<div class="rp-acts">' +
+      rpBtn('keep', m.id, 'Keep running') + rpBtn('dostop', m.id, 'Stop it', 'stop', 'danger solid') + '</div></div>';
+    if (ex.out) body += '<div class="rp-out"><div class="rp-out-h">Result<button type="button" data-act="clear" data-id="' +
+      rpEsc(m.id) + '">Clear</button></div><p>' + rpEsc(ex.out) + '</p></div>';
+    return h + (body ? '<div class="rp-body">' + body + '</div>' : '') + '</div>';
+  }
+
+  // The window picture is built once and moved into each render, so the 5s
+  // refresh neither reloads it nor makes it flicker.
+  function thumbNode(id) {
+    var ex = runExtra[id];
+    if (!ex || !ex.thumb) return null;
+    if (ex.node && ex.nodeSrc === ex.thumb) return ex.node;
+    var img = document.createElement('img');
+    img.alt = 'Window of ' + (ex.alt || 'the program');
+    img.src = ex.thumb;
+    img.onerror = function () { ex.thumb = ex.full = ex.node = null; ex.out = 'No picture of that window.'; renderPanel(); };
+    var node = img;
+    if (ex.full) {
+      // Tap for the large picture (the backend's capture, on the phone).
+      node = document.createElement('a');
+      node.href = ex.full; node.target = '_blank'; node.rel = 'noopener';
+      node.title = 'Open the large picture';
+      node.appendChild(img);
+    }
+    ex.node = node; ex.nodeSrc = ex.thumb;
+    return node;
+  }
+
+  function renderPanel() {
+    var models = panelModels(), counts = {}, active = 0;
+    models.forEach(function (m) {
+      counts[m.s] = (counts[m.s] || 0) + 1;
+      if (m.s === 'working' || m.s === 'needs') active++;
+    });
+    runCount.textContent = String(active);
+    if (rp.filter && !counts[rp.filter]) rp.filter = null;
+
+    var h = '<div class="rp-sub">';
+    if (runAt) {
+      var ago = (Date.now() - runAt) / 1000;
+      h += models.length + (models.length === 1 ? ' thing' : ' things') + ' on this laptop · updated ' +
+        (ago < 8 ? 'just now' : fmtAge(ago) + ' ago');
+    } else h += 'Looking…';
+    h += '</div>';
+    var chips = RP_FILTERS.filter(function (s) { return counts[s]; }).map(function (s) {
+      return '<button type="button" class="rp-chip" data-s="' + s + '" data-act="filter" data-id="' + s +
+        '" aria-pressed="' + (rp.filter === s) + '">' + RP_ICON[s] + '<b>' + counts[s] + '</b>' + RP_WORD[s] + '</button>';
+    }).join('');
+    if (chips) h += '<div class="rp-filters" role="group" aria-label="Show only">' + chips + '</div>';
+
+    var shown = models.filter(function (m) { return !rp.filter || m.s === rp.filter; });
+    var attn = shown.filter(rpAttn).sort(rpSort);
+    if (attn.length) h += '<div class="rp-attn"><div class="rp-attn-t">' + RP_ICON.alert + 'Needs your attention · ' +
+      attn.length + '</div>' + attn.map(rowHTML).join('') + '</div>';
+    RP_GROUPS.forEach(function (g) {
+      var mine = shown.filter(function (m) { return m.group === g[0] && !rpAttn(m); }).sort(rpSort);
+      if (!mine.length) return;
+      var closed = !!rp.closed[g[0]];
+      var cut = g[0] === 'apps' && mine.length > RUN_APPS_SHOWN;
+      var list = cut && !rp.moreApps ? mine.slice(0, RUN_APPS_SHOWN) : mine;
+      h += '<div class="rp-grp' + (closed ? ' closed' : '') + '"><button type="button" class="rp-grp-head" data-act="group" data-id="' +
+        g[0] + '" aria-expanded="' + !closed + '">' + RP_ICON.chev + g[1] + '<span class="n">' + mine.length + '</span></button>' +
+        '<div class="rp-grp-rows">' + list.map(rowHTML).join('') +
+        (cut ? '<button type="button" class="rp-more" data-act="more">' +
+          (rp.moreApps ? 'Show fewer apps' : '+ ' + (mine.length - RUN_APPS_SHOWN) + ' more apps') + '</button>' : '') +
+        '</div></div>';
+    });
+    if (!models.length && runAt) h += '<div class="rp-empty">Nothing of note is running.</div>';
+
+    // A redraw keeps keyboard focus where it was.
+    var f = document.activeElement;
+    var key = f && runList.contains(f) && f.dataset.act ? [f.dataset.act, f.dataset.id] : null;
+    runList.innerHTML = h;
+    runList.querySelectorAll('[data-thumb]').forEach(function (slot) {
+      var node = thumbNode(slot.dataset.thumb);
+      if (node) slot.appendChild(node);
+    });
+    if (key) {
+      var back = [].filter.call(runList.querySelectorAll('[data-act="' + key[0] + '"]'),
+        function (el) { return el.dataset.id === key[1]; })[0];
+      if (back) back.focus();
+    }
   }
 
   function runAction(r, kind) {
     var ex = runExtra[r.id] = runExtra[r.id] || {};
     var id = encodeURIComponent(r.id);
-    function done(text) { ex.out = text; renderRunning(runRows); }
+    function done(text) { ex.out = text; renderPanel(); }
     function fail() { done('That didn’t work.'); }
     function post(url, body) {
       return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify(body || {}) }).then(function (res) { return res.json(); });
     }
     function get(url) { return fetch(url, { cache: 'no-store' }).then(function (res) { return res.json(); }); }
-    if (kind === 'cancel') { ex.token = null; done('Left it running.'); return; }
+    if (kind === 'keep') { ex.token = null; done('Left it running.'); return; }
+    rp.open[r.id] = true;
     ex.out = kind === 'describe' ? 'Looking at it…' : '…';
-    renderRunning(runRows);
+    renderPanel();
     if (kind === 'front') post('/running/front?id=' + id).then(function (d) { done(d.text); }).catch(fail);
     else if (kind === 'text') get('/running/text?id=' + id).then(function (d) {
       done(d.text || 'No text I can read in that window.'); }).catch(fail);
     else if (kind === 'describe') get('/running/describe?id=' + id).then(function (d) {
       done(d.text + (d.model ? '\n(A picture of the window went to ' + d.model + ' to read it.)' : '')); }).catch(fail);
+    // Stopping asks first: the server names the program and hands back a
+    // token; only "Stop it" with that token ends it.
     else if (kind === 'stop') post('/running/stop', { id: r.id }).then(function (d) {
-      ex.token = d.token || null; done(d.confirm || d.text); }).catch(fail);
-    else if (kind === 'confirm') post('/running/stop', { token: ex.token }).then(function (d) {
+      ex.token = d.token || null; ex.ask = d.confirm || d.text;
+      if (ex.token) { ex.out = null; renderPanel(); } else done(d.text || d.confirm); }).catch(fail);
+    else if (kind === 'dostop') post('/running/stop', { token: ex.token }).then(function (d) {
       ex.token = null; done(d.text); refreshRunning(); }).catch(fail);
   }
 
   // The desktop app shows a live thumbnail of a row's window (Electron's
-  // desktopCapturer, keyed by window handle); the phone and a tab show none.
+  // desktopCapturer, keyed by window handle); the phone and a browser tab get
+  // the backend's capture of it.
   function runThumb(r) {
-    if (!(r.windows || []).length) return;
+    if (!r || !(r.windows || []).length) return;
+    var ex = runExtra[r.id] = runExtra[r.id] || {};
+    ex.alt = r.name;
     if (!IS_DESKTOP || !window.jarvisDesktop || !jarvisDesktop.windowThumbs) {
-      // The phone or a browser tab: the backend captures the window itself.
-      var ex0 = runExtra[r.id] = runExtra[r.id] || {};
-      ex0.thumb = '/running/thumb?id=' + encodeURIComponent(r.id) + '&t=' + Date.now();
-      ex0.full = ex0.thumb + '&full=1';
-      renderRunning(runRows);
+      ex.thumb = '/running/thumb?id=' + encodeURIComponent(r.id) + '&t=' + Date.now();
+      ex.full = ex.thumb + '&full=1';
+      renderPanel();
       return;
     }
     jarvisDesktop.windowThumbs().then(function (list) {
       var want = r.windows.map(function (w) { return 'window:' + w.hwnd + ':0'; });
       var hit = (list || []).filter(function (s) { return want.indexOf(s.id) >= 0 && s.img; })[0];
-      if (hit) { (runExtra[r.id] = runExtra[r.id] || {}).thumb = hit.img; renderRunning(runRows); }
+      if (hit) { ex.thumb = hit.img; renderPanel(); }
     }).catch(function () {});
   }
 
-  function runRow(r) {
-    var row = document.createElement('div');
-    row.className = 'run-row';
-    var head = document.createElement('div');
-    head.className = 'run-head';
-    var dot = document.createElement('span');
-    dot.className = 'run-dot is-' + (r.status || 'running');
-    dot.title = r.status || '';
-    var name = document.createElement('span');
-    name.className = 'run-name';
-    name.textContent = r.name;
-    head.appendChild(dot); head.appendChild(name);
-    (r.flags || []).forEach(function (f) {
-      var flag = document.createElement('span');
-      flag.className = 'run-flag';
-      flag.textContent = f;
-      head.appendChild(flag);
-    });
-    var doing = document.createElement('div');
-    doing.className = 'run-doing';
-    doing.textContent = r.doing || '';
-    doing.title = r.doing || '';
-    var box = document.createElement('div');
-    box.className = 'run-box';
-    box.hidden = !runOpen[r.id];
-    var detail = document.createElement('div');
-    detail.className = 'run-detail';
-    detail.textContent = (r.detail || []).join('\n');
-    box.appendChild(detail);
-    var ex = runExtra[r.id] || {};
-    if (ex.thumb) {
-      var img = document.createElement('img');
-      img.className = 'run-thumb';
-      img.alt = 'Window of ' + r.name;
-      img.src = ex.thumb;
-      img.onerror = function () { ex.thumb = null; ex.full = null; ex.out = 'No picture of that window.'; renderRunning(runRows); };
-      if (ex.full) {
-        // Tap for the large picture (the backend's capture, on the phone).
-        var big = document.createElement('a');
-        big.href = ex.full; big.target = '_blank'; big.rel = 'noopener';
-        big.title = 'Open the large picture';
-        big.onclick = function (e) { e.stopPropagation(); };
-        big.appendChild(img);
-        box.appendChild(big);
-      } else {
-        box.appendChild(img);
-      }
+  runEl.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-act]');
+    if (!t || !runEl.contains(t) || t.disabled) return;
+    var act = t.dataset.act, id = t.dataset.id;
+    if (act === 'toggle') {
+      rp.open[id] = !rp.open[id];
+      if (rp.open[id] && !(runExtra[id] || {}).thumb) runThumb(runById(id));
     }
-    var acts = document.createElement('div');
-    acts.className = 'run-acts';
-    // Showing, reading and describing a window work from the phone too;
-    // stopping a program is the laptop's.
-    if ((r.windows || []).length) {
-      acts.appendChild(runButton('Show', '', function () { runAction(r, 'front'); }));
-      acts.appendChild(runButton('Read text', '', function () { runAction(r, 'text'); }));
-      acts.appendChild(runButton('Describe', '', function () { runAction(r, 'describe'); }));
-      if (ex.full) acts.appendChild(runButton('Refresh picture', '', function () { runThumb(r); }));
+    else if (act === 'filter') rp.filter = rp.filter === id ? null : id;
+    else if (act === 'group') rp.closed[id] = !rp.closed[id];
+    else if (act === 'more') rp.moreApps = !rp.moreApps;
+    else if (act === 'clear') { if (runExtra[id]) runExtra[id].out = null; }
+    else if (act === 'job-yes' || act === 'job-no') { answerJob(id, act === 'job-yes' ? 'confirm' : 'no'); return; }
+    else if (act === 'job-x') { dropJobCard(id); return; }
+    else if (act === 'picture') { runThumb(runById(id)); return; }
+    else { var row = runById(id); if (row) runAction(row, act); return; }
+    renderPanel();
+  });
+  runEl.addEventListener('keydown', function (e) {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('rp-rowhead')) {
+      e.preventDefault(); e.target.click();
     }
-    if (RUN_LOCAL) {
-      if (r.group === 'servers' || r.group === 'background') {
-        if (ex.token) {
-          acts.appendChild(runButton('Confirm stop', 'confirm', function () { runAction(r, 'confirm'); }));
-          acts.appendChild(runButton('Cancel', '', function () { runAction(r, 'cancel'); }));
-        } else {
-          acts.appendChild(runButton('Stop…', 'stop', function () { runAction(r, 'stop'); }));
-        }
-      }
-    }
-    if (acts.children.length) box.appendChild(acts);
-    if (ex.out) {
-      var out = document.createElement('div');
-      out.className = 'run-out';
-      out.textContent = ex.out;
-      box.appendChild(out);
-    }
-    row.appendChild(head); row.appendChild(doing); row.appendChild(box);
-    row.onclick = function () {
-      runOpen[r.id] = box.hidden;
-      box.hidden = !box.hidden;
-      if (!box.hidden && !ex.thumb) runThumb(r);
-    };
-    return row;
-  }
+  });
 
-  function renderRunning(rows) {
-    runRows = rows;
-    runList.innerHTML = '';
-    runCount.textContent = String(rows.filter(function (r) { return r.group === 'agents'; }).length);
-    RUN_GROUPS.forEach(function (g) {
-      var mine = rows.filter(function (r) { return r.group === g[0]; });
-      if (!mine.length) return;
-      var head = document.createElement('div');
-      head.className = 'run-grp';
-      head.textContent = g[1] + ' · ' + mine.length;
-      runList.appendChild(head);
-      var shown = g[0] === 'apps' ? mine.slice(0, RUN_APPS_SHOWN) : mine;
-      shown.forEach(function (r) { runList.appendChild(runRow(r)); });
-      if (shown.length < mine.length) {
-        var more = document.createElement('div');
-        more.className = 'run-doing';
-        more.textContent = '+ ' + (mine.length - shown.length) + ' more';
-        runList.appendChild(more);
-      }
-    });
-    if (!rows.length) runList.innerHTML = '<div class="run-doing">Nothing of note is running.</div>';
+  function showRunning(d) {
+    runRows = d.rows || [];
+    runTs = d.ts || Date.now() / 1000;
+    runAt = Date.now();
+    var live = {};
+    runRows.forEach(function (r) { live[r.id] = true; });
+    for (var id in runExtra) if (!live[id]) delete runExtra[id];   // a program that ended
+    renderPanel();
   }
-
   function refreshRunning() {
     if (DEMO || document.hidden || !runEl || runEl.offsetParent === null) return;
     fetch('/running', { cache: 'no-store' }).then(function (r) { return r.json(); })
-      .then(function (d) { renderRunning(d.rows || []); })
+      .then(showRunning)
       .catch(function () {});
   }
   setInterval(refreshRunning, 5000);
+  renderPanel();
   refreshRunning();
 
   // ------------------------------------------------- speech-reactive visuals
@@ -3528,12 +3645,30 @@
     setVal(stLatency, '7.9s');
     setVal(stCtx, '11,120 / 128,000 (9%)');
     setVal(stTool, 'search_vault_semantic (0.4s)');
-    var tray = document.getElementById('job-tray');
-    if (tray) tray.innerHTML =
-      '<div class="job-card is-running"><div class="job-head">'
-      + '<span class="job-icon"></span><span class="jv-st-k">Update CUA driver</span></div>'
-      + '<div class="job-note">STEP 2 ✓ driver downloaded · spoken ✓</div></div>';
-    var tc = document.getElementById('jv-taskcount'); if (tc) tc.textContent = '1';
+    renderJobCard({ id: 'demo-1', state: 'running', tone: 'run', label: 'Working', title: 'Update CUA driver',
+      task: 'update the CUA driver', agent: 'claude-cli', detail: 'Step 2: driver downloaded', elapsed: 134 });
+    renderJobCard({ id: 'demo-2', state: 'waiting-on-confirm', tone: 'ask', label: 'Needs you', confirm: true,
+      title: 'Delete old log files', task: 'delete the log files older than 30 days in logs',
+      detail: 'This deletes 38 files in logs/. Confirm?', elapsed: 40 });
+    var now = Date.now() / 1000, win = function (t) { return [{ hwnd: 1, title: t }]; };
+    showRunning({ ts: now, rows: [
+      { id: '1', group: 'agents', name: 'Claude Code in jarvis-demo', status: 'working', doing: 'Editing jarvis_hud_v3.html',
+        detail: ['Model: opus', 'Running for 12 minutes; CPU 40 s, memory 310 MB'], pids: [18244], started: now - 720, windows: win('Claude Code') },
+      { id: '2', group: 'agents', name: 'Hermes gateway', status: 'waiting', doing: 'waiting for your reply',
+        detail: [], pids: [9120], started: now - 60, flags: ['waiting for you'] },
+      { id: '3', group: 'servers', name: 'Cygnus web', status: 'running', doing: 'serving :8000',
+        detail: ['Started by Cygnus'], pids: [4412], started: now - 10800 },
+      { id: '4', group: 'servers', name: 'Vite', status: 'running', doing: 'serving musubae on :5173',
+        detail: [], pids: [15020], started: now - 7200, flags: ['duplicate'] },
+      { id: '5', group: 'background', name: 'python', status: 'stuck', doing: 'no progress for 2 hours',
+        detail: ['python scripts\\voice_bench.py'], pids: [11376], started: now - 7200, flags: ['leftover', 'stuck'] },
+      { id: '6', group: 'apps', name: 'Chrome', status: 'running', doing: 'Cygnus — localhost:8000', pids: [1], started: now - 18000, windows: win('Chrome') },
+      { id: '7', group: 'apps', name: 'VS Code', status: 'running', doing: 'jarvis_hud_v3.html', pids: [2], started: now - 14400, windows: win('VS Code') },
+      { id: '8', group: 'apps', name: 'Spotify', status: 'running', doing: 'Nujabes — Aruarian Dance', pids: [3], started: now - 3600, windows: win('Spotify') },
+      { id: '9', group: 'apps', name: 'Obsidian', status: 'idle', doing: 'Operating Instruction.md', pids: [4], started: now - 10800, windows: win('Obsidian') },
+      { id: '10', group: 'apps', name: 'Windows Terminal', status: 'running', doing: 'PowerShell', pids: [5], started: now - 18000, windows: win('Terminal') },
+      { id: '11', group: 'apps', name: 'Brave', status: 'running', doing: 'YouTube', pids: [6], started: now - 3600, windows: win('Brave') }
+    ] });
     // Assert top status LAST: logConv('jarvis') calls goIdle() which would
     // otherwise clobber the ONLINE text written below.
     var netPill = document.getElementById('jv-pill-net');
