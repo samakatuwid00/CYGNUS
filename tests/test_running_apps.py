@@ -257,6 +257,17 @@ def test_stopping_duplicates_keeps_the_oldest_and_asks_first(acting):
                      "Say confirm to go ahead, or no to leave it.")
 
 
+def test_stopping_copies_of_one_program_counts_them(monkeypatch):
+    tails = rows_of([proc(12, "tail.exe", "tail -F agent.log", started=NOW - 3 * 86400, cpu=0.1),
+                     proc(13, "tail.exe", "tail -F agent.log", started=NOW - 3 * 86400, cpu=0.1)])
+    monkeypatch.setattr(ra, "inventory", lambda use_cache=True: tails)
+    monkeypatch.setattr(ra, "_identity", lambda pids: [[p, 1.0] for p in pids])
+    monkeypatch.setattr(ra, "_protected", lambda: set())
+    reply, plan = ra.handle("running_stop", "stop the leftover tail")
+    assert reply.startswith("I'll stop two copies of tail -F agent.log. That ends 2 processes.")
+    assert len(plan["pids"]) == 2
+
+
 def test_stop_refuses_apps_and_cygnus_itself(acting):
     reply, plan = ra.handle("running_stop", "stop the visual studio code process")
     assert plan is None and reply.startswith("I won't stop that, sir: Visual Studio Code it is an app")

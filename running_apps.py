@@ -920,7 +920,11 @@ def _stop_request(targets, text):
             refused.append((r["name"], why))
     if not plans:
         return "I won't stop that, sir: " + _join([f"{n} {why}" for n, why in refused]) + ".", None
-    merged = {"what": _join([p["what"] for p in plans]), "pids": [pid for p in plans for pid in p["pids"]]}
+    counts = {}                         # "two copies of tail …", not "tail … and tail …"
+    for p in plans:
+        counts[p["what"]] = counts.get(p["what"], 0) + 1
+    merged = {"what": _join([w if n == 1 else f"{_count(n)} copies of {w}" for w, n in counts.items()]),
+              "pids": [pid for p in plans for pid in p["pids"]]}
     n = len(merged["pids"])
     question = (f"I'll stop {merged['what']}. That ends {n} process{'es' if n != 1 else ''}. "
                 "Say confirm to go ahead, or no to leave it.")
