@@ -275,12 +275,16 @@ def test_stop_refuses_apps_and_cygnus_itself(acting):
     assert plan is None and "Cygnus backend it is Cygnus itself" in reply
 
 
-def test_the_phone_can_look_and_show_but_not_stop(acting, monkeypatch):
-    phone_only = ("From the phone I can only show what's running and bring a window forward, sir. "
-                  "Do that from the laptop.", None)
-    assert ra.handle("running_stop", "stop the leftover tail", remote=True) == phone_only
-    assert ra.handle("running_text", "read the visual studio code window", remote=True) == phone_only
+def test_the_phone_can_look_show_and_read_but_not_stop(acting, monkeypatch):
+    assert ra.handle("running_stop", "stop the leftover tail", remote=True) == (
+        "From the phone I can't stop programs, sir. Do that from the laptop.", None)
     assert ra.handle("running", "what's running?", remote=True)[0].startswith("Servers:")
+    monkeypatch.setattr(ra, "window_text", lambda row: "def open_application")
+    assert ra.handle("running_text", "read the visual studio code window", remote=True) == (
+        "Visual Studio Code shows: def open_application", None)
+    monkeypatch.setattr(ra, "describe_window", lambda row: ("An editor with tools.py open.", "GPT-5.6 Luna"))
+    assert ra.handle("running_describe", "describe the visual studio code window", remote=True)[0] == \
+        "An editor with tools.py open. I sent a picture of Visual Studio Code to GPT-5.6 Luna to see it."
     raised = []
     monkeypatch.setattr(ra, "bring_to_front", lambda row: raised.append(row["id"]) or (True, "in front"))
     assert ra.handle("running_front", "show visual studio code on screen", remote=True) == ("in front", None)

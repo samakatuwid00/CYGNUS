@@ -2474,7 +2474,15 @@
   // The desktop app shows a live thumbnail of a row's window (Electron's
   // desktopCapturer, keyed by window handle); the phone and a tab show none.
   function runThumb(r) {
-    if (!IS_DESKTOP || !window.jarvisDesktop || !jarvisDesktop.windowThumbs || !(r.windows || []).length) return;
+    if (!(r.windows || []).length) return;
+    if (!IS_DESKTOP || !window.jarvisDesktop || !jarvisDesktop.windowThumbs) {
+      // The phone or a browser tab: the backend captures the window itself.
+      var ex0 = runExtra[r.id] = runExtra[r.id] || {};
+      ex0.thumb = '/running/thumb?id=' + encodeURIComponent(r.id) + '&t=' + Date.now();
+      ex0.full = ex0.thumb + '&full=1';
+      renderRunning(runRows);
+      return;
+    }
     jarvisDesktop.windowThumbs().then(function (list) {
       var want = r.windows.map(function (w) { return 'window:' + w.hwnd + ':0'; });
       var hit = (list || []).filter(function (s) { return want.indexOf(s.id) >= 0 && s.img; })[0];
@@ -2517,19 +2525,30 @@
       img.className = 'run-thumb';
       img.alt = 'Window of ' + r.name;
       img.src = ex.thumb;
-      box.appendChild(img);
+      img.onerror = function () { ex.thumb = null; ex.full = null; ex.out = 'No picture of that window.'; renderRunning(runRows); };
+      if (ex.full) {
+        // Tap for the large picture (the backend's capture, on the phone).
+        var big = document.createElement('a');
+        big.href = ex.full; big.target = '_blank'; big.rel = 'noopener';
+        big.title = 'Open the large picture';
+        big.onclick = function (e) { e.stopPropagation(); };
+        big.appendChild(img);
+        box.appendChild(big);
+      } else {
+        box.appendChild(img);
+      }
     }
     var acts = document.createElement('div');
     acts.className = 'run-acts';
-    // Show only raises a window, so the phone may use it too.
+    // Showing, reading and describing a window work from the phone too;
+    // stopping a program is the laptop's.
     if ((r.windows || []).length) {
       acts.appendChild(runButton('Show', '', function () { runAction(r, 'front'); }));
+      acts.appendChild(runButton('Read text', '', function () { runAction(r, 'text'); }));
+      acts.appendChild(runButton('Describe', '', function () { runAction(r, 'describe'); }));
+      if (ex.full) acts.appendChild(runButton('Refresh picture', '', function () { runThumb(r); }));
     }
     if (RUN_LOCAL) {
-      if ((r.windows || []).length) {
-        acts.appendChild(runButton('Read text', '', function () { runAction(r, 'text'); }));
-        acts.appendChild(runButton('Describe', '', function () { runAction(r, 'describe'); }));
-      }
       if (r.group === 'servers' || r.group === 'background') {
         if (ex.token) {
           acts.appendChild(runButton('Confirm stop', 'confirm', function () { runAction(r, 'confirm'); }));

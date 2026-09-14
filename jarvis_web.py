@@ -2299,7 +2299,8 @@ async def get_running():
     return _no_cache(JSONResponse({"rows": rows, "ts": time.time()}))
 
 
-# Acting on a row (phases 4-5): the laptop only. The phone's list is read-only.
+# Acting on a row (phases 4-5). The phone may show, read, capture and
+# describe a window (owner, 2026-09-14); only stopping is the laptop's.
 def _http_is_remote(request: Request) -> bool:
     """_ws_is_remote for a plain request: proxied, or not addressed as loopback."""
     if request.headers.get("x-forwarded-for"):
@@ -2308,7 +2309,7 @@ def _http_is_remote(request: Request) -> bool:
 
 
 def _laptop_only():
-    return JSONResponse({"text": "From the phone the list is read-only."}, status_code=403)
+    return JSONResponse({"text": "Stopping a program is done from the laptop."}, status_code=403)
 
 
 def _running_row(row_id):
@@ -2322,12 +2323,25 @@ _STOP_TOKEN_S = 120
 
 @app.get("/running/text")
 async def running_text(request: Request, id: str):
-    if _http_is_remote(request):
-        return _laptop_only()
     import running_apps
     row = await asyncio.to_thread(_running_row, id)
     text = await asyncio.to_thread(running_apps.window_text, row) if row else ""
     return _no_cache(JSONResponse({"text": text}))
+
+
+@app.get("/running/thumb")
+async def running_thumb(request: Request, id: str, full: int = 0):
+    """A picture of a row's window (JPEG) for a HUD without Electron's
+    thumbnails: the phone, a browser tab. full=1 is the large one."""
+    from fastapi.responses import Response
+    import running_apps
+    row = await asyncio.to_thread(_running_row, id)
+    wins = (row or {}).get("windows") or []
+    img = await asyncio.to_thread(running_apps.capture_window, wins[0]["hwnd"],
+                                  1600 if full else 480, "JPEG") if wins else None
+    if not img:
+        return JSONResponse({"text": "No picture of that window."}, status_code=404)
+    return Response(img, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=20"})
 
 
 @app.post("/running/front")
@@ -2341,8 +2355,6 @@ async def running_front(request: Request, id: str):
 
 @app.get("/running/describe")
 async def running_describe(request: Request, id: str):
-    if _http_is_remote(request):
-        return _laptop_only()
     import running_apps
     row = await asyncio.to_thread(_running_row, id)
     answer, model = await asyncio.to_thread(running_apps.describe_window, row)

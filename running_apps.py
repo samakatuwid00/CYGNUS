@@ -668,9 +668,10 @@ def window_text(row, lines=TEXT_LINES):
     return ""
 
 
-def capture_window(hwnd, max_side=1280):
-    """PNG bytes of a window, drawn by the window itself (PrintWindow), so it
-    works when other windows cover it; None when it cannot be captured."""
+def capture_window(hwnd, max_side=1280, fmt="PNG"):
+    """Image bytes (PNG, or JPEG for the phone's thumbnails) of a window,
+    drawn by the window itself (PrintWindow), so it works when other windows
+    cover it; None when it cannot be captured."""
     import ctypes
     import io
     from ctypes import wintypes
@@ -709,7 +710,7 @@ def capture_window(hwnd, max_side=1280):
         user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(before))
     image.thumbnail((max_side, max_side))
     out = io.BytesIO()
-    image.save(out, "PNG")
+    image.save(out, fmt, **({"quality": 70} if fmt == "JPEG" else {}))
     return out.getvalue()
 
 
@@ -997,16 +998,16 @@ def _front_or_open(rows, text):
 
 def handle(intent, text, remote=False):
     """A spoken request about what is running: (reply, stop plan to confirm or
-    None). From the phone the list, and bringing a window forward."""
+    None). From the phone everything but stopping a program."""
     rows = inventory()
     if intent == "running":
         return summary(rows, focus=focus_of(text)), None
     if intent == "running_front":
         return _front_or_open(rows, text), None
-    if remote:
-        return "From the phone I can only show what's running and bring a window forward, sir. Do that from the laptop.", None
     targets = find_rows(rows, text)
     if intent == "running_stop":
+        if remote:
+            return "From the phone I can't stop programs, sir. Do that from the laptop.", None
         return _stop_request(targets, text)
     windowed = [r for r in targets if r.get("windows")]
     if not targets and intent in ("running_text", "running_describe"):

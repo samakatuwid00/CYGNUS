@@ -138,7 +138,8 @@ Phase 4, seeing more, each only when asked:
   their UI Automation text where they expose it.
 - **Thumbnails**: the desktop app captures live window thumbnails
   (Electron's desktopCapturer) for the rows that have a window. The phone and
-  a browser tab show none.
+  a browser tab get a picture the backend captures (`/running/thumb`,
+  PrintWindow, JPEG); tapping it opens the large one.
 - **Describe a window**: the window is captured (PrintWindow, so it works when
   covered) and sent with a question to the answering model through the local
   router; Cygnus says the picture left the machine. No local vision model is
@@ -169,5 +170,5 @@ Phase 5, acting:
 3. `psutil` may be added.
 4. The phone's HUD shows the list too, read-only, like the desktop.
    Changed 2026-09-14: the phone may also bring a window forward (the Show
-   button and "show X on screen"); read text, describe and stop stay
-   laptop-only.
+   button and "show X on screen"), read its text, see a picture of it and
+   have it described, by button or voice. Only stop stays laptop-only.
