@@ -275,10 +275,79 @@ def test_stop_refuses_apps_and_cygnus_itself(acting):
     assert plan is None and "Cygnus backend it is Cygnus itself" in reply
 
 
-def test_the_phone_can_look_but_not_act(acting):
-    assert ra.handle("running_stop", "stop the leftover tail", remote=True) == (
-        "From the phone I can only tell you what's running, sir. Do that from the laptop.", None)
+def test_the_phone_can_look_and_show_but_not_stop(acting, monkeypatch):
+    phone_only = ("From the phone I can only show what's running and bring a window forward, sir. "
+                  "Do that from the laptop.", None)
+    assert ra.handle("running_stop", "stop the leftover tail", remote=True) == phone_only
+    assert ra.handle("running_text", "read the visual studio code window", remote=True) == phone_only
     assert ra.handle("running", "what's running?", remote=True)[0].startswith("Servers:")
+    raised = []
+    monkeypatch.setattr(ra, "bring_to_front", lambda row: raised.append(row["id"]) or (True, "in front"))
+    assert ra.handle("running_front", "show visual studio code on screen", remote=True) == ("in front", None)
+    assert raised == ["30"]
+
+
+def test_a_row_names_its_program_files():
+    code = next(r for r in acting_rows() if r["name"] == "Visual Studio Code")
+    assert code["exes"] == ["code.exe"]
+
+
+@pytest.mark.parametrize("names, exe, found", [
+    ("Microsoft Visual Studio Code", None, "30"), ("vs", "C:\\VS\\Code.exe", "30"),
+    ("visual studio", None, "30"), ("PowerPoint", "C:\\Office\\POWERPNT.EXE", None),
+    ("notepad", None, None), ("the app", None, None)])
+def test_the_running_window_an_app_name_means(names, exe, found):
+    row = ra.app_window(names, exe=exe, rows=acting_rows())
+    assert (row and row["id"]) == found
+
+
+@pytest.mark.parametrize("text, app", [
+    ("show on screen PowerPoint", "PowerPoint"), ("show PowerPoint on the screen", "PowerPoint"),
+    ("put the deck on my screen", "deck"), ("bring PowerPoint to the front", "PowerPoint"),
+    ("show me the chrome window", "chrome"), ("cygnus, bring up spotify please", "spotify"),
+    ("bring chrome forward", "chrome")])
+def test_the_app_a_show_request_names(text, app):
+    assert ra.app_phrase(text) == app
+
+
+def test_show_brings_the_open_window_and_opens_one_that_is_not(acting, monkeypatch):
+    import tools
+    raised, opened = [], []
+    monkeypatch.setattr(ra, "bring_to_front", lambda row: raised.append(row["id"]) or (True, "Visual Studio Code is in front, sir."))
+    monkeypatch.setattr(tools, "open_application", lambda app: opened.append(app) or "Opened notepad")
+    assert ra.handle("running_front", "show on screen Microsoft Visual Studio Code")[0] == "Visual Studio Code is in front, sir."
+    assert ra.handle("running_front", "put notepad on the screen")[0] == "notepad wasn't open, so I opened it, sir."
+    assert raised == ["30"] and opened == ["notepad"]
+
+
+def test_open_brings_an_open_app_forward_instead_of_a_second_copy(monkeypatch):
+    import os
+    import running_apps
+    import tools
+    launched, raised = [], []
+    monkeypatch.setattr(os, "startfile", lambda p: launched.append(p), raising=False)
+    monkeypatch.setattr(running_apps, "inventory", lambda use_cache=True: acting_rows())
+    monkeypatch.setattr(running_apps, "bring_to_front", lambda row: raised.append(row["id"]) or (True, ""))
+    assert tools.open_application("visual studio code") == \
+        "Visual Studio Code was already open, so I brought it to the front, sir."
+    assert raised == ["30"] and launched == []
+    tools.open_application("visual studio code", new_window=True)
+    tools.open_application("a new visual studio code window")
+    assert raised == ["30"] and len(launched) == 2
+
+
+def test_a_window_that_wont_come_forward_is_not_launched_again(monkeypatch):
+    import os
+    import running_apps
+    import tools
+    launched = []
+    monkeypatch.setattr(os, "startfile", lambda p: launched.append(p), raising=False)
+    monkeypatch.setattr(running_apps, "inventory", lambda use_cache=True: acting_rows())
+    monkeypatch.setattr(running_apps, "bring_to_front",
+                        lambda row: (False, "Windows wouldn't let me bring Visual Studio Code forward."))
+    assert tools.open_application("visual studio code") == \
+        "Visual Studio Code is already open. Windows wouldn't let me bring Visual Studio Code forward."
+    assert launched == []
 
 
 def test_a_stop_leaves_a_process_that_is_no_longer_the_same_one(monkeypatch):
@@ -304,6 +373,11 @@ def test_confirming_a_stop_runs_it_and_no_leaves_it(monkeypatch):
 
 @pytest.mark.parametrize("text, intent", [
     ("bring visual studio code to the front", "running_front"), ("show me the chrome window", "running_front"),
+    ("show on screen PowerPoint", "running_front"), ("show PowerPoint on screen", "running_front"),
+    ("put PowerPoint on the screen", "running_front"), ("show me PowerPoint", "running_front"),
+    ("cygnus, bring up spotify", "running_front"), ("show the deck on my screen", "running_front"),
+    ("show me my apps", "list_installed"), ("open PowerPoint", "app_reference"),
+    ("show me the code for the parser in the tools file", "app_reference"),
     ("stop the leftover tail", "running_stop"), ("stop the web server on port 8788", "running_stop"),
     ("stop the background task", "job_stop"), ("read the terminal", "running_text"),
     ("what's on my screen", "running_describe"), ("describe the chrome window", "running_describe")])

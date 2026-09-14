@@ -2519,11 +2519,14 @@
       img.src = ex.thumb;
       box.appendChild(img);
     }
+    var acts = document.createElement('div');
+    acts.className = 'run-acts';
+    // Show only raises a window, so the phone may use it too.
+    if ((r.windows || []).length) {
+      acts.appendChild(runButton('Show', '', function () { runAction(r, 'front'); }));
+    }
     if (RUN_LOCAL) {
-      var acts = document.createElement('div');
-      acts.className = 'run-acts';
       if ((r.windows || []).length) {
-        acts.appendChild(runButton('Show', '', function () { runAction(r, 'front'); }));
         acts.appendChild(runButton('Read text', '', function () { runAction(r, 'text'); }));
         acts.appendChild(runButton('Describe', '', function () { runAction(r, 'describe'); }));
       }
@@ -2535,8 +2538,8 @@
           acts.appendChild(runButton('Stop…', 'stop', function () { runAction(r, 'stop'); }));
         }
       }
-      if (acts.children.length) box.appendChild(acts);
     }
+    if (acts.children.length) box.appendChild(acts);
     if (ex.out) {
       var out = document.createElement('div');
       out.className = 'run-out';

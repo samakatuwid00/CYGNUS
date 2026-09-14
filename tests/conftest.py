@@ -42,3 +42,9 @@ def offline_probe(monkeypatch, tmp_path_factory):
     # The semantic router's model is ~0.5 GB; tests that need it fake it.
     import semantic_route
     monkeypatch.setattr(semantic_route, "MODE", "off")
+    # open_application raises an app's open window instead of launching it;
+    # tests see no running programs unless they fake some, and never move a
+    # real window.
+    import running_apps
+    monkeypatch.setattr(running_apps, "inventory", lambda use_cache=True: [])
+    monkeypatch.setattr(running_apps, "bring_to_front", lambda row: (False, "test: no real windows"))

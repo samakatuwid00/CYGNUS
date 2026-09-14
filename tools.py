@@ -4264,8 +4264,40 @@ def _clean_app_name(app: str) -> str:
     return s or str(app).strip()
 
 
+_NEW_WINDOW_RE = re.compile(r"\b(new|another|second|fresh|separate)\b", re.I)
+
+
+def _asked_for_new(app: str) -> bool:
+    """"Open a new PowerPoint": in the app name, or in the turn's own words."""
+    import sys as _sys
+    if _NEW_WINDOW_RE.search(app or ""):
+        return True
+    brain = _sys.modules.get("brain_gemini")
+    said = getattr(getattr(brain, "_progress_local", None), "user_text", "") if brain else ""
+    return bool(re.search(r"\b(new|another|second|fresh|separate)\s+(\w+\s+){0,2}"
+                          r"(window|instance|copy|one|document|deck|file)\b"
+                          r"|\bopen\s+(a\s+)?(new|another|second)\b", said or "", re.I))
+
+
+def _focus_running(names, binp) -> str | None:
+    """Bring the app's open window forward rather than launch it again:
+    "show PowerPoint" from the phone opened a second PowerPoint (2026-09-14)."""
+    try:
+        import running_apps
+        row = running_apps.app_window(names, exe=binp)
+        if row:
+            ok, said = running_apps.bring_to_front(row)
+            # A window that won't come forward is still open: say so, never
+            # launch a second copy.
+            return (f"{row['name']} was already open, so I brought it to the front, sir."
+                    if ok else f"{row['name']} is already open. {said}")
+    except Exception:
+        pass
+    return None
+
+
 def open_application(app: str, action: str = None, query: str = None,
-                     _rule_hops: int = 0) -> str:
+                     _rule_hops: int = 0, new_window: bool = False) -> str:
     """Open an application by friendly name, resolving it via the capability manifest.
 
     Prefers machine_capabilities.resolve() (live scan of PATH / Program Files /
@@ -4275,6 +4307,7 @@ def open_application(app: str, action: str = None, query: str = None,
     import os as _os
     system = platform.system()
     requested = _clean_app_name(app)
+    new_window = new_window or _asked_for_new(app)   # carried through the re-entries below
 
     # 0) Shell folders: "open documents folder" / "open downloads" is a File
     # Explorer navigation, not an app launch. Resolve BEFORE app matching so
@@ -4318,7 +4351,7 @@ def open_application(app: str, action: str = None, query: str = None,
                     # Re-enter with the exact key so the rest of the function
                     # resolves the registered app normally (rules, launch, etc.)
                     return open_application(_reg_key, action=action, query=query,
-                                           _rule_hops=_rule_hops)
+                                           _rule_hops=_rule_hops, new_window=new_window)
             except Exception:
                 pass
     except Exception:
@@ -4526,9 +4559,16 @@ def open_application(app: str, action: str = None, query: str = None,
             return (f"[Error] Launch blocked by rule: redirect loop while "
                     f"opening {name}.")
         return open_application(_gate["target"], action=action, query=query,
-                               _rule_hops=_rule_hops + 1)
+                               _rule_hops=_rule_hops + 1, new_window=new_window)
     if _gate.get("warning"):
         _notices = f"{_notices}\n{_gate['warning']}".strip()
+
+    # Already open: bring its window forward. Launching again opens a second
+    # window, and a second Office program opens an empty document.
+    if not action and not new_window:
+        _front = _focus_running([requested, name], binp)
+        if _front:
+            return _front
 
     # 2) Spotify (or other music) search: reliable URI opens the Search pane.
     if action == "search" and "spotify" in name.lower():
@@ -5135,7 +5175,8 @@ TOOLS = [
     {
         "name": "open_application",
         "description": ("Open an installed application by friendly name (resolves via the "
-                        "capability manifest). For music apps, action='search' opens the "
+                        "capability manifest). If it is already open, its window is brought "
+                        "to the front instead. For music apps, action='search' opens the "
                         "in-app search pane with 'query'."),
         "input_schema": {
             "type": "object",
@@ -5143,6 +5184,10 @@ TOOLS = [
                 "app": {
                     "type": "string",
                     "description": "Application name (e.g. 'spotify', 'vlc', 'chrome') or path"
+                },
+                "new_window": {
+                    "type": "boolean",
+                    "description": "True only when the user asks for a new or another window"
                 },
                 "action": {
                     "type": "string",
@@ -5594,7 +5639,7 @@ TOOL_MAP = {
     "desktop_control": _desktop_control_tool,
     "run_opencli": _run_opencli_tool,
     "open_application": lambda **kw: open_application(
-        kw["app"], kw.get("action"), kw.get("query")),
+        kw["app"], kw.get("action"), kw.get("query"), new_window=bool(kw.get("new_window"))),
     "ask_chatgpt": _ask_chatgpt,
     "ask_ai": _ask_ai,
     "manus_status": lambda **kw: __import__("manus_agent").manus_status(),

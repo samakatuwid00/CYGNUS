@@ -504,6 +504,17 @@ def classify_intent(text: str) -> str:
     if re.search(r"\b(bring|put|pull)\b.{0,40}\b(to\s+the\s+)?(front|forward|foreground)\b"
                  r"|\b(bring\s+up|switch\s+to|show\s+me)\s+(the\s+|my\s+)?.{1,30}\bwindow\b", t, re.I):
         return "running_front"
+    # "Show on screen PowerPoint", "put PowerPoint on the screen", "show me
+    # PowerPoint", "bring up chrome": the running window comes forward (it is
+    # opened only if it isn't running). As app_reference it went to
+    # open_application and a second PowerPoint opened (2026-09-14).
+    _show = re.match(r"^(?:(?:please|hey|ok(?:ay)?|jarvis|cygnus|can\s+you|could\s+you)[,\s]+)*"
+                     r"(?:show|display|put|bring\s+up|pull\s+up)\s+(?:me\s+)?(?P<rest>.+?)\s*[.!?]*$", t, re.I)
+    if _show and not re.search(r"\b(what'?s|apps|programs|processes|running|installed)\b", t, re.I):
+        rest = _show.group("rest")
+        if re.search(r"\bon(?:to)?\s+(?:the\s+|my\s+)?screen\b", rest, re.I) \
+                or (len(rest.split()) <= 3 and re.search(r"\b(" + _APP_WORDS + r")\b", rest, re.I)):
+            return "running_front"
     if re.search(r"\b(stop|kill|end|terminate|shut\s+down)\b.{0,40}\b(duplicates?|leftovers?|servers?|watchers?"
                  r"|background|process(es)?|tails?|grep|port\s+\d+)\b", t, re.I) \
             and not re.search(r"\b(tasks?|jobs?|goals?)\b", t, re.I):
@@ -1405,9 +1416,13 @@ TOOL_DECLARATIONS = [
             "filename": {"type": "STRING", "description": "Optional file name; defaults to a timestamped note in Documents"}
         }, "required": ["content"]}),
 
-    _make_tool("open_application", "Open an application by name or path.",
+    _make_tool("open_application", "Open an application by name or path. If it is already "
+               "open, its window is brought to the front instead; set new_window only when "
+               "the user asks for a new or another window.",
         {"type": "object", "properties": {
-            "app": {"type": "STRING", "description": "Application name or executable path"}
+            "app": {"type": "STRING", "description": "Application name or executable path"},
+            "new_window": {"type": "BOOLEAN",
+                           "description": "True only for 'open a new/another X'"}
         }, "required": ["app"]}),
 
     _make_tool("ask_chatgpt",
@@ -1875,6 +1890,7 @@ class JarvisBrain:
         the turn belongs to; every thread sets it before touching history."""
         _progress_local.client = client or "default"
         _progress_local.remote = bool(remote)        # the phone: it may look, not act
+        _progress_local.user_text = user_input       # open_application reads "a new ..."
         started = None
         try:
             import intent_router

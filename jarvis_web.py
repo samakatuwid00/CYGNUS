@@ -2332,8 +2332,7 @@ async def running_text(request: Request, id: str):
 
 @app.post("/running/front")
 async def running_front(request: Request, id: str):
-    if _http_is_remote(request):
-        return _laptop_only()
+    # Allowed from the phone too: it only raises a window (owner, 2026-09-14).
     import running_apps
     row = await asyncio.to_thread(_running_row, id)
     ok, text = await asyncio.to_thread(running_apps.bring_to_front, row)

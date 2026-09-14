@@ -146,7 +146,13 @@ Phase 4, seeing more, each only when asked:
 
 Phase 5, acting:
 - **Bring to front** acts at once: it is harmless and undone by a click.
-  (A deviation from "always behind the confirm step" above.)
+  (A deviation from "always behind the confirm step" above.) "Show X on
+  screen", "put X on the screen", "show me X", "bring up X" mean the same, and
+  so does "open X" when X already has a window: `open_application` raises it
+  instead of launching a second copy (on 2026-09-14 "show on screen
+  PowerPoint" from the phone opened a second PowerPoint beside the open
+  deck). "Open a new X" / "another X window" still launches. When X is not
+  running, Show opens it.
 - **Stop** always asks first, naming the program, its folder or port and its
   process, and checks at the confirm that the process is still the same one
   (id and start time). A stop ends the process and its children, gently
@@ -162,3 +168,6 @@ Phase 5, acting:
    answering model; Cygnus says so when it does. "What's running?" stays local.
 3. `psutil` may be added.
 4. The phone's HUD shows the list too, read-only, like the desktop.
+   Changed 2026-09-14: the phone may also bring a window forward (the Show
+   button and "show X on screen"); read text, describe and stop stay
+   laptop-only.

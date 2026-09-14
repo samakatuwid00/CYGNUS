@@ -529,6 +529,8 @@ def build_rows(procs, windows, ports, now, jobs=()):
         rows.append({"id": str(root), "group": group, "name": name, "status": status, "doing": doing,
                      "detail": detail, "flags": [], "since": since, "pids": sorted(pids),
                      "windows": [{"hwnd": h, "title": t} for m in pids for h, t in pairs.get(m, []) if h],
+                     "exes": sorted({re.split(r"[\\/]", procs[m].get("exe") or procs[m]["name"])[-1].lower()
+                                     for m in pids}),
                      "started": p["started"],
                      "uptime": now - p["started"], "cpu_s": cpu,
                      "key": (group, name, " ".join(p["cmdline"][1:]).lower())})
@@ -748,7 +750,7 @@ _REQUEST_WORDS = {
     "windows", "switch", "on", "port", "running", "program", "programs", "process", "processes", "read", "what",
     "whats", "is", "in", "describe", "look", "at", "my", "screen", "copies", "copy", "of", "and", "all", "it",
     "them", "duplicate", "duplicates", "leftover", "leftovers", "stuck", "say", "says", "does", "can", "you",
-    "for", "sir", "s", "up", "one", "ones", "hey"}
+    "for", "sir", "s", "up", "one", "ones", "hey", "display", "onto"}
 
 
 def find_rows(rows, text):
@@ -937,14 +939,72 @@ def _speakable(text):
     return ". ".join(line.strip() for line in text.splitlines()[-SPOKEN_LINES:])
 
 
+_NAME_FILLER = {"microsoft", "ms", "the", "my", "a", "an", "app", "application", "program", "window"}
+
+
+def app_window(names, exe=None, rows=None):
+    """The running app with a window that one of `names` means, or None:
+    by its program file ("POWERPNT.EXE") first, then by name ("Microsoft
+    PowerPoint" is the "PowerPoint" row). open_application asks this before
+    it launches: "show PowerPoint" opened a second PowerPoint (2026-09-14)."""
+    rows = inventory() if rows is None else rows
+    apps = [r for r in rows if r["group"] == "apps" and r.get("windows")]
+    stem = re.split(r"[\\/]", exe)[-1].lower() if exe else ""
+    if stem.endswith(".exe"):
+        hit = [r for r in apps if stem in r.get("exes", [])]
+        if hit:
+            return hit[0]
+    for name in [names] if isinstance(names, str) else names:
+        said = set(re.findall(r"[a-z0-9]+", (name or "").lower())) - _NAME_FILLER
+        if not said:
+            continue
+        for r in apps:
+            own = set(re.findall(r"[a-z0-9]+", r["name"].lower())) - _NAME_FILLER
+            if own and (own <= said or said <= own):
+                return r
+    return None
+
+
+_FRONT_RE = re.compile(
+    r"^(?:(?:please|hey|ok(?:ay)?|jarvis|cygnus|can\s+you|could\s+you)[,\s]+)*"
+    r"(?:bring\s+up|pull\s+up|switch\s+to|show|display|put|bring|pull)\s+(?:me\s+)?"
+    r"(?:on(?:to)?\s+(?:the\s+|my\s+)?screen\s+)?(?:the\s+|my\s+)?(?P<app>.+?)"
+    r"(?:\s+window)?(?:\s+(?:(?:on(?:to)?|to)\s+(?:the\s+|my\s+)?(?:screen|front|foreground)|forward|up))?"
+    r"(?:\s+(?:for\s+me|please))?\s*[.!?]*$", re.I)
+
+
+def app_phrase(text):
+    """The app a "show X on screen" / "bring X to the front" request names."""
+    m = _FRONT_RE.match((text or "").strip())
+    return m.group("app").strip() if m else ""
+
+
+def _front_or_open(rows, text):
+    """Bring the window the request names forward; open the app if it is not running."""
+    phrase = app_phrase(text)
+    windowed = [r for r in find_rows(rows, text) if r.get("windows")]
+    row = windowed[0] if windowed else (app_window(phrase, rows=rows) if phrase else None)
+    if row:
+        return bring_to_front(row)[1]
+    if not phrase:
+        return "I couldn't tell which window you mean, sir."
+    import tools
+    out = tools.open_application(phrase)
+    if out.startswith("[NEEDS_PICK]"):
+        return out.split("] ", 1)[1]
+    return out if out.startswith("[") else f"{phrase} wasn't open, so I opened it, sir."
+
+
 def handle(intent, text, remote=False):
     """A spoken request about what is running: (reply, stop plan to confirm or
-    None). From the phone only the list itself is answered."""
+    None). From the phone the list, and bringing a window forward."""
     rows = inventory()
     if intent == "running":
         return summary(rows, focus=focus_of(text)), None
+    if intent == "running_front":
+        return _front_or_open(rows, text), None
     if remote:
-        return "From the phone I can only tell you what's running, sir. Do that from the laptop.", None
+        return "From the phone I can only show what's running and bring a window forward, sir. Do that from the laptop.", None
     targets = find_rows(rows, text)
     if intent == "running_stop":
         return _stop_request(targets, text)
@@ -956,8 +1016,6 @@ def handle(intent, text, remote=False):
         return ("I don't see a window for that, sir." if targets else
                 "I couldn't tell which window you mean, sir."), None
     row = windowed[0]
-    if intent == "running_front":
-        return bring_to_front(row)[1], None
     if intent == "running_text":
         seen = window_text(row)
         return (f"{row['name']} shows: {_speakable(seen)}" if seen else
