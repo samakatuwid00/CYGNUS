@@ -3053,6 +3053,11 @@ def _run_cli_agent(task: str, name: str, timeout: int = 300) -> str:
 # and the result is announced. It used to run inside the voice turn for
 # minutes, logged as a job only after it ended, and "delegate this to Claude"
 # never reached it at all: on 2026-09-12 it went to Hermes.
+try:                     # .env counts however tools is imported (config loads it too,
+    from dotenv import load_dotenv as _load_dotenv    # but only when imported first)
+    _load_dotenv()
+except Exception:
+    pass
 CLI_JOB_TIMEOUT = int(os.getenv("JARVIS_CLI_JOB_TIMEOUT", "900"))
 _REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 
