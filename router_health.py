@@ -31,10 +31,14 @@ EMPTY_COOLDOWN_S = 1800.0          # a provider that answers with nothing is bro
 # tools (7.5k tokens), big-pickle answered in 2.6-6 s and called tools right,
 # ling-3.0-flash in 3-5 s, mimo-v2.5 and nemotron-3.5-lightning in 7-8 s.
 # Left out: nemotron-3-ultra (92 s), deepseek-v4-flash-free (400 errors),
-# muse-spark (empty replies).
+# muse-spark (empty replies). The codex models are a provider of their own:
+# on 2026-09-14 antigravity was out of quota again, every configured model
+# with it, and cx/gpt-5.6-luna and cx/gpt-5.5 answered in about 2 s, but the
+# probe never tried them.
 EXTRA_CANDIDATES = [m.strip() for m in os.getenv(
     "JARVIS_ROUTER_CANDIDATES",
-    "oc/big-pickle,oc/ling-3.0-flash-fin-free,oc/mimo-v2.5-free,oc/nemotron-3.5-lightning-free,"
+    "oc/big-pickle,cx/gpt-5.6-luna,cx/gpt-5.5,oc/ling-3.0-flash-fin-free,oc/mimo-v2.5-free,"
+    "oc/nemotron-3.5-lightning-free,"
     "gc/gemini-2.5-flash,gc/gemini-3-flash-preview,gc/gemini-2.5-pro,gc/gemini-2.5-flash-lite,"
     "cu/claude-4.5-sonnet,cu/gemini-3-flash-preview,gh/gpt-5.4-mini,cl/anthropic/claude-sonnet-4.6"
 ).split(",") if m.strip()]
