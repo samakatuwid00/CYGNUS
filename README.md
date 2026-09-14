@@ -1,107 +1,99 @@
-# JARVIS - Just A Rather Very Intelligent System
-Voice-activated AI assistant with local STT/TTS and Claude brain.
+# CYGNUS
 
-## Quick Start
+A voice assistant for a Windows laptop. Say "Cygnus", ask for something, and
+it answers, opens and shows apps, looks at what is running, or hands bigger
+work to a coding agent and reports back. It runs as a desktop app with a
+tray panel, a full HUD and a mini orb, and the same HUD works on a phone.
+
+The project began as JARVIS. The code still uses that name in places
+(`jarvis_web.py`, `jarvis_hud_v3.html`, `JARVIS_*` settings); the assistant
+and the repository are Cygnus.
+
+## What it does
+
+- **Voice**: the wake word "Cygnus" is heard by a small Whisper model
+  (`wake_engine.py`); speech is transcribed locally with faster-whisper;
+  replies are spoken with Kokoro or edge-tts.
+- **Brain**: turns go to a cloud model through a local router (9router, an
+  OpenAI-compatible proxy), with fallback models tried in order and a local
+  Ollama model as the last resort. `router_health.py` keeps track of which
+  models answer and says when a stand-in is answering.
+- **Apps and sites**: opens installed apps and registered websites. "Show X on
+  screen" or "open X" brings an app that is already open to the front instead
+  of starting a second copy.
+- **Running panel**: what is running on the machine (agents, servers, apps,
+  background programs) and Cygnus's own tasks in one list, with what each is
+  doing. A row can bring its window forward, read its text, show a picture of
+  it, or have it described; stopping a server or background program asks
+  first and is laptop-only.
+- **Delegation**: bigger jobs go to Claude Code, Codex, Gemini CLI or Hermes
+  as background tasks. Anything that may change files asks for a confirm
+  first. The result comes back as a reply and stays in the conversation, so
+  "what did it change?" is answered from the record.
+- **Confirm and clarify**: one shared reader for yes/no/which-one answers, and
+  an act/confirm/clarify gate before actions (`consent.py`, `action_gate.py`).
+- **Phone**: the HUD is served over Tailscale, so the phone can talk to
+  Cygnus, see what is running, and bring a window forward.
+
+## Running it
+
+Requirements: Windows, Python 3.10+, Node.js (for the desktop app), a
+microphone, and at least one model backend (9router or Ollama).
 
 ```bash
-# 1. Install dependencies
-pip install -r requirements.txt
-
-# 2. Set your API key
-cp .env.example .env
-# Edit .env and add your Anthropic API key
-
-# 3. Run JARVIS
-python jarvis.py --text    # Text mode (recommended for demo)
-python jarvis.py           # Voice mode (needs microphone)
-python jarvis.py --demo    # Pre-scripted demo
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+copy .env.example .env        # then set the router and model settings
 ```
 
-## Web HUD and desktop app
-
-The HUD is served by `jarvis_web.py` (port: `JARVIS_PORT` in `.env`):
+The backend and HUD (port from `JARVIS_PORT` in `.env`):
 
 ```bash
-.venv\Scripts\python jarvis_web.py     # then open http://127.0.0.1:8001
+.venv\Scripts\python jarvis_web.py     # then open http://127.0.0.1:<port>
 ```
 
-The desktop app in `desktop/` puts it in a tray panel with Ctrl+Alt+J, a full
-HUD view and a mini orb:
+The desktop app in `desktop/` puts the HUD in a tray panel (Ctrl+Alt+J), a
+full view and a mini orb:
 
 ```bash
 cd desktop
-npm install                # Electron's install step is approved in package.json
+npm install
 npm run unpack-electron    # only if node_modules/electron/dist has no electron.exe
 npm run dev
 ```
 
-If a JARVIS backend is already running, the app attaches to it; otherwise it
-starts one from `.venv`, restarts it if it crashes, and stops it on quit.
-Do not run `watch_and_restart.py` while the app owns the backend: both would
-start a server on the same port. Start `watch_and_restart.py` first and the
-app attaches to it. Details: `ELECTRON_PLAN.md`; phone access over Tailscale:
-`PHONE_PLAN.md`.
+If a backend is already running, the app attaches to it; otherwise it starts
+one from `.venv`, restarts it if it crashes, and stops it on quit. Do not run
+`watch_and_restart.py` while the app owns the backend: both would start a
+server on the same port.
 
-## Features
+## Settings
 
-- 🎤 **Voice Activation** - Say "Hey Jarvis" to activate
-- 🗣️ **Local STT** - Whisper runs 100% locally
-- 🔊 **Local TTS** - Edge-TTS (free, no API needed)
-- 🧠 **Claude Brain** - Powered by Anthropic's Claude
-- 🛠️ **System Control** - Files, apps, shell commands
-- 🌐 **Web Search** - Search Google via voice
+All settings live in `.env` (see `.env.example`). The ones most often changed:
 
-## Architecture
+| Setting | What it does |
+|---|---|
+| `ROUTER_BASE_URL`, `ROUTER_MODEL`, `ROUTER_FALLBACK_MODELS` | The router and the models tried in order |
+| `JARVIS_USE_OLLAMA`, `OLLAMA_MODEL` | The local fallback model |
+| `WHISPER_MODEL` | Speech-to-text model size |
+| `JARVIS_CLI_JOB_TIMEOUT` | How long a delegated coding job may run (seconds) |
+| `JARVIS_IDLE_RESET_MINUTES` | Clear the conversation after this long idle (not while a task runs) |
+| `JARVIS_PORT` | The HUD and backend port |
 
-```
-┌─────────────────────────────────────────────────┐
-│                    JARVIS                        │
-├─────────────────────────────────────────────────┤
-│  Voice Engine          │  AI Brain              │
-│  ├─ Wake Word (VAD)    │  ├─ Claude API         │
-│  ├─ STT (Whisper)      │  ├─ Tool Use           │
-│  └─ TTS (Edge-TTS)     │  └─ Memory             │
-├─────────────────────────────────────────────────┤
-│  System Tools                                    │
-│  ├─ Shell Commands     ├─ File Operations       │
-│  ├─ App Launcher       ├─ Web Search            │
-│  └─ Weather            └─ System Info           │
-└─────────────────────────────────────────────────┘
-```
+## Layout
 
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `help` | Show available commands |
-| `clear` | Clear conversation memory |
-| `status` | Show system status |
-| `quit` | Exit JARVIS |
-
-## Configuration
-
-Edit `config.py` to customize:
-- Whisper model size (tiny/base/small/medium/large)
-- TTS voice and speed
-- Wake word sensitivity
-- Max conversation history
-
-## Requirements
-
-- Python 3.10+
-- Microphone (for voice mode)
-- Anthropic API key (get at console.anthropic.com)
-
-## Demo Script (for Aug 17 presentation)
-
-1. Start with `python jarvis.py --text`
-2. Show the architecture diagram
-3. Demo: "What's the weather in Manila?"
-4. Demo: "List files in my Documents"
-5. Demo: "Open Notepad"
-6. Demo: "Create a Python hello world program"
-7. Show conversation memory with "What did I just ask?"
+| Path | What it is |
+|---|---|
+| `jarvis_web.py` | FastAPI backend: WebSocket turns, HUD, Running endpoints |
+| `brain_gemini.py` | Routing, model chain, conversation state |
+| `tools.py` | Tools: apps, sites, music, delegation, files |
+| `running_apps.py` | What is running, window text, pictures, raise and stop |
+| `wake_engine.py`, `voice_engine.py` | Wake word and speech |
+| `jarvis_hud_v3.html` | The HUD |
+| `desktop/` | Electron desktop app |
+| `tests/` | pytest suite (`.venv\Scripts\python -m pytest tests`) |
+| `*_PLAN.md` | Design notes and decisions for each feature |
 
 ## Author
 
-Roger Abay Jr - Guest Speaker, August 17, 2026
+Roger Abay Jr
