@@ -747,8 +747,17 @@ def _router_may_lead(text):
 _OWN_WORK_RE = re.compile(
     r"\b(?:did|have|had)\s+you\b|"
     r"\byou\s+(?:just\s+)?(?:used|made|created|built|wrote|generated|ran|picked|chose|did)\b|"
-    r"\b(?:built|made|created|wrote|generated|coded)\s+(?:this|that|it|the)\b", re.I)
-_DID_YOU_LEAD_RE = re.compile(r"^\s*(?:(?:jarvis|cygnus|so|and)[,\s]+)*(?:did|have|had)\s+you\b", re.I)
+    r"\b(?:built|made|created|wrote|generated|coded)\s+(?:this|that|it|the)\b|"
+    # A job it handed off: "what did Claude Code just change in the Running
+    # panel?" went to Hermes as a new job and took 49 s to answer what the
+    # finished job's own answer already said (2026-09-14).
+    r"\b(?:did|has|have|had)\s+(?:claude(?:\s+code)?|codex|gemini|hermes|opencode|it|they|"
+    r"the\s+(?:agent|task|job|delegation))\s+(?:just\s+|already\s+)?"
+    r"(?:change|do|make|build|fix|write|add|remove|update|implement|finish)\w*\b|"
+    r"\bwhat\s+(?:has\s+|was\s+|got\s+)?changed\b", re.I)
+_DID_YOU_LEAD_RE = re.compile(r"^\s*(?:(?:jarvis|cygnus|so|and)[,\s]+)*(?:did|have|had|has)\s+"
+                              r"(?:you|claude(?:\s+code)?|codex|gemini|hermes|opencode|it|they|"
+                              r"the\s+(?:agent|task|job|delegation))\b", re.I)
 
 
 def _asks_about_own_work(text):

@@ -31,6 +31,17 @@ def test_short_window_commands_still_route(text, intent):
     assert brain_gemini.classify_intent(text) == intent
 
 
+@pytest.mark.parametrize("text, own", [
+    ("what did Claude Code just change in the Running panel?", True),
+    ("what did hermes do?", True), ("did claude finish the panel?", True),
+    ("what changed?", True), ("which files did it change?", True),
+    ("what did the task add to the HUD?", True),
+    ("change the running panel colours", False), ("what is claude doing", False),
+    ("delegate to claude code: fix what changed in the panel", False)])
+def test_a_question_about_a_handed_off_job_is_answered_from_the_record(text, own):
+    assert brain_gemini._asks_about_own_work(text) is own
+
+
 @pytest.fixture
 def launched(monkeypatch):
     import browser_agent
