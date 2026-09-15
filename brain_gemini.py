@@ -2249,7 +2249,7 @@ class JarvisBrain:
         # the routing below; so does any turn no model could take.
         try:
             import agent_loop as _al
-            if _al.MODE in ("lead", "shadow") and _al.takes(user_input, classify_intent(user_input)):
+            if _al.MODE in ("lead", "shadow") and _al.takes(user_input, classify_intent(user_input), _client_key()):
                 _ctx = {"client": _client_key(), "user_text": user_input, "on_done": on_hermes_done,
                         "progress_cb": progress_cb, "remote": getattr(_progress_local, "remote", False)}
                 if _al.MODE == "lead":

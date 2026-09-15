@@ -207,10 +207,11 @@ wake_engine.set_error_callback(
     lambda msg: print(f"[WakeEngine] error: {msg}", flush=True))
 wake_engine.start()
 
-# This process runs Cygnus's jobs, so it alone may call a job the log still
-# shows running "interrupted by restart" (jobs.claim_ownership).
-import jobs as _jobs_owner
-_jobs_owner.claim_ownership()
+# The SERVER process runs Cygnus's jobs, so it alone may call a job the log
+# still shows running "interrupted by restart" (jobs.claim_ownership). That
+# claim is made in __main__, not here: importing this module from a test
+# (apps_panel_test.py, a delegated Claude's pytest run) claimed the registry
+# and marked the very job that ran the test interrupted (2026-09-15).
 
 # Phase 2: pre-warm Hermes session at boot so the first voice query doesn't
 # pay the full cold-start cost. Runs in a background thread to avoid blocking
@@ -1733,13 +1734,10 @@ async def websocket_endpoint(websocket: WebSocket):
     await _flush_undelivered(websocket, client_key)     # a reply this client missed
 
     async def _send_response(payload: dict):
-        """Send a turn's reply; if the socket closed mid-turn, keep it for the
-        client's next connection instead of losing it."""
-        try:
-            await websocket.send_text(json.dumps(payload))
-        except Exception:
-            _stash_reply(client_key, payload.get("text") or "")
-            raise
+        """Send a turn's reply to the client's CURRENT socket, or keep it for
+        the next one. The desktop window dropped its socket during 25 s
+        turns and the reply died with it (2026-09-15)."""
+        await _deliver(client_key, payload)
     # Per-connection feedback policy: each client decides (and hears) its own
     # cues; the synthesizer and audio cache are shared module-wide.
     vf = _vf.Policy()
@@ -1888,6 +1886,28 @@ async def websocket_endpoint(websocket: WebSocket):
                 await asyncio.wait_for(reader, 5)
             except Exception:
                 reader.cancel()
+
+    async def _rescue_reply(client, response, delivered, err, retry=None, speak=False):
+        """A turn that raised after think() answered still owes that answer:
+        it goes to the client's current socket, or waits for the next one.
+        The desktop window dropped its socket during 25 s turns and the
+        answer died with it (2026-09-15). A turn with no answer yet gets the
+        error line instead; nothing here may raise past the handler."""
+        try:
+            if isinstance(response, str) and response.strip() and not delivered \
+                    and not response.startswith("⟳ HERMES_BACKGROUND:"):
+                audio = None
+                if speak:
+                    try:
+                        audio = await tts_to_b64(response)
+                    except Exception:
+                        pass
+                await _deliver(client, {"type": "response", "text": strip_ai_artifacts(response), "audio": audio})
+                await _deliver(client, {"type": "status", "state": "idle"})
+            else:
+                await _send_error(err, retry=retry, speak=speak)
+        except Exception as e2:
+            print(f"[WS] reply rescue failed: {type(e2).__name__}: {e2}", flush=True)
 
     async def _send_error(err, retry=None, speak=False):
         """A failed turn in plain words (plain_reply.for_error), spoken when the
@@ -2069,6 +2089,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_text(json.dumps({"type": "status", "state": "thinking"}))
                     _wd = _ThinkingWatchdog(websocket, vf)
                     _wd.start()
+                    response, delivered = None, False
 
                     loop = asyncio.get_running_loop()
 
@@ -2118,8 +2139,13 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
 
                     sstore_log("assistant", response)
-                    await _say_model_notice()
-                    await websocket.send_text(json.dumps({"type": "status", "state": "speaking"}))
+                    # Nothing before the reply may raise on a dead socket: the
+                    # reply goes to the client's current socket (_deliver).
+                    try:
+                        await _say_model_notice()
+                    except Exception:
+                        pass
+                    await _deliver(client_key, {"type": "status", "state": "speaking"})
                     tts_b64 = await tts_to_b64(response)
                     _t["tts"] = time.time()
                     _log_turn_timing(_t)
@@ -2132,14 +2158,18 @@ async def websocket_endpoint(websocket: WebSocket):
                         "text": strip_ai_artifacts(response),
                         "audio": tts_b64
                     })
-                    await send_telemetry(websocket)
-                    await websocket.send_text(json.dumps({"type": "status", "state": "idle"}))
+                    delivered = True
+                    try:
+                        await send_telemetry(_SOCKETS.get(client_key) or websocket)
+                    except Exception:
+                        pass
+                    await _deliver(client_key, {"type": "status", "state": "idle"})
 
                 except Exception as e:
-                    print(f"[WS] audio error: {e}", flush=True)
+                    print(f"[WS] audio error: {type(e).__name__}: {e}", flush=True)
                     await _end_failed_turn(_wd, reader_task)
-                    await _send_error(e, retry=None if scan else (text or "").strip() or None,
-                                      speak=not scan)
+                    await _rescue_reply(client_key, response, delivered, e,
+                                        retry=None if scan else (text or "").strip() or None, speak=not scan)
                 finally:
                     try:
                         wake_engine.resume()
@@ -2253,6 +2283,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 _wd = _ThinkingWatchdog(websocket, vf)
                 _wd.start()
                 reader_task = None
+                response, delivered = None, False
                 try:
                     loop = asyncio.get_running_loop()
 
@@ -2269,7 +2300,10 @@ async def websocket_endpoint(websocket: WebSocket):
                         brain.think, user_text, on_hermes_done, _push_progress, client=client_key,
                         remote=_ws_is_remote(websocket))
                     _wd.stop()
-                    _arm_phase_b(websocket, vf, response)
+                    try:
+                        _arm_phase_b(websocket, vf, response)
+                    except Exception:
+                        pass
                     sstore_log("user", user_text)
 
                     # Signal the progress reader that think() is done, then
@@ -2290,10 +2324,13 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
 
                     sstore_log("assistant", response)
-                    await _say_model_notice()
+                    try:
+                        await _say_model_notice()
+                    except Exception:
+                        pass
                     tts_b64 = None
                     if speak:
-                        await websocket.send_text(json.dumps({"type": "status", "state": "speaking"}))
+                        await _deliver(client_key, {"type": "status", "state": "speaking"})
                         tts_b64 = await tts_to_b64(response)
                         try:
                             wake_engine.suspend()
@@ -2302,12 +2339,16 @@ async def websocket_endpoint(websocket: WebSocket):
                     await _send_response({
                         "type": "response", "text": strip_ai_artifacts(response), "audio": tts_b64
                     })
-                    await send_telemetry(websocket)
-                    await websocket.send_text(json.dumps({"type": "status", "state": "idle"}))
+                    delivered = True
+                    try:
+                        await send_telemetry(_SOCKETS.get(client_key) or websocket)
+                    except Exception:
+                        pass
+                    await _deliver(client_key, {"type": "status", "state": "idle"})
                 except Exception as e:
-                    print(f"[WS] text error: {e}", flush=True)
+                    print(f"[WS] text error: {type(e).__name__}: {e}", flush=True)
                     await _end_failed_turn(_wd, reader_task)
-                    await _send_error(e, retry=user_text, speak=speak)
+                    await _rescue_reply(client_key, response, delivered, e, retry=user_text, speak=speak)
 
             else:
                 await websocket.send_text(json.dumps({
@@ -2679,6 +2720,8 @@ async def post_music(message: Request):
 
 if __name__ == "__main__":
     import uvicorn
+    import jobs as _jobs_owner
+    _jobs_owner.claim_ownership()
     port = int(os.environ.get("JARVIS_PORT", "8000"))
     # This computer only: the tools open apps and drive the browser with no
     # login. Remote devices come in through a proxy on this machine

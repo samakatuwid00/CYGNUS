@@ -166,7 +166,7 @@ def _names_running_app(text: str) -> bool:
         return False
 
 
-def takes(text: str, intent: str) -> bool:
+def takes(text: str, intent: str, client: str | None = None) -> bool:
     """Whether the loop should take this turn."""
     t = (text or "").strip()
     if not t or t.startswith("/"):
@@ -177,6 +177,10 @@ def takes(text: str, intent: str) -> bool:
             return False
     except Exception:
         pass
+    # "What is the status?" after a task the loop ran is about that task,
+    # not about Cygnus's background jobs ("Nothing is running", 2026-09-15).
+    if is_report_ask(t) and last_record(client or "default"):
+        return True
     if intent in INSTANT_INTENTS and not _names_running_app(t):
         return False
     return True
