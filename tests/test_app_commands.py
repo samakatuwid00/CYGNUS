@@ -27,6 +27,28 @@ def test_instructions_split_into_steps(text, steps):
     assert ac.plan(text) == steps
 
 
+@pytest.mark.parametrize("text, message", [
+    ("on the new session prompt what is the status of musubae? show it on the screen too",
+     "what is the status of musubae? show it on the screen too"),
+    ("start a new session and prompt what is the status of second brain", "what is the status of second brain"),
+    ("new session: hi", "hi"),
+    ("in a new chat, ask hermes to list my open tasks", "list my open tasks"),
+    ("what is the status of second brain in a new session", "what is the status of second brain")])
+def test_a_new_session_is_heard_wherever_it_is_said(text, message):
+    assert ac.plan(text) == [{"op": "new_session"}, {"op": "send", "text": message}]
+
+
+def test_a_session_word_inside_the_message_is_left_alone():
+    assert ac.plan("summarise what we did in the last session") == \
+        [{"op": "send", "text": "summarise what we did in the last session"}]
+
+
+def test_a_hermes_reply_is_tidied_for_speaking():
+    raw = ("Musubae: pending top priority.\n\n"
+           '::preview{file="C:/Users/deped/AppData/Local/Temp/musubae-status.html"}')
+    assert ac.tidy_reply(raw) == "Musubae: pending top priority.\n\n(Hermes made musubae-status.html; it's open in Hermes.)"
+
+
 def test_steps_read_as_the_preview_shows_them():
     assert [ac.describe(s) for s in ac.plan("new session then prompt: hi")] == ["New session", 'Send: "hi"']
 

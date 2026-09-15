@@ -22,11 +22,17 @@ from contextlib import contextmanager
 import running_apps
 
 READ_TIMEOUT_S = 240          # a Hermes turn with tools can take minutes
-SETTLE_S = 3.0                # the reply counts as finished once it stops growing this long
 _run_lock = threading.Lock()
 
 _NEW_SESSION_RE = re.compile(r"^(?:please\s+)?(?:(?:start|open|begin|create|make)\s+)?(?:a\s+)?(?:new|fresh)\s+"
                              r"(?:session|chat|conversation|thread)$", re.I)
+# "new session" anywhere a person says it, not only as its own "then" step:
+# "/hermes on the new session prompt what is the status of musubae" pasted the
+# whole line into the open session (2026-09-15).
+_SESSION = r"(?:a\s+|the\s+)?(?:new|fresh)\s+(?:session|chat|conversation|thread)"
+_NEW_SESSION_LEAD_RE = re.compile(r"^(?:please\s+)?(?:(?:on|in|with|using|start|open|begin|create|make)\s+)?"
+                                  + _SESSION + r"\b\s*(?:[,:;-]\s*|\s(?:and\s+)?(?:then\s+)?)", re.I)
+_NEW_SESSION_TAIL_RE = re.compile(r"\s*,?\s+(?:on|in)\s+" + _SESSION + r"\s*[.!]?$", re.I)
 _SPLIT_RE = re.compile(r"\s*(?:,\s*)?\b(?:and\s+)?then\b\s*,?\s*|\s*;\s*", re.I)
 _GENERIC = {"microsoft", "google", "windows", "desktop", "app", "the"}   # "Windows Terminal" is /terminal
 
@@ -68,6 +74,13 @@ def _message(clause: str) -> str:
 
 def plan(text: str) -> list[dict]:
     """The steps one instruction asks of an app, in order."""
+    text = (text or "").strip()
+    lead = _NEW_SESSION_LEAD_RE.match(text)
+    if lead and text[lead.end():].strip():
+        return [{"op": "new_session"}] + [s for s in plan(text[lead.end():]) if s["op"] != "new_session"]
+    tail = _NEW_SESSION_TAIL_RE.search(text)
+    if tail and text[:tail.start()].strip():
+        return [{"op": "new_session"}] + [s for s in plan(text[:tail.start()]) if s["op"] != "new_session"]
     steps = []
     for clause in _split(text):
         if _NEW_SESSION_RE.match(clause):
@@ -112,29 +125,60 @@ def targets(rows=None) -> list[dict]:
 
 # ---------------------------------------------------------------- drivers --
 
-@contextmanager
-def _clipboard(text: str):
-    """Put text on the clipboard for one paste, then put back what was there."""
+def _clip_get():
     import win32clipboard as cb
     import win32con
     cb.OpenClipboard()
     try:
-        saved = cb.GetClipboardData(win32con.CF_UNICODETEXT) if cb.IsClipboardFormatAvailable(win32con.CF_UNICODETEXT) else None
-        cb.EmptyClipboard()
-        cb.SetClipboardText(text, win32con.CF_UNICODETEXT)
+        return cb.GetClipboardData(win32con.CF_UNICODETEXT) if cb.IsClipboardFormatAvailable(win32con.CF_UNICODETEXT) else None
     finally:
         cb.CloseClipboard()
+
+
+def _clip_set(text):
+    import win32clipboard as cb
+    import win32con
+    cb.OpenClipboard()
+    try:
+        cb.EmptyClipboard()
+        if text is not None:
+            cb.SetClipboardText(text, win32con.CF_UNICODETEXT)
+    finally:
+        cb.CloseClipboard()
+
+
+@contextmanager
+def _clipboard(text: str):
+    """Put text on the clipboard for one paste, then put back what was there."""
+    saved = _clip_get()
+    _clip_set(text)
     try:
         yield
     finally:
         time.sleep(0.2)                             # let the paste read it first
-        cb.OpenClipboard()
-        try:
-            cb.EmptyClipboard()
-            if saved is not None:
-                cb.SetClipboardText(saved, win32con.CF_UNICODETEXT)
-        finally:
-            cb.CloseClipboard()
+        _clip_set(saved)
+
+
+def _copied(action) -> str | None:
+    """What `action` (pressing an app's Copy button) puts on the clipboard; the
+    owner's clipboard is put back after."""
+    saved = _clip_get()
+    try:
+        _clip_set("")
+        action()
+        time.sleep(0.8)
+        return _clip_get()
+    finally:
+        _clip_set(saved)
+
+
+def tidy_reply(text: str) -> str:
+    """A Hermes reply as Cygnus says it: its file-preview marker
+    (::preview{file="C:/.../x.html"}) becomes a plain sentence."""
+    text = re.sub(r'::preview\{file="([^"]+)"\}',
+                  lambda m: f"(Hermes made {m.group(1).replace(chr(92), '/').rsplit('/', 1)[-1]}; it's open in Hermes.)",
+                  text or "")
+    return text.strip()
 
 
 class HermesWindow:
@@ -152,10 +196,18 @@ class HermesWindow:
         return ctypes.windll.user32.GetForegroundWindow() == self.hwnd
 
     def _raise(self):
-        running_apps.bring_to_front(self.row)
-        time.sleep(0.4)
-        if not self._front():
-            raise DriveError("Hermes would not come to the front")
+        """Bring Hermes forward and wait until it really is. A minimised
+        window takes a moment to restore: a single 0.4 s check gave up on a
+        Hermes that was on its way up (2026-09-15)."""
+        for _ in range(2):
+            running_apps.bring_to_front(self.row)
+            end = time.time() + 2.0
+            while time.time() < end:
+                if self._front():
+                    time.sleep(0.3)                 # let the restore finish before any key
+                    return
+                time.sleep(0.1)
+        raise DriveError("Hermes would not come to the front")
 
     def _keys(self, keys: str):
         from pywinauto import keyboard
@@ -192,34 +244,42 @@ class HermesWindow:
         time.sleep(1.5)
         return "Started a new Hermes session."
 
+    @staticmethod
+    def _buttons(win, name: str) -> list:
+        return [c for c in win.descendants(control_type="Button") if (c.element_info.name or "") == name]
+
     def send(self, text: str) -> str:
         self._raise()
         win = self._window()
         box = self._message_box(win)
         top = box.element_info.rectangle.top
         before = set(self._texts(win, top))
+        finished_before = len(self._buttons(win, "Read aloud"))
         box.set_focus()
         time.sleep(0.3)
         with _clipboard(text):
             self._keys("^v")
             time.sleep(0.3)
         self._keys("{ENTER}")
-        return self._reply(win, top, before, text)
+        return self._reply(win, top, before, finished_before, text)
 
-    def _reply(self, win, top: int, before: set, sent: str) -> str:
-        start, last, steady_since = time.time(), None, None
+    def _reply(self, win, top: int, before: set, finished_before: int, sent: str) -> str:
+        """Hermes's own copy of its reply. A finished reply gets its own
+        Copy / Read aloud / Refresh buttons, so one more "Read aloud" means it
+        is done; its Copy gives the reply as written. Scraping the window's
+        text instead took a code block apart token by token (2026-09-15)."""
+        start = time.time()
         while time.time() - start < READ_TIMEOUT_S:
-            time.sleep(1.0)
-            new = [t for t in self._texts(win, top) if t not in before and t.strip() != sent.strip()]
-            joined = "\n".join(new).strip()
-            if joined and joined == last:
-                steady_since = steady_since or time.time()
-                if time.time() - steady_since >= SETTLE_S:
-                    return joined
-            else:
-                steady_since = None
-            last = joined
-        return (last or "") + ("\n(still going when I stopped reading)" if last else "")
+            time.sleep(1.5)
+            if len(self._buttons(win, "Read aloud")) > finished_before:
+                copies = self._buttons(win, "Copy")
+                copied = _copied(copies[-1].invoke) if copies else None
+                if copied:
+                    return tidy_reply(copied)
+                break
+        new = [t for t in self._texts(win, top) if t not in before and t.strip() != sent.strip()]
+        still = "" if time.time() - start < READ_TIMEOUT_S else "\n(still going when I stopped reading)"
+        return "\n".join(new).strip() + still
 
 
 DRIVERS = {"hermes-window": HermesWindow}

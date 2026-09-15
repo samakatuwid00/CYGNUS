@@ -145,6 +145,29 @@ Results: see "Spike results" below.
   13.4 s; at phone width through ts.net the menu, Tab, the two-step card and
   Cancel worked with no page errors.
 
+### Phone test fixes (2026-09-15)
+
+The owner's phone test, "/hermes on the new session prompt what is the
+status of musubae? show it on the screen too", pasted the whole line into
+the open session, and the answer read back was Hermes's HTML artifact taken
+apart token by token. Three fixes:
+
+- **"new session" is heard wherever it is said:** at the start ("on the new
+  session prompt X", "start a new session and ask X", "new session: X") or
+  the end ("X in a new session"), not only as its own "then" step.
+- **The reply is Hermes's own copy of it:** each finished reply gets Copy /
+  Read aloud / Refresh buttons; one more "Read aloud" means Hermes is done,
+  and pressing that message's Copy (through UI Automation, clipboard put
+  back) gives the reply as written. Its `::preview{file=...}` marker becomes
+  "(Hermes made x.html; it's open in Hermes.)".
+- **A minimised Hermes is waited for:** it takes a moment to restore; the
+  driver now waits up to 2 s (twice) for it to be in front instead of one
+  0.4 s check.
+
+Checked live with Hermes minimised: "on a new session prompt Reply with just
+the word PONG" became New session + Send, and Run answered "Started a new
+Hermes session. Hermes, to ...: PONG" in 10.0 s.
+
 Not yet: terminal targets (CLI agents share Windows Terminal tabs, and one
 is the Claude session doing this work: needs tab targeting first), other
 apps' drivers, Edit on the plan card, a task card in the Running panel, and
