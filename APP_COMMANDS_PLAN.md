@@ -168,6 +168,37 @@ Checked live with Hermes minimised: "on a new session prompt Reply with just
 the word PONG" became New session + Send, and Run answered "Started a new
 Hermes session. Hermes, to ...: PONG" in 10.0 s.
 
+### Reading the intent (2026-09-15, owner: "not hardcoded")
+
+The phrase rules above heard "new session" but nothing else: "on the
+session X prompt Y" or "go to my musubae chat" went to Hermes word for word,
+and "next slide" would have been typed into PowerPoint. Now:
+
+- **The model reads the instruction** against the app's own actions and may
+  use only those (`understand()`, rules_ai's router call). Hermes's actions:
+  new session, open a session by title (the sidebar's titles are given as
+  choices), send. Other apps: their abilities (all registry entries for the
+  running program, e.g. powerpnt + powerpoint) and the owner's rules.
+- **What it has no action for is said, not guessed:** a step naming an
+  action that isn't listed counts as missing too. Cygnus runs nothing,
+  names what the app can do (named actions; scanned buttons are only
+  counted, since their names are the window's own text) and says to add a
+  rule in the Apps panel.
+- **Apps with abilities are drivable:** abilities and rules run through the
+  voice router's own runners (`intent_router._run_ability` / `_run_rule`);
+  an ability marked "ask" always shows the plan first.
+- **Opening a Hermes session:** each session is a sidebar row named
+  "Reorder <title> <title> …"; the spoken name is matched to a title by
+  shared words and the row is invoked.
+- **Focus:** if something else takes the focus before a key (Chrome did),
+  Hermes is brought back once; a second loss stops.
+- No model answering: Hermes falls back to the phrase rules; other apps say
+  the model is needed.
+
+Checked live: "/hermes go to the PONG session and say thanks" became Open
+session "Reply with PONG" + Send, and answered "Anytime."; "/notepad next
+slide" was refused with Notepad's actions and the rule hint, nothing run.
+
 Not yet: terminal targets (CLI agents share Windows Terminal tabs, and one
 is the Claude session doing this work: needs tab targeting first), other
 apps' drivers, Edit on the plan card, a task card in the Running panel, and

@@ -112,6 +112,105 @@ def test_unknown_and_not_yet_drivable_apps_say_so(fake):
     assert fake.calls == []
 
 
+# ------------------------------------------------ reading the intent --
+
+PPT_ROW = {"id": "20", "name": "PowerPoint", "group": "apps", "doing": "Deck",
+           "windows": [{"hwnd": 20, "title": "Deck - PowerPoint"}], "exes": ["powerpnt.exe"]}
+APPS = {"powerpnt": {"bin": r"C:\Office\POWERPNT.EXE", "abilities": [
+            {"id": "powerpnt.save", "name": "Save", "level": "ask", "needs": {}},
+            {"id": "powerpnt.find", "name": "Find in the document", "level": "safe", "needs": {}}]},
+        "powerpoint": {"bin": r"C:\Office\POWERPNT.EXE", "abilities": [
+            {"id": "powerpoint.click_new_slide", "name": "Click \u201cNew Slide\u201d", "level": "safe"},
+            {"id": "powerpoint.click_bold", "name": "Click \u201cBold\u201d", "level": "safe"},
+            {"id": "powerpoint.hidden", "name": "Never", "level": "never"}]}}
+HERMES_ROWS = [row("13", "Hermes desktop app", group="agents")]
+
+
+def model_says(monkeypatch, data):
+    seen = []
+    monkeypatch.setattr(ac, "_ask_model", lambda prompt: (seen.append(prompt), (data, "cx/gpt-5.6-luna"))[1])
+    return seen
+
+
+def test_powerpoint_is_drivable_through_its_abilities():
+    t = ac.targets([PPT_ROW], APPS)
+    assert t == [{"slug": "powerpoint", "row": "20", "name": "PowerPoint", "doing": "Deck", "kind": "window",
+                  "driver": "abilities"}]
+    acts = ac.actions(t[0], PPT_ROW, APPS)
+    assert [a["does"] for a in acts] == ["Save", "Find in the document", "Click \u201cNew Slide\u201d",
+                                         "Click \u201cBold\u201d"]         # "never" is left out
+
+
+def test_hermes_reads_the_intent_not_the_words(monkeypatch):
+    prompt = model_says(monkeypatch, {"steps": [
+        {"do": "open_session", "args": {"name": "Musubae status check"}},
+        {"do": "send", "args": {"text": "any update?"}}], "missing": ""})
+    got = ac.understand("hermes", "go to my musubae chat and ask for an update", rows=HERMES_ROWS, apps={},
+                        sessions=["Reply with PONG", "Musubae status check"])
+    assert got["steps"] == [{"op": "open_session", "name": "Musubae status check"},
+                            {"op": "send", "text": "any update?"}]
+    assert "Musubae status check" in prompt[0] and "go to my musubae chat" in prompt[0]
+
+
+def test_what_the_app_cannot_do_is_said_with_what_it_can(monkeypatch):
+    model_says(monkeypatch, {"steps": [], "missing": "next slide"})
+    got = ac.understand("powerpoint", "next slide", rows=[PPT_ROW], apps=APPS)
+    assert got["steps"] == [] and got["missing"] == "next slide"
+    reply = ac.cannot_reply(got["target"], got["missing"], got["actions"])
+    assert reply.startswith("I can't do \u201cnext slide\u201d in PowerPoint, sir: it has no action for that.")
+    assert "add a rule for PowerPoint in the Apps panel" in reply
+
+
+def test_the_refusal_names_actions_but_only_counts_scanned_buttons():
+    acts = [{"do": "ability:n:save", "does": "Save"}, {"do": "ability:n:find", "does": "Find"},
+            {"do": "ability:n:tab", "does": "Click \u201cHost 76.13.23.174. Modified.\u201d", "scanned": True},
+            {"do": "ability:n:tab2", "does": "Click \u201cschool. Modified.\u201d", "scanned": True},
+            {"do": "rule:n:r1", "does": "your rule: next page \u2192 Page Down"}]
+    reply = ac.cannot_reply({"name": "Notepad"}, "next slide", acts)
+    assert "What I can do there: Save; Find; and 2 buttons found in its window." in reply
+    assert "76.13.23.174" not in reply and "Your rules for it: your rule: next page \u2192 Page Down." in reply
+
+
+def test_an_invented_action_counts_as_missing(monkeypatch):
+    model_says(monkeypatch, {"steps": [{"do": "ability:powerpoint:next_slide", "args": {}}], "missing": ""})
+    got = ac.understand("powerpoint", "next slide", rows=[PPT_ROW], apps=APPS)
+    assert got["steps"] == [] and got["missing"] == "next slide"
+
+
+def test_an_ability_step_keeps_its_confirm_level(monkeypatch):
+    model_says(monkeypatch, {"steps": [{"do": "ability:powerpnt:powerpnt.save", "args": {"junk": 1}}], "missing": ""})
+    got = ac.understand("powerpoint", "save it", rows=[PPT_ROW], apps=APPS)
+    assert got["steps"] == [{"op": "ability", "app": "powerpnt", "id": "powerpnt.save", "args": {},
+                             "label": "Save", "ask": True}]
+    assert ac.describe(got["steps"][0]) == "Save"
+
+
+def test_without_a_model_hermes_falls_back_to_phrases(monkeypatch):
+    monkeypatch.setattr(ac, "_ask_model", lambda prompt: (None, "no model"))
+    got = ac.understand("hermes", "new session then prompt: hi", rows=HERMES_ROWS, apps={}, sessions=[])
+    assert got["by"] == "phrases" and got["steps"] == [{"op": "new_session"}, {"op": "send", "text": "hi"}]
+    ppt = ac.understand("powerpoint", "next slide", rows=[PPT_ROW], apps=APPS)
+    assert ppt.get("no_model") and ac.cannot_reply(ppt["target"], "", [], True).startswith("I need my model")
+
+
+@pytest.mark.parametrize("name, title", [
+    ("my musubae chat", "Musubae status check"), ("Check second brain vault", "Check second brain vault staleness"),
+    ("the PONG one", "Reply with PONG"), ("excel budget", None)])
+def test_a_spoken_session_name_finds_its_title(name, title):
+    titles = ["Reply with PONG", "Musubae status check", "Check second brain vault staleness"]
+    assert ac.best_title(name, titles) == title
+
+
+def test_an_ability_step_runs_through_the_voice_routers_runner(monkeypatch):
+    import intent_router
+    ran = []
+    monkeypatch.setattr(intent_router, "_run_ability",
+                        lambda app, aid, args, apps: (ran.append((app, aid)), ("Find in the document, sir (PowerPoint).", True))[1])
+    step = {"op": "ability", "app": "powerpnt", "id": "powerpnt.find", "args": {}, "label": "Find in the document"}
+    assert ac.run("powerpoint", [step], rows=[PPT_ROW], apps=APPS) == "Find in the document, sir (PowerPoint)."
+    assert ran == [("powerpnt", "powerpnt.find")]
+
+
 def test_one_command_at_a_time(fake):
     assert ac._run_lock.acquire(blocking=False)
     try:

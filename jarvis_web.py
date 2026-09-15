@@ -2163,16 +2163,33 @@ async def websocket_endpoint(websocket: WebSocket):
             elif mtype == "app_command":
                 # "/hermes start a new session then prompt: …": one step runs
                 # at once; more than one comes back as a plan for Run / Cancel.
+                # The model reads the instruction against the app's own
+                # actions; what it has no action for is said, never guessed.
                 import app_commands
                 import secrets
                 slug = (message.get("target") or "").strip().lower()
-                steps = app_commands.plan(message.get("text") or "")
+                said = (message.get("text") or "").strip()
                 speak = bool(message.get("speak", True))
-                sstore_log("user", f"/{slug} {message.get('text') or ''}".strip())
-                if not steps:
-                    await websocket.send_text(json.dumps({"type": "error",
-                                                          "text": f"Tell me what /{slug} should do, sir."}))
-                elif len(steps) == 1:
+                sstore_log("user", f"/{slug} {said}".strip())
+                await websocket.send_text(json.dumps({"type": "status", "state": "thinking"}))
+                read = await asyncio.to_thread(app_commands.understand, slug, said)
+                steps = read["steps"]
+                refusal = None
+                if not read["target"]:
+                    refusal = f"Nothing called /{slug} is running, sir."
+                elif not read["target"]["driver"]:
+                    refusal = (f"I can't drive {read['target']['name']} yet, sir: "
+                               "it has no actions or rules I can use.")
+                elif read["missing"] or not steps:
+                    refusal = app_commands.cannot_reply(read["target"], read["missing"] or said,
+                                                        read["actions"], bool(read.get("no_model")))
+                if refusal:
+                    sstore_log("assistant", refusal)
+                    brain.note_late_result(refusal, client=client_key)
+                    await websocket.send_text(json.dumps({"type": "response", "text": refusal,
+                                                          "audio": await tts_to_b64(refusal) if speak else None}))
+                    await websocket.send_text(json.dumps({"type": "status", "state": "idle"}))
+                elif len(steps) == 1 and not steps[0].get("ask"):
                     await _run_app_command(websocket, client_key, slug, steps, speak)
                 else:
                     for old in [k for k, (_, _, at) in _APP_PLANS.items() if time.time() - at > _APP_PLAN_S]:
