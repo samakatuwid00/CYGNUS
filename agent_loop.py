@@ -30,14 +30,146 @@ INSTANT_INTENTS = {
     "list_sites", "add_site", "report", "launch", "clarify_play", "clarify_search", "clarify_open"}
 
 _current_app: dict = {}                 # client -> the app in play (slug)
+_records: dict = {}                     # client -> the last tasks' records, newest last
 _last_stats: dict = {}
 _lock = threading.Lock()
+
+# Tools that change something; the rest only look.
+_ACTING = {"app_step", "show_window", "open_app", "open_site", "delegate", "remember", "slash"}
+
+
+def remember_slash(client: str, slug: str, said: str, result: str) -> None:
+    """A "/app …" command's outcome joins the record, so "status?" covers it."""
+    _remember_record(client, {"user": f"/{slug} {said}", "ran": [("slash", {"slug": slug}, result[:4000])],
+                              "reply": result, "ts": time.time(), "ago": time.strftime("%H:%M")})
+# "status?", "what did you do?", "did it work?": answered from the record, no tools.
+_REPORT_ASK_RE = re.compile(
+    r"^\s*(?:(?:please|cygnus|jarvis|hey|ok(?:ay)?|so|and|sir|now)[,\s]+)*"
+    r"(?:status\??|what(?:'s|\s+is)?\s+(?:happened|the\s+status|going\s+on)|what\s+did\s+you\s+(?:do|change|make|send)"
+    r"|did\s+(?:it|that)\s+(?:work|go\s+through|send|run)|what\s+went\s+wrong|why\s+did|how\s+did\s+(?:it|that)\s+go"
+    r"|explain(?:\s+(?:it|that))?|summari[sz]e(?:\s+(?:it|that))?|recap|tell\s+me\s+what\s+(?:happened|you\s+did))"
+    r"\s*[.!?]*\s*$", re.I)
+# A closing line that denies work the record shows.
+_DENIAL_RE = re.compile(r"\b(nothing\s+(?:was\s+)?(?:sent|ran|run|happened|done)|(?:i\s+)?(?:did\s+not|didn'?t)\s+"
+                        r"(?:send|prompt|run|open|do)|instead\s+of\s+(?:prompting|sending|running)|no\s+prompt\s+was\s+sent)\b", re.I)
+
+
+def is_report_ask(text: str) -> bool:
+    return bool(_REPORT_ASK_RE.match(text or ""))
+
+
+def last_record(client: str) -> dict | None:
+    rows = _records.get(client or "default") or []
+    return rows[-1] if rows else None
+
+
+def _remember_record(client: str, rec: dict) -> None:
+    rows = _records.setdefault(client or "default", [])
+    rows.append(rec)
+    del rows[:-5]
+
+
+def _reply_of(result: str) -> str:
+    """Hermes's words out of 'Hermes, to "…": <reply>'."""
+    m = re.match(r'^\w[\w ]*, to "[^"]*(?:"|…")\s*:\s*(.*)$', result or "", re.S)
+    return (m.group(1) if m else result or "").strip()
+
+
+def report(ran: list, spoken: bool = False) -> str:
+    """What was done, from the tool record and nothing else: the line every
+    acting turn ends with, and what "status?" is answered from. On
+    2026-09-15 the model's own closing line said "nothing was sent there"
+    about a prompt the record shows it sent."""
+    acted, said, looked = [], [], []          # acted: fragments; said: whole sentences a tool returned
+    for name, args, result in ran:
+        a = args or {}
+        app = (a.get("app") or "").strip()
+        if name == "app_step":
+            do = str(a.get("do") or "")
+            raw = a.get("args")
+            if isinstance(raw, str):
+                try:
+                    raw = json.loads(raw) if raw.strip() else {}
+                except ValueError:
+                    raw = {"text": raw}
+            raw = raw or {}
+            if do == "new_session":
+                acted.append(f"started a new {app.title()} session")
+            elif do == "open_session":
+                acted.append(f"opened the {app.title()} session “{raw.get('name', '')}”")
+            elif do == "send":
+                reply = _reply_of(result)
+                if spoken and len(reply) > 600:
+                    reply = reply[:597].rstrip() + "…"
+                acted.append(f"sent “{raw.get('text', '')}” to {app.title()}, which replied: {reply}")
+            else:
+                said.append(_short_result(result))
+        elif name in _ACTING:
+            said.append(_short_result(result))
+        else:
+            looked.append({"whats_running": "what is running", "app_actions": f"{app.title()}'s actions",
+                           "read_window": f"{app.title()}'s window", "describe_window": f"a picture of {app.title()}",
+                           "search_web": "the web", "read_file": "a file", "list_directory": "a folder",
+                           "recall": "my memory"}.get(name, name))
+    if not acted and not said and not looked:
+        return "I didn't run anything for that, sir."
+    parts = []
+    if acted:
+        parts.append("I " + "; then ".join(acted) + ("" if acted[-1].endswith((".", "!", "?", "…")) else "."))
+    parts += [s if s.endswith((".", "!", "?", "…")) else s + "." for s in said]
+    if looked:
+        parts.append("I looked at " + ", ".join(dict.fromkeys(looked)) + ".")
+    return " ".join(parts)
+
+
+def _record_leads(ran: list) -> bool:
+    """The record replaces the model's closing words when content passed
+    through: a message sent to an app, a hand-off, a memory write."""
+    for name, args, _ in ran:
+        if name in ("delegate", "remember"):
+            return True
+        if name == "app_step" and str((args or {}).get("do")) == "send":
+            return True
+    return False
+
+
+def _short_result(result: str) -> str:
+    r = (result or "").strip().replace("[NEEDS_CONFIRM", "asked you to confirm [")
+    return r if len(r) <= 400 else r[:397].rstrip() + "…"
+
+
+def verify(final: str, ran: list, asked_question: bool) -> str:
+    """The model's closing text checked against the record: a denial of work
+    that ran, or a claim of work that did not, is replaced by the record."""
+    acted = [r for r in ran if r[0] in _ACTING]
+    if acted and _DENIAL_RE.search(final or ""):
+        return report(ran, spoken=True)
+    import brain_gemini as bg
+    if not acted and bg._ACTION_CLAIM_RE.match(final or "") and not asked_question:
+        return "I didn't do that yet, sir: nothing ran. Tell me which app or site, and I will."
+    return final
+
+
+_AGENT_WORDS = re.compile(r"\b(hermes|claude|codex|gemini|opencode)\b", re.I)
+
+
+def _names_running_app(text: str) -> bool:
+    """"prompt hermes: what day is it today?" names Hermes; the time rule
+    must not take it (it did, 2026-09-15: nothing was sent)."""
+    if _AGENT_WORDS.search(text):
+        return True
+    try:
+        import app_commands
+        words = set(re.findall(r"[a-z0-9]+", text.lower()))
+        return any(t["slug"] in words for t in app_commands.targets())
+    except Exception:
+        return False
 
 
 def takes(text: str, intent: str) -> bool:
     """Whether the loop should take this turn."""
     t = (text or "").strip()
-    if not t or t.startswith("/") or intent in INSTANT_INTENTS:
+    if not t or t.startswith("/"):
         return False
     try:
         import tools
@@ -45,6 +177,8 @@ def takes(text: str, intent: str) -> bool:
             return False
     except Exception:
         pass
+    if intent in INSTANT_INTENTS and not _names_running_app(t):
+        return False
     return True
 
 
@@ -197,7 +331,7 @@ def _clean(text: str) -> str:
 
 _SYSTEM = """You are Cygnus, a voice assistant on the owner's Windows laptop. Address them as sir; answer in one to three short spoken sentences, no markup or lists.
 Work like an agent: read what the user means, use a tool, look at what it returned, then decide the next step. Check results; if something failed, try one other way, then say plainly what happened. Never say you did something no tool did. Ask only when a real choice is open.
-Running programs are addressed by slug (see whats_running). For a running app: app_actions first, then app_step with one of its actions. Hermes's actions are new_session, open_session (a title from the list), send (the user's words). An app with no action for the request: say what it can do and that a rule can be added in the Apps panel; do not improvise.
+Running programs are addressed by slug (see whats_running). For a running app: app_actions first, then app_step with one of its actions. Hermes's actions are new_session, open_session (a title from the list), send (the user's words). Send in the session that is open unless the user asks for a new one or names another. An app with no action for the request: say what it can do and that a rule can be added in the Apps panel; do not improvise.
 Hand bigger jobs (code, files, research) to delegate; say the answer comes later.{extra}"""
 
 
@@ -246,8 +380,27 @@ def run(brain, text: str, ctx: dict) -> str | None:
     deadline = start + BUDGET_S
     bg._progress_local.deadline = deadline
     client = _make_client()
-    base = [{"role": "system", "content": _system(ctx)}] + _history(brain) + [{"role": "user", "content": text}]
-    ran, acked, final, used = [], False, None, None
+    client_key = ctx.get("client", "default")
+    # A question about what happened is answered from the record, no tools:
+    # "status?" once became a prompt sent into a Hermes session (2026-09-15).
+    asking = is_report_ask(text)
+    if asking:
+        # From the record, no model: asked what it did, the model once
+        # answered with the running-apps list instead (2026-09-15). No
+        # record this session: the old routing answers from the job log.
+        rec = last_record(client_key)
+        _lock.release()
+        bg._progress_local.deadline = saved_deadline
+        if not rec:
+            return None
+        final = f"The last thing I did, at {rec['ago']}, for “{rec['user'][:120]}”: {report(rec['ran'], spoken=True)}"
+        _last_stats = {"model": None, "tools": [], "rounds": 0, "seconds": 0.0, "from": "record"}
+        brain.conversation.append({"role": "assistant", "content": final})
+        return final
+    system = _system(ctx)
+    tools_arg = TOOLS
+    base = [{"role": "system", "content": system}] + _history(brain) + [{"role": "user", "content": text}]
+    ran, acked, final, used, broke, waiting = [], False, None, None, None, False
     try:
         for model in _models():
             messages = list(base)
@@ -256,8 +409,8 @@ def run(brain, text: str, ctx: dict) -> str | None:
                     left = deadline - time.monotonic()
                     if left < 3:
                         break
-                    r = client.chat.completions.create(model=model, messages=messages, tools=TOOLS,
-                                                       tool_choice="auto", max_tokens=700,
+                    r = client.chat.completions.create(model=model, messages=messages, tools=tools_arg,
+                                                       tool_choice="auto" if tools_arg else None, max_tokens=700,
                                                        timeout=min(CALL_CAP_S, left))
                     if not r.choices:
                         raise RuntimeError("empty reply")
@@ -276,7 +429,7 @@ def run(brain, text: str, ctx: dict) -> str | None:
                                 out = f"[Tool Error] {tc.function.name}: {type(e).__name__}: {e}"
                             if tc.function.name == "delegate":
                                 out = tidy_agent_output(out, (args.get("agent") or "hermes").title())
-                            ran.append((tc.function.name, args, out[:300]))
+                            ran.append((tc.function.name, args, out[:4000]))
                             print(f"[agent] {tc.function.name} {json.dumps(args)[:120]} -> {out[:120]!r}", flush=True)
                             messages.append({"role": "tool", "tool_call_id": tc.id, "content": out[:6000]})
                             if "[NEEDS_CONFIRM" in out or out.startswith("[Held] ") or out.startswith("[NEEDS_PICK]"):
@@ -289,35 +442,47 @@ def run(brain, text: str, ctx: dict) -> str | None:
                                 pass
                         if stop:                # the user must answer before anything else runs
                             final = stop.replace("[Held] ", "", 1)
+                            waiting = True
                             break
                         continue
                     final = _clean(msg.content)
                     if not final:
                         raise RuntimeError("empty reply")
                     break
-                if final is None:               # rounds or time spent: a plain summary, no more tools
-                    r = client.chat.completions.create(
-                        model=model, max_tokens=300, timeout=min(CALL_CAP_S, max(3, deadline - time.monotonic())),
-                        messages=messages + [{"role": "user", "content":
-                                              "Stop here. In one or two spoken sentences: what you did and what is left."}])
-                    final = _clean(r.choices[0].message.content) if r.choices else ""
+                if final is None:               # rounds or time spent
+                    final = report(ran, spoken=True) + " I ran out of steps there, sir."
                 used = model
                 break
             except bg._OutOfTime:
+                broke = "out of time"
                 break
             except Exception as e:
                 print(f"[agent] {model} failed: {type(e).__name__}: {str(e)[:120]}", flush=True)
                 bg._report_unhealthy(model, str(e))
+                broke = type(e).__name__
+                if ran:                         # work was done: the record says so, not a next model
+                    break
                 continue
     finally:
         bg._progress_local.deadline = saved_deadline
         _lock.release()
+    acted = [r for r in ran if r[0] in _ACTING]
+    if not final and ran:                       # the model stopped after doing things: report the record
+        final = report(ran, spoken=True) + " Then my model stopped answering, sir."
     if not final:
         return None
-    if not ran and bg._ACTION_CLAIM_RE.match(final) and not (text or "").rstrip().endswith("?"):
-        final = "I didn't do that yet, sir: nothing ran. Tell me which app or site, and I will."
+    asked = (text or "").rstrip().endswith("?") or asking
+    if not waiting:                             # a confirm or pick question is passed on as it is
+        final = verify(final, ran, asked)
+        if _record_leads(ran) and not asking and not final.startswith(("I sent", "I started", "I opened", "I didn't")):
+            # The record leads; the model's own closing words follow only when short.
+            tail = final if len(final) <= 220 and not _DENIAL_RE.search(final) else ""
+            final = report(ran, spoken=True) + (" " + tail if tail else "")
     _last_stats = {"model": used, "tools": [n for n, _, _ in ran], "rounds": len(ran),
-                   "seconds": round(time.monotonic() - start, 1)}
+                   "seconds": round(time.monotonic() - start, 1), "broke": broke}
+    if not asking:
+        _remember_record(client_key, {"user": text, "ran": ran, "reply": final, "ts": time.time(),
+                                      "ago": time.strftime("%H:%M")})
     brain.conversation.append({"role": "assistant", "content": final})
     return final
 

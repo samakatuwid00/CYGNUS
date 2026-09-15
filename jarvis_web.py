@@ -2465,6 +2465,11 @@ async def _run_app_command(client_key: str, slug: str, steps: list, speak: bool)
         await _say(client_key, f"/{slug} didn't work: {e}", speak, "error")
         return
     print(f"[apps] /{slug} -> {result[:160]!r}", flush=True)
+    try:
+        import agent_loop
+        agent_loop.remember_slash(client_key, slug, " / ".join(app_commands.describe(s) for s in steps), result)
+    except Exception:
+        pass
     await _say(client_key, result, speak)
 
 

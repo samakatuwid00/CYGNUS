@@ -95,10 +95,10 @@ def test_a_claim_with_no_tool_run_is_not_relayed(loop):
     assert out.startswith("I didn't do that yet, sir: nothing ran.")
 
 
-def test_the_round_cap_ends_with_a_plain_summary(loop):
-    loop([reply(tool_calls=[call("whats_running", {})])] * 4 + [reply("I listed what runs; nothing else was needed.")])
+def test_the_round_cap_ends_with_the_record(loop):
+    loop([reply(tool_calls=[call("whats_running", {})])] * 4)
     out = al.run(FakeBrain(), "keep looking", {"client": "c"})
-    assert out == "I listed what runs; nothing else was needed."
+    assert out == "I looked at what is running. I ran out of steps there, sir."
     assert al.last_stats()["rounds"] == 4
 
 
@@ -107,6 +107,59 @@ def test_a_delegated_answer_is_checked_before_relay(loop, monkeypatch):
     client = loop([reply(tool_calls=[call("delegate", {"agent": "hermes", "task": "t"})]), reply("Hermes didn't finish, sir.")])
     al.run(FakeBrain(), "ask hermes", {"client": "c"})
     assert client.sent[1]["messages"][-1]["content"].startswith("Hermes came back with tool markup and no answer")
+
+
+SENT = ("app_step", {"app": "hermes", "do": "send", "args": '{"text":"what is musubae?"}'},
+        'Hermes, to "what is musubae?": Musubae is your musubi business in Pasacao.')
+
+
+def test_the_report_comes_from_the_record():
+    ran = [("app_actions", {"app": "hermes"}, "{…}"),
+           ("app_step", {"app": "hermes", "do": "new_session", "args": ""}, "Started a new Hermes session."),
+           SENT]
+    assert al.report(ran) == ("I started a new Hermes session; then sent “what is musubae?” to Hermes, which "
+                              "replied: Musubae is your musubi business in Pasacao. I looked at Hermes's actions.")
+    assert al.report([("whats_running", {}, "Servers: …")]) == "I looked at what is running."
+    assert al.report([("show_window", {"app": "hermes"}, "Hermes desktop app is in front, sir.")]) == \
+        "Hermes desktop app is in front, sir."
+    assert al.report([]) == "I didn't run anything for that, sir."
+
+
+def test_a_denial_of_work_that_ran_is_replaced_by_the_record():
+    denial = "Sir, I answered that directly instead of prompting Hermes, so nothing was sent there."
+    assert al.verify(denial, [SENT], False).startswith("I sent “what is musubae?” to Hermes, which replied:")
+    assert al.verify("Hermes says it is your musubi business, sir.", [SENT], False) == "Hermes says it is your musubi business, sir."
+
+
+def test_an_acting_turn_ends_with_the_record_then_the_models_short_words(loop, monkeypatch):
+    monkeypatch.setattr(al, "_run_tool", lambda n, a, c: SENT[2])
+    loop([reply(tool_calls=[call("app_step", SENT[1])]), reply("Musubae is your delivery-only musubi business, sir.")])
+    out = al.run(FakeBrain(), 'now prompt next, "what is musubae?"', {"client": "c"})
+    assert out == ("I sent “what is musubae?” to Hermes, which replied: Musubae is your musubi business in "
+                   "Pasacao. Musubae is your delivery-only musubi business, sir.")
+    assert al.last_record("c")["ran"][0][0] == "app_step"
+
+
+def test_status_is_answered_from_the_record_with_no_tools(loop, monkeypatch):
+    monkeypatch.setattr(al, "_run_tool", lambda n, a, c: SENT[2])
+    loop([reply(tool_calls=[call("app_step", SENT[1])]), reply("Done.")])
+    al.run(FakeBrain(), "prompt hermes: what is musubae?", {"client": "s"})
+    client = loop([reply("should not be asked")])
+    out = al.run(FakeBrain(), "status?", {"client": "s"})
+    assert out.startswith("The last thing I did, at ") and out.endswith(
+        "for “prompt hermes: what is musubae?”: I sent “what is musubae?” to Hermes, which replied: "
+        "Musubae is your musubi business in Pasacao.")
+    assert client.sent == []                                     # no model, no tools
+    assert al.run(FakeBrain(), "status?", {"client": "nobody"}) is None   # no record: the old routing answers
+    assert al.is_report_ask("what did you do?") and al.is_report_ask("did it work") and not al.is_report_ask("send status to hermes")
+
+
+def test_a_model_failure_after_work_ends_with_the_record(loop, monkeypatch):
+    monkeypatch.setattr(al, "_run_tool", lambda n, a, c: SENT[2])
+    loop([reply(tool_calls=[call("app_step", SENT[1])]), RuntimeError("Request timed out.")])
+    out = al.run(FakeBrain(), "prompt hermes: what is musubae?", {"client": "f"})
+    assert out.startswith("I sent “what is musubae?” to Hermes, which replied:")
+    assert out.endswith("Then my model stopped answering, sir.")
 
 
 def test_tidy_agent_output():
@@ -119,8 +172,11 @@ def test_tidy_agent_output():
 @pytest.mark.parametrize("text, intent, taken", [
     ("display hermes", "general", True), ("on the new session, prompt: what is musubae?", "general", True),
     ("open notepad", "app_reference", True), ("what time is it", "time", False), ("stop the music", "stop", False),
-    ("/hermes hi", "general", False), ("ok", "general", False), ("what's running", "running", True)])
-def test_which_turns_the_loop_takes(text, intent, taken):
+    ("/hermes hi", "general", False), ("ok", "general", False), ("what's running", "running", True),
+    ("prompt hermes: what day is it today?", "time", True), ("ask claude to stop the music", "stop", True)])
+def test_which_turns_the_loop_takes(text, intent, taken, monkeypatch):
+    import app_commands
+    monkeypatch.setattr(app_commands, "targets", lambda rows=None, apps=None: [])
     assert al.takes(text, intent) is taken
 
 

@@ -71,6 +71,17 @@ raw tool markup relayed, and a page read instead of opened.
 Shipped with `JARVIS_AGENT_LOOP=lead` in `.env`; `shadow` logs decisions
 without acting, `off` restores the old routing entirely.
 
+## Feedback and verification (2026-09-15, evening)
+
+The loop acted without saying so, and once denied it. Now every acting
+turn ends with a report built from the tool record, not the model ("I
+started a new Hermes session; then sent 'X' to Hermes, which replied: …");
+a closing line that contradicts the record is replaced by it; "status?" /
+"what did you do?" are answered from the last task's record with no model
+and no tools (no record: the old routing's job log); a failure after work
+ends with the record. Sentences naming a running app or an agent belong to
+the loop even when a phrase rule (time, stop, …) would claim them.
+
 ## Kept as they were
 
 Slash commands, the confirm/clarify gate's questions and answers, the
