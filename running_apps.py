@@ -635,7 +635,40 @@ def focus_of(text):
 
 # ------------------------------------------------ phase 4: seeing more --
 
+# One thread for everything UI Automation. Its COM objects belong to the
+# thread that made them; called from another thread they wait for that one
+# to answer, and a pool thread never does. Two "/hermes" commands in a row
+# on asyncio's pool hung the second for its whole 120 s (2026-09-15).
+import concurrent.futures as _cf
+import threading as _threading
+
+_UI_THREAD = "ui-automation"
+
+
+def _ui_init():
+    try:
+        import comtypes
+        comtypes.CoInitialize()
+    except Exception:
+        pass
+
+
+_UI = _cf.ThreadPoolExecutor(max_workers=1, thread_name_prefix=_UI_THREAD, initializer=_ui_init)
+
+
+def ui_call(fn, *args, **kwargs):
+    """Run fn on the UI Automation thread and wait for it (or run it here
+    when this already is that thread)."""
+    if _threading.current_thread().name.startswith(_UI_THREAD):
+        return fn(*args, **kwargs)
+    return _UI.submit(fn, *args, **kwargs).result()
+
+
 def window_text(row, lines=TEXT_LINES):
+    return ui_call(_window_text, row, lines)
+
+
+def _window_text(row, lines=TEXT_LINES):
     """What a row's window shows as text, through Windows UI Automation: a
     terminal's buffer (its TextPattern), else the window's own text labels.
     '' when there is none (a canvas, a video, a window with no UIA text)."""

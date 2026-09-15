@@ -199,6 +199,30 @@ Checked live: "/hermes go to the PONG session and say thanks" became Open
 session "Reply with PONG" + Send, and answered "Anytime."; "/notepad next
 slide" was refused with Notepad's actions and the rule hint, nothing run.
 
+### Delivery and the UI thread (2026-09-15, afternoon)
+
+Two "/hermes" commands from the phone got no reply. Two causes, both fixed:
+
+- **Replies were tied to the socket the command came on.** The phone's
+  browser drops its socket whenever the screen dims (a dozen reconnects in
+  five minutes in the log), and the reply, or the RUN card, went nowhere.
+  Now an app command runs as a task of its own, detached from the socket;
+  every reply goes to the client's *current* socket (`_SOCKETS`, keyed
+  remote / local / desktop / session), and with no socket it is kept up to
+  10 minutes and sent on the next connection (RUN cards included, while
+  their plan is still valid). The page reconnects at once when it becomes
+  visible again. Each command logs `[apps] …` lines.
+- **UI Automation from many threads hung.** asyncio's pool ran the first
+  command on one thread and the next on another; COM objects made on the
+  first were waited on from the second, which never answered: the second
+  command's "understand" step timed out at 120 s, twice. All UI Automation
+  (session titles, driving Hermes, window text) now runs on one dedicated
+  thread (`running_apps.ui_call`).
+
+Checked live through ts.net: send a two-step command and drop the socket
+at once; reconnect 25 s later: the RUN card arrives. Send a one-step
+command and drop; reconnect 40 s later: the answer arrives. No hang.
+
 Not yet: terminal targets (CLI agents share Windows Terminal tabs, and one
 is the Claude session doing this work: needs tab targeting first), other
 apps' drivers, Edit on the plan card, a task card in the Running panel, and

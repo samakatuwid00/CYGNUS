@@ -738,28 +738,58 @@ def _job_cards(recent_s: float = 900) -> list[dict]:
 # Replies that could not be sent because the client's socket closed mid-turn
 # (a phone reconnecting, 2026-09-12: "websocket.send after websocket.close"),
 # kept per client and sent when that client connects again. Last 3, 10 min.
-_UNDELIVERED: dict[str, list] = {}
+_UNDELIVERED: dict[str, list] = {}     # client -> [(time, payload)]
 _UNDELIVERED_TTL_S = 600
+# The socket each client has right now ("remote", "local", "desktop",
+# "session:<id>"): a reply for a client goes to its current socket, not to
+# the one its request came in on. The phone's browser drops the socket
+# whenever the screen dims, and on 2026-09-15 two slash commands were
+# cancelled with the connection they arrived on: nothing ran, nothing said.
+_SOCKETS: dict[str, WebSocket] = {}
+
+
+def _stash(client: str | None, payload: dict) -> None:
+    if not client or not payload:
+        return
+    rows = [r for r in _UNDELIVERED.get(client, []) if time.time() - r[0] < _UNDELIVERED_TTL_S]
+    _UNDELIVERED[client] = (rows + [(time.time(), payload)])[-5:]
+    print(f"[WS] {payload.get('type')} kept for {client} (no socket): "
+          f"{(payload.get('text') or payload.get('target') or '')[:60]!r}", flush=True)
 
 
 def _stash_reply(client: str | None, text: str) -> None:
-    if not client or not text:
-        return
-    rows = [r for r in _UNDELIVERED.get(client, []) if time.time() - r[0] < _UNDELIVERED_TTL_S]
-    _UNDELIVERED[client] = (rows + [(time.time(), strip_ai_artifacts(text))])[-3:]
-    print(f"[WS] reply kept for {client} (socket closed): {text[:60]!r}", flush=True)
+    if text:
+        _stash(client, {"type": "response", "text": strip_ai_artifacts(text), "audio": None, "deferred": True})
 
 
 async def _flush_undelivered(websocket: WebSocket, client: str) -> None:
     rows = [r for r in _UNDELIVERED.pop(client, []) if time.time() - r[0] < _UNDELIVERED_TTL_S]
-    for _ts, text in rows:
+    for _ts, payload in rows:
+        out = dict(payload)
+        if out.get("type") == "response":
+            out["text"] = "While you were reconnecting: " + (out.get("text") or "")
+        elif out.get("type") == "app_plan" and out.get("id") not in _APP_PLANS:
+            continue                                # the plan expired meanwhile
         try:
-            await websocket.send_text(json.dumps({
-                "type": "response", "text": "While you were reconnecting: " + text,
-                "audio": None, "deferred": True}))
+            await websocket.send_text(json.dumps(out))
         except Exception:
-            _UNDELIVERED.setdefault(client, []).append((_ts, text))
+            _UNDELIVERED.setdefault(client, []).append((_ts, payload))
             return
+
+
+async def _deliver(client: str, payload: dict) -> bool:
+    """Send to the client's current socket; keep it for the next one if there
+    is none or it fails. Statuses are dropped rather than kept."""
+    ws = _SOCKETS.get(client)
+    if ws is not None:
+        try:
+            await ws.send_text(json.dumps(payload))
+            return True
+        except Exception:
+            pass
+    if payload.get("type") != "status":
+        _stash(client, payload)
+    return False
 
 
 async def deliver_result(websocket: WebSocket, text: str, speak: bool, client: str | None = None):
@@ -1691,6 +1721,7 @@ async def websocket_endpoint(websocket: WebSocket):
     # Whose conversation this socket's turns join: the phone's or this PC's
     # browser, unless "hello" names the desktop window or a session of its own.
     client_key = "remote" if _ws_is_remote(websocket) else "local"
+    _SOCKETS[client_key] = websocket
     await _flush_undelivered(websocket, client_key)     # a reply this client missed
 
     async def _send_response(payload: dict):
@@ -1881,6 +1912,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 if message.get("session"):
                     client_key = "session:" + str(message["session"])[:64]
                 if client_key not in ("remote", "local"):
+                    _SOCKETS[client_key] = websocket
                     await _flush_undelivered(websocket, client_key)
 
             elif mtype == "speech":
@@ -2163,42 +2195,14 @@ async def websocket_endpoint(websocket: WebSocket):
             elif mtype == "app_command":
                 # "/hermes start a new session then prompt: …": one step runs
                 # at once; more than one comes back as a plan for Run / Cancel.
-                # The model reads the instruction against the app's own
-                # actions; what it has no action for is said, never guessed.
-                import app_commands
-                import secrets
+                # Detached from this socket (see _app_command); the reply
+                # reaches whatever socket this client has when it is ready.
                 slug = (message.get("target") or "").strip().lower()
                 said = (message.get("text") or "").strip()
-                speak = bool(message.get("speak", True))
                 sstore_log("user", f"/{slug} {said}".strip())
-                await websocket.send_text(json.dumps({"type": "status", "state": "thinking"}))
-                read = await asyncio.to_thread(app_commands.understand, slug, said)
-                steps = read["steps"]
-                refusal = None
-                if not read["target"]:
-                    refusal = f"Nothing called /{slug} is running, sir."
-                elif not read["target"]["driver"]:
-                    refusal = (f"I can't drive {read['target']['name']} yet, sir: "
-                               "it has no actions or rules I can use.")
-                elif read["missing"] or not steps:
-                    refusal = app_commands.cannot_reply(read["target"], read["missing"] or said,
-                                                        read["actions"], bool(read.get("no_model")))
-                if refusal:
-                    sstore_log("assistant", refusal)
-                    brain.note_late_result(refusal, client=client_key)
-                    await websocket.send_text(json.dumps({"type": "response", "text": refusal,
-                                                          "audio": await tts_to_b64(refusal) if speak else None}))
-                    await websocket.send_text(json.dumps({"type": "status", "state": "idle"}))
-                elif len(steps) == 1 and not steps[0].get("ask"):
-                    await _run_app_command(websocket, client_key, slug, steps, speak)
-                else:
-                    for old in [k for k, (_, _, at) in _APP_PLANS.items() if time.time() - at > _APP_PLAN_S]:
-                        del _APP_PLANS[old]
-                    plan_id = secrets.token_hex(4)
-                    _APP_PLANS[plan_id] = (slug, steps, time.time())
-                    await websocket.send_text(json.dumps({
-                        "type": "app_plan", "id": plan_id, "target": slug,
-                        "steps": [app_commands.describe(s) for s in steps]}))
+                task = asyncio.create_task(_app_command(client_key, slug, said, bool(message.get("speak", True))))
+                _APP_TASKS.add(task)
+                task.add_done_callback(_APP_TASKS.discard)
 
             elif mtype in ("app_run", "app_cancel"):
                 held = _APP_PLANS.pop(str(message.get("id") or ""), None)
@@ -2208,7 +2212,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_text(json.dumps({"type": "error",
                                                           "text": "That plan expired, sir. Send the command again."}))
                     continue
-                await _run_app_command(websocket, client_key, held[0], held[1], bool(message.get("speak", True)))
+                task = asyncio.create_task(_run_app_command(client_key, held[0], held[1],
+                                                            bool(message.get("speak", True))))
+                _APP_TASKS.add(task)
+                task.add_done_callback(_APP_TASKS.discard)
 
             elif mtype == "cue":
                 # Spoken session cue (wake / close). The client requests a
@@ -2308,6 +2315,8 @@ async def websocket_endpoint(websocket: WebSocket):
     finally:
         WS_REMOTE.discard(websocket)
         WS_DESKTOP.discard(websocket)
+        if _SOCKETS.get(client_key) is websocket:   # a newer socket for this client stays
+            _SOCKETS.pop(client_key, None)
         # This connection's job listener must not outlive it: stale listeners
         # spoke every finished job into closed sockets (5x after 5 reconnects).
         try:
@@ -2427,23 +2436,81 @@ async def app_targets():
     return _no_cache(JSONResponse({"targets": await asyncio.to_thread(app_commands.targets)}))
 
 
-async def _run_app_command(websocket: WebSocket, client_key: str, slug: str, steps: list, speak: bool):
+_APP_WORK_S = 330          # understanding plus a Hermes turn with tools
+
+
+async def _say(client_key: str, text: str, speak: bool, kind: str = "response") -> None:
+    """A reply to a client, into its conversation and its current socket."""
+    if kind == "response":
+        brain.note_late_result(text, client=client_key)
+    sstore_log("assistant", text)
+    audio = await tts_to_b64(text) if speak and kind == "response" else None
+    await _deliver(client_key, {"type": kind, "text": text, "audio": audio})
+    await _deliver(client_key, {"type": "status", "state": "idle"})
+
+
+async def _run_app_command(client_key: str, slug: str, steps: list, speak: bool):
     """Carry out an app command off the event loop; the reply joins the
     client's conversation like any other answer."""
     import app_commands
-    await websocket.send_text(json.dumps({"type": "status", "state": "thinking"}))
+    print(f"[apps] /{slug} run: {[app_commands.describe(s) for s in steps]}", flush=True)
+    await _deliver(client_key, {"type": "status", "state": "thinking"})
     try:
-        result = await asyncio.to_thread(app_commands.run, slug, steps)
-    except Exception as e:
-        print(f"[WS] app command /{slug} failed: {type(e).__name__}: {e}", flush=True)
-        await websocket.send_text(json.dumps({"type": "error", "text": f"/{slug} didn't work: {e}"}))
-        await websocket.send_text(json.dumps({"type": "status", "state": "idle"}))
+        result = await asyncio.wait_for(asyncio.to_thread(app_commands.run, slug, steps), _APP_WORK_S)
+    except asyncio.TimeoutError:
+        await _say(client_key, f"/{slug} is taking too long, sir; I stopped waiting for it.", speak, "error")
         return
-    brain.note_late_result(result, client=client_key)
-    sstore_log("assistant", result)
-    await websocket.send_text(json.dumps({"type": "response", "text": result,
-                                          "audio": await tts_to_b64(result) if speak else None}))
-    await websocket.send_text(json.dumps({"type": "status", "state": "idle"}))
+    except Exception as e:
+        print(f"[apps] /{slug} failed: {type(e).__name__}: {e}", flush=True)
+        await _say(client_key, f"/{slug} didn't work: {e}", speak, "error")
+        return
+    print(f"[apps] /{slug} -> {result[:160]!r}", flush=True)
+    await _say(client_key, result, speak)
+
+
+async def _app_command(client_key: str, slug: str, said: str, speak: bool):
+    """"/hermes …" as a task of its own, detached from the socket it came on:
+    the phone's socket drops when its screen dims, and a command tied to it
+    was cancelled with it (2026-09-15). The model reads the instruction
+    against the app's own actions; what it has no action for is said, never
+    guessed. One step runs; more come back as a plan for Run / Cancel."""
+    import app_commands
+    import secrets
+    try:
+        import agent_loop
+        agent_loop._current_app[client_key] = slug   # follow-ups without the slash stay with it
+    except Exception:
+        pass
+    print(f"[apps] /{slug} {said!r} from {client_key}", flush=True)
+    await _deliver(client_key, {"type": "status", "state": "thinking"})
+    try:
+        read = await asyncio.wait_for(asyncio.to_thread(app_commands.understand, slug, said), 120)
+    except Exception as e:
+        print(f"[apps] /{slug} understand failed: {type(e).__name__}: {e}", flush=True)
+        await _say(client_key, f"I couldn't work out what to do in /{slug}, sir: {type(e).__name__}.", speak, "error")
+        return
+    steps = read["steps"]
+    if not read["target"]:
+        await _say(client_key, f"Nothing called /{slug} is running, sir.", speak)
+    elif not read["target"]["driver"]:
+        await _say(client_key, f"I can't drive {read['target']['name']} yet, sir: it has no actions or rules I can use.", speak)
+    elif read["missing"] or not steps:
+        await _say(client_key, app_commands.cannot_reply(read["target"], read["missing"] or said,
+                                                         read["actions"], bool(read.get("no_model"))), speak)
+    elif len(steps) == 1 and not steps[0].get("ask"):
+        await _run_app_command(client_key, slug, steps, speak)
+    else:
+        for old in [k for k, (_, _, at) in _APP_PLANS.items() if time.time() - at > _APP_PLAN_S]:
+            del _APP_PLANS[old]
+        plan_id = secrets.token_hex(4)
+        _APP_PLANS[plan_id] = (slug, steps, time.time())
+        print(f"[apps] /{slug} plan {plan_id}: {[app_commands.describe(s) for s in steps]}", flush=True)
+        await _deliver(client_key, {"type": "app_plan", "id": plan_id, "target": slug,
+                                    "steps": [app_commands.describe(s) for s in steps]})
+        await _deliver(client_key, {"type": "status", "state": "idle"})
+
+
+_APP_TASKS: set = set()               # detached tasks, kept until done
 
 
 @app.post("/running/stop")

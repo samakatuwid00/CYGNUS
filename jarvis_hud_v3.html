@@ -2263,6 +2263,15 @@
     ws.onerror = function () { try { ws.close(); } catch (e) {} };
     ws.onmessage = onMessage;
   }
+  // The phone's browser drops the socket when the screen dims; on waking,
+  // reconnect at once rather than sit out the backoff, so a reply the
+  // server kept (a RUN card, an answer) arrives while the page is looked at.
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState !== 'visible') return;
+    if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
+    reconnectDelay = 800;
+    connect();
+  });
   function send(obj) {
     if (ws && ws.readyState === 1) { ws.send(JSON.stringify(obj)); return true; }
     return false;

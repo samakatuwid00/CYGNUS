@@ -204,6 +204,7 @@ You may use ONLY these actions (JSON):
 {actions}
 
 - Read what the user means, not their exact words: "go to my musubae chat" means open that session; pick names from "choices" when one fits.
+- open_session only when the user asks to go to, continue or reopen a session. A message that merely resembles a session's title is just a message to send in the current session.
 - A step is {{"do": "<an action's do>", "args": {{...}}}}, with only that action's args.
 - Keep the user's own words for any message text.
 - If any part of the instruction needs an action that is not listed, do not invent or stretch one: put that part, in the user's words, in "missing".
@@ -453,12 +454,10 @@ class HermesWindow:
     def session_titles(self) -> list[str]:
         """The sessions the sidebar shows, newest first; [] when it is hidden.
         Reading them changes nothing on screen."""
+        return running_apps.ui_call(self._session_titles)
+
+    def _session_titles(self) -> list[str]:
         try:
-            try:
-                import comtypes
-                comtypes.CoInitialize()
-            except Exception:
-                pass
             win = self._window()
             win.descendants()                       # Chromium builds its tree once asked
             time.sleep(1.0)
@@ -557,31 +556,31 @@ def _run_step(driver, step: dict, apps: dict) -> str:
 
 
 def run(slug: str, steps: list[dict], rows=None, apps=None) -> str:
-    """Carry out the steps in the running app `slug`; what to tell the user."""
+    """Carry out the steps in the running app `slug`; what to tell the user.
+    Drives windows, so it runs on the UI Automation thread."""
     if not _run_lock.acquire(blocking=False):
         return "Another app command is still running, sir. I'll take this one when it's done."
     try:
-        try:
-            import comtypes
-            comtypes.CoInitialize()                 # UI Automation from a worker thread
-        except Exception:
-            pass
-        rows = running_apps.inventory(use_cache=False) if rows is None else rows
-        apps = _apps() if apps is None else apps
-        target = next((t for t in targets(rows, apps) if t["slug"] == slug), None)
-        if not target:
-            return f"Nothing called /{slug} is running, sir."
-        if not target["driver"]:
-            return f"I can't drive {target['name']} yet, sir: it has no actions or rules I can use."
-        row = next(r for r in rows if r["id"] == target["row"])
-        driver = DRIVERS[target["driver"]](row) if target["driver"] in DRIVERS else None
-        done = []
-        for step in steps:
-            try:
-                done.append(_run_step(driver, step, apps))
-            except DriveError as e:
-                done.append(f"I stopped: {e}.")
-                break
-        return "\n".join(done)
+        return running_apps.ui_call(_run, slug, steps, rows, apps)
     finally:
         _run_lock.release()
+
+
+def _run(slug: str, steps: list[dict], rows=None, apps=None) -> str:
+    rows = running_apps.inventory(use_cache=False) if rows is None else rows
+    apps = _apps() if apps is None else apps
+    target = next((t for t in targets(rows, apps) if t["slug"] == slug), None)
+    if not target:
+        return f"Nothing called /{slug} is running, sir."
+    if not target["driver"]:
+        return f"I can't drive {target['name']} yet, sir: it has no actions or rules I can use."
+    row = next(r for r in rows if r["id"] == target["row"])
+    driver = DRIVERS[target["driver"]](row) if target["driver"] in DRIVERS else None
+    done = []
+    for step in steps:
+        try:
+            done.append(_run_step(driver, step, apps))
+        except DriveError as e:
+            done.append(f"I stopped: {e}.")
+            break
+    return "\n".join(done)
