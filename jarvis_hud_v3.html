@@ -372,6 +372,25 @@
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--holo) 35%, transparent),
                 0 12px 34px rgba(0, 0, 0, .5); }
   #jv-input-wrap.jv-err { border-color: #ec3013; box-shadow: 0 0 20px color-mix(in srgb, #ec3013 40%, transparent); }
+  /* "/" menu: what is running that a slash command can use (APP_COMMANDS_PLAN.md). */
+  #jv-slash { margin-top: 8px; border: 1px solid var(--hairline); border-radius: 10px; background: rgba(7, 10, 14, .96);
+    max-height: 220px; overflow: auto; }
+  #jv-slash button { display: flex; width: 100%; gap: 8px; align-items: baseline; padding: 8px 12px; background: none;
+    border: 0; color: #f2ead9; text-align: left; cursor: pointer; font: 500 12.5px/1.4 var(--font-body); }
+  #jv-slash button:hover, #jv-slash button.sel { background: color-mix(in srgb, var(--holo) 12%, transparent); }
+  #jv-slash .s-slug { color: var(--holo); font-family: var(--font-data); }
+  #jv-slash .s-note { color: #bca985; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #jv-slash .s-mark { font: 700 9.5px/1.4 var(--font-display); letter-spacing: .12em; text-transform: uppercase; color: #9fe6ba; }
+  #jv-slash .s-mark.off { color: #8a7c66; }
+  .jv-plan { border: 1px solid rgba(255, 193, 77, .45); border-radius: 10px; padding: 10px 12px; margin: 8px 0;
+    background: rgba(255, 193, 77, .06); color: #f2ead9; font: 500 12.5px/1.45 var(--font-body); }
+  .jv-plan-h { font: 700 11px/1.4 var(--font-display); letter-spacing: .12em; text-transform: uppercase; color: #ffc14d; }
+  .jv-plan ol { margin: 6px 0 8px 18px; padding: 0; }
+  .jv-plan button { margin-right: 6px; padding: 5px 12px; border-radius: 7px; border: 1px solid var(--hairline);
+    background: transparent; color: #f2ead9; cursor: pointer; font: 700 10px/1.2 var(--font-display); letter-spacing: .1em; }
+  .jv-plan button.go { border-color: rgba(125, 219, 160, .6); background: rgba(125, 219, 160, .14); color: #9fe6ba; }
+  .jv-plan button:disabled { opacity: .5; cursor: default; }
+  @media (pointer: coarse) { #jv-slash button, .jv-plan button { min-height: 44px; } }
 
   /* A textarea: long messages wrap onto new lines and the box grows up to
      about six lines, then scrolls (max-height; overflow set by autosizeInput). */
@@ -1056,6 +1075,7 @@
                   aria-expanded="false" hidden>Show all</button></div>
         <div id="jv-side-log"></div>
         <div id="jv-cues" style="margin-top:8px"></div>
+        <div id="jv-slash" role="listbox" aria-label="Slash commands" hidden></div>
         <div id="jv-input-wrap" style="margin-top:10px">
           <span class="jv-wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
           <textarea id="jv-input" rows="1" autocomplete="off" spellcheck="false" enterkeyhint="send"
@@ -2027,6 +2047,23 @@
         }
         return;
       }
+      // "/hermes <instruction>": the rest of the line goes to that running app.
+      var am = /^\/([\w-]+)\s*([\s\S]*)$/.exec(value);
+      if (am) {
+        var slug = am[1].toLowerCase(), what = am[2].trim();
+        if (!what) { notice('USAGE: /' + slug + ' <what it should do>'); return; }
+        if (send({ type: 'app_command', target: slug, text: what, speak: true })) {
+          logConv('user', value);
+          chatInput.value = ''; autosizeInput();
+          if (slashBox) slashBox.hidden = true;
+          pendingReply = true;
+          mode = 'busy'; busySince = Date.now();
+          setState('thinking', '/' + slug.toUpperCase() + '…');
+        } else {
+          notice('NOT CONNECTED — COMMAND NOT SENT');
+        }
+        return;
+      }
       notice('UNKNOWN COMMAND: ' + value);
       chatInput.value = ''; autosizeInput();
       return;
@@ -2092,6 +2129,102 @@
     chatInput.style.overflowY = chatInput.scrollHeight > max ? 'auto' : 'hidden';
   }
   chatInput.addEventListener('input', autosizeInput);
+
+  // ---------------------------------------------------------------- app commands
+  // Typing "/" lists what is running that a command can use: "/hermes …" runs
+  // in the Hermes that is open (APP_COMMANDS_PLAN.md). The list comes from
+  // /app/targets, fetched at most every five seconds.
+  var slashBox = document.getElementById('jv-slash');
+  var SLASH_BUILTIN = [{ slug: 'clear', note: 'Clear the conversation' },
+                       { slug: 'redirect', note: 'Steer the running Hermes task' }];
+  var appTargets = [], appTargetsAt = 0;
+
+  function loadAppTargets() {
+    if (Date.now() - appTargetsAt < 5000) return Promise.resolve(appTargets);
+    return fetch('/app/targets', { cache: 'no-store' }).then(function (r) { return r.json(); })
+      .then(function (d) { appTargets = d.targets || []; appTargetsAt = Date.now(); return appTargets; })
+      .catch(function () { return appTargets; });
+  }
+
+  function pickSlash(slug) {
+    chatInput.value = '/' + slug + ' ';
+    slashBox.hidden = true;
+    autosizeInput();
+    chatInput.focus();
+  }
+
+  function slashButton(item, first) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role', 'option');
+    if (first) b.className = 'sel';
+    [['s-slug', '/' + item.slug], ['s-note', item.note], ['s-mark', item.mark]].forEach(function (p) {
+      var s = document.createElement('span');
+      s.className = p[0] + (p[0] === 's-mark' && !item.on ? ' off' : '');
+      s.textContent = p[1];
+      b.appendChild(s);
+    });
+    b.onmousedown = function (e) { e.preventDefault(); pickSlash(item.slug); };
+    return b;
+  }
+
+  function renderSlash() {
+    if (!slashBox) return;
+    if (!/^\/\S*$/.test(chatInput.value)) { slashBox.hidden = true; return; }
+    loadAppTargets().then(function () {
+      if (!/^\/\S*$/.test(chatInput.value)) { slashBox.hidden = true; return; }
+      var prefix = chatInput.value.slice(1).toLowerCase();
+      var items = appTargets.map(function (t) {
+        var doing = t.doing && t.doing !== 'open' ? ' · ' + t.doing : '';
+        return { slug: t.slug, note: t.name + doing, mark: t.driver ? t.kind : 'not yet', on: !!t.driver };
+      }).concat(SLASH_BUILTIN.map(function (b) { return { slug: b.slug, note: b.note, mark: '', on: true }; }))
+        .filter(function (i) { return i.slug.indexOf(prefix) === 0; });
+      slashBox.innerHTML = '';
+      items.forEach(function (i, n) { slashBox.appendChild(slashButton(i, n === 0)); });
+      slashBox.hidden = !items.length;
+    });
+  }
+
+  if (slashBox) {
+    chatInput.addEventListener('input', renderSlash);
+    chatInput.addEventListener('keydown', function (e) {
+      if (slashBox.hidden) return;
+      if (e.key === 'Tab') {
+        var sel = slashBox.querySelector('button.sel .s-slug');
+        if (sel) { e.preventDefault(); pickSlash(sel.textContent.slice(1)); }
+      } else if (e.key === 'Escape') {
+        slashBox.hidden = true;
+      }
+    });
+    chatInput.addEventListener('blur', function () { setTimeout(function () { slashBox.hidden = true; }, 150); });
+  }
+
+  // More than one step comes back as a plan: the steps, then Run / Cancel.
+  function showAppPlan(m) {
+    if (!chatLog) return;
+    var card = document.createElement('div');
+    card.className = 'jv-plan';
+    var head = document.createElement('div');
+    head.className = 'jv-plan-h';
+    head.textContent = '/' + m.target + ' · ' + m.steps.length + ' steps';
+    var list = document.createElement('ol');
+    m.steps.forEach(function (s) { var li = document.createElement('li'); li.textContent = s; list.appendChild(li); });
+    var run = document.createElement('button');
+    run.type = 'button'; run.className = 'go'; run.textContent = 'RUN';
+    var cancel = document.createElement('button');
+    cancel.type = 'button'; cancel.textContent = 'CANCEL';
+    run.onclick = function () {
+      if (!send({ type: 'app_run', id: m.id, speak: true })) { notice('NOT CONNECTED — NOT RUN'); return; }
+      run.disabled = cancel.disabled = true;
+      pendingReply = true;
+      mode = 'busy'; busySince = Date.now();
+      setState('thinking', 'RUNNING /' + m.target.toUpperCase() + '…');
+    };
+    cancel.onclick = function () { send({ type: 'app_cancel', id: m.id }); card.remove(); };
+    card.appendChild(head); card.appendChild(list); card.appendChild(run); card.appendChild(cancel);
+    chatLog.appendChild(card);
+    scrollChatToEnd();
+  }
 
   // ---------------------------------------------------------------- websocket
   var ws = null, wsReady = false, reconnectDelay = 800;
@@ -2299,6 +2432,10 @@
         earcon(560, 0.10); earcon(560, 0.06, 0.12);  // Phase C: soft double tone
         if (mode === 'busy') setState('thinking', 'THINKING…');
       }
+    } else if (m.type === 'app_plan') {
+      pendingReply = false;
+      showAppPlan(m);
+      if (mode !== 'speaking') goIdle();
     } else if (m.type === 'error') {
       // A failed turn is a reply like any other: in the transcript, spoken
       // when the server sent audio, with "Try again" when it sent the words.

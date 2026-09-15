@@ -2160,6 +2160,39 @@ async def websocket_endpoint(websocket: WebSocket):
                         "type": "error", "text": f"unknown command: {name}"
                     }))
 
+            elif mtype == "app_command":
+                # "/hermes start a new session then prompt: …": one step runs
+                # at once; more than one comes back as a plan for Run / Cancel.
+                import app_commands
+                import secrets
+                slug = (message.get("target") or "").strip().lower()
+                steps = app_commands.plan(message.get("text") or "")
+                speak = bool(message.get("speak", True))
+                sstore_log("user", f"/{slug} {message.get('text') or ''}".strip())
+                if not steps:
+                    await websocket.send_text(json.dumps({"type": "error",
+                                                          "text": f"Tell me what /{slug} should do, sir."}))
+                elif len(steps) == 1:
+                    await _run_app_command(websocket, client_key, slug, steps, speak)
+                else:
+                    for old in [k for k, (_, _, at) in _APP_PLANS.items() if time.time() - at > _APP_PLAN_S]:
+                        del _APP_PLANS[old]
+                    plan_id = secrets.token_hex(4)
+                    _APP_PLANS[plan_id] = (slug, steps, time.time())
+                    await websocket.send_text(json.dumps({
+                        "type": "app_plan", "id": plan_id, "target": slug,
+                        "steps": [app_commands.describe(s) for s in steps]}))
+
+            elif mtype in ("app_run", "app_cancel"):
+                held = _APP_PLANS.pop(str(message.get("id") or ""), None)
+                if mtype == "app_cancel":
+                    continue
+                if not held or time.time() - held[2] > _APP_PLAN_S:
+                    await websocket.send_text(json.dumps({"type": "error",
+                                                          "text": "That plan expired, sir. Send the command again."}))
+                    continue
+                await _run_app_command(websocket, client_key, held[0], held[1], bool(message.get("speak", True)))
+
             elif mtype == "cue":
                 # Spoken session cue (wake / close). The client requests a
                 # short line ("what is it, sir?" / "standing by, sir") and the
@@ -2363,6 +2396,37 @@ async def running_describe(request: Request, id: str):
     answer, model = await asyncio.to_thread(running_apps.describe_window, row)
     return _no_cache(JSONResponse({"text": answer or f"I couldn't see it: {model}.",
                                    "model": model if answer else None}))
+
+
+# "/hermes <instruction>" (app_commands, APP_COMMANDS_PLAN.md): the "/" menu,
+# and a plan of more than one step held for the owner's Run for five minutes.
+_APP_PLANS: dict = {}
+_APP_PLAN_S = 300
+
+
+@app.get("/app/targets")
+async def app_targets():
+    import app_commands
+    return _no_cache(JSONResponse({"targets": await asyncio.to_thread(app_commands.targets)}))
+
+
+async def _run_app_command(websocket: WebSocket, client_key: str, slug: str, steps: list, speak: bool):
+    """Carry out an app command off the event loop; the reply joins the
+    client's conversation like any other answer."""
+    import app_commands
+    await websocket.send_text(json.dumps({"type": "status", "state": "thinking"}))
+    try:
+        result = await asyncio.to_thread(app_commands.run, slug, steps)
+    except Exception as e:
+        print(f"[WS] app command /{slug} failed: {type(e).__name__}: {e}", flush=True)
+        await websocket.send_text(json.dumps({"type": "error", "text": f"/{slug} didn't work: {e}"}))
+        await websocket.send_text(json.dumps({"type": "status", "state": "idle"}))
+        return
+    brain.note_late_result(result, client=client_key)
+    sstore_log("assistant", result)
+    await websocket.send_text(json.dumps({"type": "response", "text": result,
+                                          "audio": await tts_to_b64(result) if speak else None}))
+    await websocket.send_text(json.dumps({"type": "status", "state": "idle"}))
 
 
 @app.post("/running/stop")
