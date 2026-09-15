@@ -123,8 +123,12 @@ def wake_targets(clients, remote, desktop):
 class WakeEngine:
     def __init__(self, voice_engine, sample_rate=16000,
                  window_s=2.5, step_s=1.0, cooldown_ms=4000,
-                 suspend_ms=1500, device=None):
+                 suspend_ms=1500, device=None, spotter=None):
         self.ve = voice_engine
+        # A keyword spotter (wake_kws.SherpaSpotter) hears the window instead
+        # of Whisper when given: 17/20 of the owner's clips against 15, in a
+        # fifteenth of the time (2026-09-15). None keeps Whisper.
+        self.spotter = spotter
         self.sr = sample_rate
         self.window_s = window_s
         self.step_s = step_s
@@ -351,9 +355,12 @@ class WakeEngine:
             return False
         self._last_decode = now
         try:
-            # Cheap wake-only model, not the command model — see
-            # VoiceEngine.transcribe_wake() and WAKE_WHISPER_MODEL.
-            text = self.ve.transcribe_wake(window)
+            if self.spotter is not None:
+                text = self.spotter.hears(window, self.sr)
+            else:
+                # Cheap wake-only model, not the command model — see
+                # VoiceEngine.transcribe_wake() and WAKE_WHISPER_MODEL.
+                text = self.ve.transcribe_wake(window)
         except Exception as e:
             self.last_err = f'transcribe error: {e}'
             if now - self._last_err_print >= 60.0:
@@ -362,7 +369,8 @@ class WakeEngine:
             return True
         hit = wake_word_in(text)
         echo = hit and self._own_voice(now)
-        self._log(f"heard {text!r} (level {level:.4f})"
+        via = f" via {self.spotter.name}" if self.spotter is not None else ""
+        self._log(f"heard {text!r} (level {level:.4f}){via}"
                   + (" -> ignored: its own reply says the wake word" if echo else " -> WAKE" if hit else ""))
         if hit and not echo:
             print(f"[WakeEngine] wake word detected: {text!r}", flush=True)

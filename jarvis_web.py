@@ -129,7 +129,15 @@ try:
 except ValueError:
     print("[WakeEngine] bad JARVIS_WAKE_SUSPEND_MS, using 1500", flush=True)
     _WAKE_SUSPEND_MS = 1500
-wake_engine = WakeEngine(voice_engine, suspend_ms=_WAKE_SUSPEND_MS)
+_wake_spotter = None
+try:
+    from config import JARVIS_WAKE_ENGINE
+    if JARVIS_WAKE_ENGINE == "sherpa":
+        import wake_kws
+        _wake_spotter = wake_kws.load()
+except Exception as _e:
+    print(f"[WakeEngine] spotter setup failed ({_e}); using Whisper", flush=True)
+wake_engine = WakeEngine(voice_engine, suspend_ms=_WAKE_SUSPEND_MS, spotter=_wake_spotter)
 # Longest the wake fallback stays quiet for one browser capture.
 _WAKE_HOLD_MS = 30000
 

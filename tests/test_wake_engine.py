@@ -99,6 +99,46 @@ def _loud(value=0.05):
     return np.full(BLOCK, value, dtype=np.float32)
 
 
+class _Spotter:
+    name = "sherpa"
+
+    def __init__(self, hit=True):
+        self.calls, self.hit = 0, hit
+
+    def hears(self, window, sample_rate=16000):
+        self.calls += 1
+        return "hey cygnus" if self.hit else ""
+
+
+def test_a_keyword_spotter_hears_the_window_instead_of_whisper():
+    voice, spotter = _Voice("not used"), _Spotter()
+    engine = WakeEngine(voice, spotter=spotter)
+    woke = []
+    engine.set_callback(lambda: woke.append(1))
+    for i in range(30):
+        engine._tick([_loud()], 1000.0 + i / 10)
+    assert spotter.calls == 1 and voice.calls == 0 and woke == [1]
+
+
+def test_the_sherpa_spotter_hears_the_recorded_wake_clips_and_not_the_talk():
+    """The real model on the owner's clips, when both are present."""
+    import os
+    import wave
+    pytest.importorskip("sherpa_onnx")
+    import wake_kws
+    data = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "eval", "voice_testset")
+    if not os.path.isdir(wake_kws.DEFAULT_DIR) or not os.path.exists(os.path.join(data, "01_wake.wav")):
+        pytest.skip("no keyword model or recorded clips here")
+    spotter = wake_kws.SherpaSpotter()
+
+    def load(name):
+        with wave.open(os.path.join(data, name)) as w:
+            return np.frombuffer(w.readframes(w.getnframes()), np.int16).astype(np.float32) / 32768
+    heard = sum(1 for i in range(1, 21) if spotter.hears(load(f"{i:02d}_wake.wav")))
+    assert heard >= 15
+    assert spotter.hears(load("42_negative.wav")) == ""          # sinus, sign us up, signal
+
+
 def test_music_decodes_once_per_step_not_once_per_block():
     voice = _Voice()
     engine = WakeEngine(voice)

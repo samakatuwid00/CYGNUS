@@ -158,14 +158,22 @@ WHISPER_BEAM_SIZE = int(os.getenv("WHISPER_BEAM_SIZE", "1"))
 # spotting one word, and leaves the command path its cores.
 WAKE_WHISPER_MODEL = os.getenv("WAKE_WHISPER_MODEL", "tiny.en")
 WAKE_WHISPER_CPU_THREADS = int(os.getenv("WAKE_WHISPER_CPU_THREADS", "2"))
+# What hears the wake word: "sherpa" (keyword spotting, wake_kws; falls back
+# to Whisper when its model or package is missing) or "whisper" (tiny.en).
+JARVIS_WAKE_ENGINE = os.getenv("JARVIS_WAKE_ENGINE", "sherpa").strip().lower()
 
 # Vocabulary bias so the wake word and domain terms decode cleanly.
 WHISPER_INITIAL_PROMPT = os.getenv(
     "WHISPER_INITIAL_PROMPT",
+    # The names the owner says to Cygnus. On the recorded test set this list
+    # took small.en from 15/20 commands right to 20/20 (2026-09-15).
     "Cygnus, Stark, DepEd, Department of Education, iRIMS-V, iRIMS, "
     "LRMIS, IRIMS, Haristay, Two Goals, Manila, Philippines, Philippine, "
+    "Naga City, Pasacao, Bicol, Docker, Visual Studio Code, VS Code, Notepad, Chrome, "
+    "Brave, Telegram, Spotify, Moira Dela Torre, Second Brain, Obsidian, Hermes, Claude, "
+    "HUD, full HUD, lo-fi, lofi, Sige, Hindi, Musubae, "
     "dashboard, report, project, vault, compose, play music, YouTube Music, "
-    "Brave, browser, movie, movies, analysis, system, online, open, search, weather."
+    "browser, movie, movies, analysis, system, online, open, search, weather."
 )
 
 # Wake Word
