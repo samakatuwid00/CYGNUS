@@ -2244,6 +2244,26 @@ class JarvisBrain:
                 print(f"[JARVIS] confirm-release failed ({e}); falling back...")
 
 
+        # The model first, with Cygnus's own tools, in a loop (agent_loop,
+        # AGENT_LOOP_PLAN.md). Instant intents and slash commands stay with
+        # the routing below; so does any turn no model could take.
+        try:
+            import agent_loop as _al
+            if _al.MODE in ("lead", "shadow") and _al.takes(user_input, classify_intent(user_input)):
+                _ctx = {"client": _client_key(), "user_text": user_input, "on_done": on_hermes_done,
+                        "progress_cb": progress_cb, "remote": getattr(_progress_local, "remote", False)}
+                if _al.MODE == "lead":
+                    _out = _al.run(self, user_input, _ctx)
+                    if _out is not None:
+                        self.last_backend = "agent"
+                        self.last_stats = {"backend": "agent", "intent": "agent", **_al.last_stats()}
+                        return _out
+                    print("[agent] no model took the turn; old routing", flush=True)
+                else:
+                    _al.shadow(self, user_input, _ctx)
+        except Exception as e:
+            print(f"[agent] failed ({type(e).__name__}: {e}); old routing", flush=True)
+
         # Bare-"open" clarify follow-up: the previous turn asked
         # OPEN_CLARIFY_Q, so this turn picks the branch. A bare choice ("an
         # app") gets the second half of the question; a choice that already
