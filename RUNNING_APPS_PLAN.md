@@ -172,3 +172,34 @@ Phase 5, acting:
    Changed 2026-09-14: the phone may also bring a window forward (the Show
    button and "show X on screen"), read its text, see a picture of it and
    have it described, by button or voice. Only stop stays laptop-only.
+
+## Store apps and UWP windows (2026-09-15)
+
+Owner: apps opened did not show on the Running panel, so "close it" failed,
+and Store-installed apps (Telegram, Terminal, Calculator) were missing from
+the Apps registry although they ran.
+
+- Cause 1: a UWP app's visible window belongs to ApplicationFrameHost (never a
+  row); the app's own CoreWindow is a child of that frame while in front, or
+  a cloaked top-level window while in the background. `running_apps._windows`
+  now gives the frame to the hosted process (`_adopt_frames`), so Calculator,
+  Settings and the Realtek console are rows. SystemSettings.exe left `_SKIP`.
+- Cause 2: the registry scan had no source for MSIX packages (no .lnk, no
+  uninstall key, WindowsApps not walkable; winget rows had no bin and were
+  filtered). `machine_capabilities._scan_store` reads Get-StartApps +
+  Get-AppxPackage and each package's AppxManifest.xml: entry `bin` is the
+  `shell:AppsFolder\<AppID>` address (ShellExecute opens it), `exe` the
+  program file, `label` the Start-menu name; Windows' own entries (Feedback
+  Hub, Get Help...) are hidden by the scan. 47 found here; rescan done.
+- Close: `close_application` takes the exe from the entry's `exe`, falls back
+  to the Running row's program file when the registry has nothing, and first
+  posts WM_CLOSE to the row's window handles (a Store app's main window is
+  the frame, so CloseMainWindow on its process did nothing). "close it" now
+  means the app last opened or brought forward (`_note_opened`).
+- app_commands `_registry_keys` and dialogue_state `active_app` also match
+  by `exe`, so a Store app's abilities and rules attach to its Running row.
+- Verified live: open calculator -> row "Calculator App" within 3 s -> close
+  calculator / close it -> gone. 866 tests pass (tests/test_store_apps.py).
+- Known: row names come from the program file ("Calculator App"), not the
+  Start-menu label; the Running panel polls every 5 s over a 5 s cache, so a
+  new app can take up to 10 s to appear. The server on 8001 needs a restart.

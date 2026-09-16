@@ -46,7 +46,7 @@ _SKIP = {n.lower() for n in (
     "lsass.exe", "svchost.exe", "winlogon.exe", "dwm.exe", "explorer.exe", "sihost.exe",
     "taskhostw.exe", "ctfmon.exe", "RuntimeBroker.exe", "dllhost.exe", "conhost.exe",
     "OpenConsole.exe", "SearchHost.exe", "StartMenuExperienceHost.exe", "ShellExperienceHost.exe",
-    "TextInputHost.exe", "ApplicationFrameHost.exe", "SystemSettings.exe", "backgroundTaskHost.exe",
+    "TextInputHost.exe", "ApplicationFrameHost.exe", "backgroundTaskHost.exe",
     "smartscreen.exe", "SecurityHealthSystray.exe", "fontdrvhost.exe", "Widgets.exe",
     "WidgetService.exe", "LockApp.exe", "UserOOBEBroker.exe", "CrossDeviceResume.exe",
     "PhoneExperienceHost.exe", "msedgewebview2.exe", "WmiPrvSE.exe", "chcp.com", "git.exe")}
@@ -1103,31 +1103,80 @@ def _processes(windows=()):
     return procs
 
 
+_FRAME_CLASS = "ApplicationFrameWindow"          # the frame Windows draws round a Store app
+_CORE_CLASS = "Windows.UI.Core.CoreWindow"        # the app's own (cloaked) window inside it
+
+
+def _adopt_frames(found, frames, cores, hosted=None):
+    """Give a Store app's window to the app itself. Settings, Calculator, the
+    Realtek console: the visible window belongs to ApplicationFrameHost (never
+    a row) while the app's own CoreWindow sits inside it, so the app had no
+    window and no row - "close calculator" found nothing (owner, 2026-09-15).
+
+    found: {pid: [(hwnd, title)]} of visible windows; frames: {hwnd: host pid}
+    of the frame windows among them; hosted: {frame hwnd: pid} read from the
+    frame's children (the app in front keeps its CoreWindow inside the frame);
+    cores: {title: pid} of cloaked top-level CoreWindows (an app in the
+    background parks it outside). A frame moves to the app's pid either way."""
+    hosted = hosted or {}
+    for hwnd, host in frames.items():
+        wins = found.get(host) or []
+        hit = next(((h, t) for h, t in wins if h == hwnd), None)
+        if not hit:
+            continue
+        owner = hosted.get(hwnd) or cores.get(hit[1])
+        if owner and owner != host:
+            wins.remove(hit)
+            found.setdefault(owner, []).append(hit)
+            if not wins:
+                found.pop(host, None)
+    return found
+
+
 def _windows():
     """{pid: [titles]} of the top-level windows the owner can see or restore."""
     import ctypes
     from ctypes import wintypes
     user32, dwm = ctypes.windll.user32, ctypes.windll.dwmapi
-    found = {}
+    found, frames, cores = {}, {}, {}
+    cls = ctypes.create_unicode_buffer(64)
 
     @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     def each(hwnd, _):
         if not user32.IsWindowVisible(hwnd) or user32.GetWindow(hwnd, 4):   # owned popups are not apps
             return True
+        n = user32.GetWindowTextLengthW(hwnd)
+        if not n:
+            return True
         cloaked = wintypes.DWORD()
         dwm.DwmGetWindowAttribute(hwnd, 14, ctypes.byref(cloaked), ctypes.sizeof(cloaked))
-        n = user32.GetWindowTextLengthW(hwnd)
-        if cloaked.value or not n:
-            return True
+        user32.GetClassNameW(hwnd, cls, 64)
         buf = ctypes.create_unicode_buffer(n + 1)
         user32.GetWindowTextW(hwnd, buf, n + 1)
         pid = wintypes.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if cloaked.value:
+            if cls.value == _CORE_CLASS:
+                cores.setdefault(buf.value, pid.value)
+            return True
+        if cls.value == _FRAME_CLASS:
+            frames[hwnd] = pid.value
         found.setdefault(pid.value, []).append((hwnd, buf.value))
         return True
 
     user32.EnumWindows(each, 0)
-    return found
+    hosted = {}
+    for hwnd, host in frames.items():
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def child(c, _, hwnd=hwnd, host=host):
+            pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(c, ctypes.byref(pid))
+            if pid.value and pid.value != host:
+                hosted[hwnd] = pid.value
+                return False
+            return True
+        user32.EnumChildWindows(hwnd, child, 0)
+    return _adopt_frames(found, frames, cores, hosted)
 
 
 def _ports():

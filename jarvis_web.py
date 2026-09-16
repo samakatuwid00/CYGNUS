@@ -1347,8 +1347,36 @@ async def post_apps_rules_test(message: Request):
         import rules_sim
         sample = rules_sim.sample_for(rule)
     result = await asyncio.to_thread(tools.run_rule_action, rule, key, action, sample)
+    import rules_steps
     return JSONResponse({"ok": not result.startswith("[Error]"), "result": result,
-                         "url": rules_engine.build_action_url(action, sample)})
+                         "url": rules_engine.build_action_url(action, sample),
+                         # A steps rule may stop on a question ("Restart Brave?",
+                         # "Press play?"); the panel answers it at /apps/rules/test/answer.
+                         "question": rules_steps.active()})
+
+
+@app.post("/apps/rules/test/answer")
+async def post_apps_rules_test_answer(message: Request):
+    """Answer the question a tested steps rule is waiting on (yes / no).
+
+    Body: {"app_key": "brave", "answer": "yes"}. Until now only a spoken reply
+    reached the waiting run, so the panel's Test stopped at "Say yes, or no".
+    """
+    try:
+        body = await message.json()
+    except Exception:
+        return JSONResponse({"error": "bad json"}, status_code=400)
+    answer = (body.get("answer") or "").strip()
+    if not answer:
+        return JSONResponse({"error": "missing answer"}, status_code=400)
+    import rules_steps
+    if not rules_steps.active():
+        return JSONResponse({"error": "nothing is waiting for an answer"}, status_code=409)
+    result = await asyncio.to_thread(rules_steps.resume, answer)
+    if result is None:
+        result = "Okay, I'll leave it there."
+    return JSONResponse({"ok": not result.startswith("[Error]"), "result": result,
+                         "question": rules_steps.active()})
 
 
 def _apps_job(progress_key, work):

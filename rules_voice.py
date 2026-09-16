@@ -145,21 +145,25 @@ def _verdict_line(report):
     return f"{line} Save it? Or tell me what to change.".strip()
 
 
-def _ai_step(app_key, pending, registry_path=None):
-    """Compile the pending command rule with AI, simulate it, and return the
-    next step. Publishes progress for the panel's progress bar."""
+def _ai_step(app_key, pending, registry_path=None, fallback=False):
+    """Compile the pending rule with AI, simulate it, and return the next
+    step. Publishes progress for the panel's progress bar. With fallback=True
+    the caller gets None when no model answered (it then keeps the keyword
+    scaffold) instead of a plain rule."""
     try:
-        return _ai_step_inner(app_key, pending, registry_path)
+        return _ai_step_inner(app_key, pending, registry_path, fallback)
     finally:
         rules_sim.finish_progress(app_key)
 
 
-def _ai_step_inner(app_key, pending, registry_path=None):
+def _ai_step_inner(app_key, pending, registry_path=None, fallback=False):
     say = rules_sim.reporter(app_key)
     say("Understanding your rule...", 12)
     rule, notes = rules_ai.compile_rule(
         app_key, pending["phrase"], pending.get("action_text", ""),
         feedback=pending.get("feedback", ""), entry=_app_entry(app_key, registry_path))
+    if rule is None and fallback:
+        return None
     if rule is None:
         # No model answered and nothing names a site: keep the plain rule.
         rule = _escalate([{
@@ -184,6 +188,7 @@ def _ai_step_inner(app_key, pending, registry_path=None):
     pending["proposed_rule"] = rule
     pending["stage"] = "proposal"
     summary = rule.get("summary") or rule.get("intent", "")
+    gaps = " ".join(f"Heads up: {g}." for g in rule.get("gaps") or [])
     return {
         "status": "proposal",
         "key": app_key,
@@ -191,7 +196,8 @@ def _ai_step_inner(app_key, pending, registry_path=None):
         "proposed": [rule],
         "summary": summary,
         "proposal": rules_ai.propose_markdown(app_key, [rule], notes),
-        "question": f"{summary} {_verdict_line(report)}",
+        "question": " ".join(x for x in (summary, gaps, _verdict_line(report)) if x),
+        "gaps": rule.get("gaps") or [],
         "verification": report,
         "notes": notes,
         "testable": (rule.get("action") or {}).get("type") in rules_ai.RUNNABLE_TYPES,
@@ -225,11 +231,15 @@ def begin_rule_setup(app_key, phrase, registry_path=None):
     if not phrase:
         return {"status": "error", "error": "missing phrase"}
 
-    # A command ("search movies in brave") is one rule, never split on
-    # "and"/commas: ask what it should do, then compile it with AI.
-    # Preferences ("no explicit stuff and keep it quiet") keep the clause flow.
+    # Every phrase is read for its meaning by the AI compiler. A command
+    # ("search movies in brave") is one rule, never split on "and"/commas:
+    # with no action given it asks what to do first. A preference or limit
+    # ("keep spotify under 40%", "never open steam after 11pm") is compiled
+    # whole. The keyword scaffold below is only the fallback when no model
+    # answers.
     trig, act = rules_ai.split_draft(phrase)
-    if act or rules_ai.is_command_phrase(trig):
+    command = rules_ai.is_command_phrase(trig)
+    if act or command:
         pending = {"mode": "action", "phrase": trig, "action_text": act,
                    "feedback": "", "stage": None if act else "need_action",
                    "candidate_rules": [], "answers": {}}
@@ -239,6 +249,14 @@ def begin_rule_setup(app_key, phrase, registry_path=None):
         return {"status": "clarify", "key": app_key, "rule_id": ACTION_Q_ID,
                 "question": f'What should Cygnus do when you say "{trig}"?',
                 "remaining": 1, "candidate_rules": []}
+    pending = {"mode": "action", "phrase": phrase, "action_text": "",
+               "feedback": "", "stage": None, "candidate_rules": [], "answers": {},
+               "whole": True}
+    _PENDING[app_key] = pending
+    step = _ai_step(app_key, pending, registry_path, fallback=True)
+    if step is not None:
+        return step
+    _PENDING.pop(app_key, None)
 
     parsed = rc.parse_scaffold(app_key, phrase)
     pending = {
@@ -273,6 +291,30 @@ def begin_rule_setup(app_key, phrase, registry_path=None):
         "question": "Accept these rules? Say yes to commit.",
         "rule_id": "",
     }
+
+
+def begin_fix(app_key, rule, feedback, registry_path=None):
+    """"That didn't work - it should have pressed play too": rework a saved
+    rule with the user's correction. Returns a proposal step (or clarify);
+    handle_clarification(app_key, "", "yes") then commits it in place (merge
+    by rule_id keeps the app's other rules)."""
+    app_key = (app_key or "").strip()
+    if not app_key or not isinstance(rule, dict):
+        return {"status": "error", "error": "missing app_key or rule"}
+    phrase = rule.get("source_phrase") or rule.get("rule_id") or ""
+    action_text = rule.get("action_text") or ""
+    if action_text == phrase:
+        action_text = ""
+    pending = {"mode": "action", "phrase": phrase, "action_text": action_text,
+               "feedback": (feedback or "").strip(), "stage": None,
+               "candidate_rules": [], "answers": {}, "fixing": rule.get("rule_id")}
+    _PENDING[app_key] = pending
+    step = _ai_step(app_key, pending, registry_path)
+    if step.get("status") == "proposal":
+        # The reworked rule replaces the old one, whatever the model renamed it.
+        pending["proposed_rule"]["rule_id"] = rule.get("rule_id") or \
+            pending["proposed_rule"].get("rule_id")
+    return step
 
 
 def handle_clarification(app_key, rule_id, answer, registry_path=None):

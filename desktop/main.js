@@ -34,6 +34,12 @@ const READY_TIMEOUT_MS = 180000
 // from the same settings the backend uses.
 const CHROME_PORT = Number(readEnv('JARVIS_BROWSER_PORT') || 9223)
 const OLLAMA_PORT = Number(new URL(readEnv('OLLAMA_BASE_URL') || 'http://localhost:11434/v1').port || 11434)
+// 9router, the brain's primary backend. Nothing else on the machine starts it
+// since the OmniRoute app went away, and a router that is down drops every
+// turn to the local Ollama model without saying so.
+const ROUTER_PORT = Number(new URL(readEnv('ROUTER_BASE_URL') || 'http://localhost:20128/v1').port || 20128)
+const ROUTER_CMD = path.join(process.env.APPDATA || '', 'npm', '9router.cmd')
+const ROUTER_READY_MS = 45000
 const HEALTH_EVERY_MS = 10000
 const CHECKS_EVERY_MS = 60000
 const MAX_RESTARTS = 3
@@ -219,6 +225,44 @@ async function restartBackend () {
   await startBackend()
 }
 
+// ---------------------------------------------------------------- 9router
+
+// '' until the first attempt: attached | ready | missing | failed.
+let router = ''
+
+// The router is shared with everything else that answers on this machine
+// (Hermes, the coding CLIs), so one already up is left alone and one started
+// here is detached: quitting Cygnus must not take the others' brain with it.
+// Measured ~12s from a cold start to the port answering (2026-09-16).
+async function startRouter () {
+  if (await portOpen(ROUTER_PORT)) return setRouter('attached')
+  if (!fs.existsSync(ROUTER_CMD)) return setRouter('missing', 'npm i -g 9router')
+  try {
+    // cmd.exe by hand rather than shell:true — Node refuses to spawn a .cmd
+    // without a shell, and an argument list keeps the path out of a command
+    // line that would be parsed again.
+    spawn(process.env.COMSPEC || 'cmd.exe',
+      ['/c', ROUTER_CMD, '--tray', '--no-browser', '--skip-update', '--port', String(ROUTER_PORT)],
+      { cwd: app.getPath('home'), detached: true, windowsHide: true, stdio: 'ignore' }).unref()
+  } catch (err) {
+    return setRouter('failed', err.message)
+  }
+  const deadline = Date.now() + ROUTER_READY_MS
+  while (Date.now() < deadline) {
+    // A shut port is refused at once, so the wait has to be its own: without
+    // it this is a busy loop for the whole startup.
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    if (await portOpen(ROUTER_PORT)) return setRouter('ready')
+  }
+  setRouter('failed', `port ${ROUTER_PORT} stayed shut`)
+}
+
+function setRouter (state, note = '') {
+  router = state
+  console.log(`[desktop] 9router ${state}${note ? ': ' + note : ''}`)
+  runChecks()
+}
+
 // ---------------------------------------------------------------- health
 
 function fetchStatus () {
@@ -269,6 +313,11 @@ function micBlocked () {
 async function runChecks () {
   const found = []
   if (micBlocked()) found.push('Microphone blocked for desktop apps (Settings > Privacy > Microphone)')
+  if (!await portOpen(ROUTER_PORT)) {
+    found.push(router === 'missing'
+      ? '9router is not installed: every turn falls back to the local model'
+      : '9router is not running: every turn falls back to the local model')
+  }
   if (!await portOpen(OLLAMA_PORT)) found.push('Ollama is not running: no offline fallback')
   if (!await portOpen(CHROME_PORT)) found.push('The automation Chrome is not open: no clicks inside the browser')
   const wake = backend.state === 'ready' ? ((await fetchStatus()) || {}).wake_server : null
@@ -370,6 +419,9 @@ function setMode (next) {
   }
   // The full HUD is a normal window; the panel and the orb float.
   win.setAlwaysOnTop(mode !== 'expanded', 'floating')
+  // Only the full HUD gets a taskbar entry, so it can be minimized there
+  // like any other window instead of only living in the tray.
+  win.setSkipTaskbar(mode !== 'expanded')
   buildTrayMenu()
 }
 
@@ -385,6 +437,10 @@ function onHotkey () {
 }
 
 ipcMain.on('desk:setMode', (_e, next) => showMode(next, next !== 'mini'))
+
+// Native minimize, only meaningful in expanded mode where the window has a
+// taskbar entry to fall back to (see setSkipTaskbar in setMode).
+ipcMain.on('desk:minimize', () => { if (win && !win.isDestroyed()) win.minimize() })
 
 // A wake word heard while JARVIS is an orb or hidden brings the panel back
 // without taking focus from whatever the owner is typing in.
@@ -498,6 +554,7 @@ if (!app.requestSingleInstanceLock()) {
     createTray()
     hotkeyOk = globalShortcut.register(HOTKEY, onHotkey)
     if (!hotkeyOk) console.error(`[desktop] ${HOTKEY} could not be registered`)
+    startRouter()
     startBackend()
     setInterval(healthTick, HEALTH_EVERY_MS)
     setInterval(runChecks, CHECKS_EVERY_MS)

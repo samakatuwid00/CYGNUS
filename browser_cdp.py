@@ -55,7 +55,10 @@ _LOCATE_JS = r"""
     const words = t.split(/\s+/).filter(w => w.length > 2);
     const cands = [...document.querySelectorAll(
       'button, a, [role=button], input[type=submit], input[type=button], [aria-label], [title]')].filter(visible);
-    el = cands.find(e => words.length && words.every(w => describe(e).includes(w))) || null;
+    // Whole words only: "play" must not hit "New playlist".
+    const wordsOf = text => new Set(text.split(/[^a-z0-9]+/));
+    const has = (text, w) => wordsOf(text).has(w);
+    el = cands.find(e => words.length && words.every(w => has(describe(e), w))) || null;
   }
   if (!el) return null;
   el.scrollIntoView({block: 'center', inline: 'center'});

@@ -45,11 +45,16 @@ _NO_RE = re.compile(r"^(no|nope|nah|don'?t|stop|cancel|never ?mind|skip|leave it
 _STOP_RE = re.compile(r"^(no|nope|nah|stop|cancel|never ?mind|forget it|leave it)[\s.!,]*$", re.I)
 _ANCHOR_RE = re.compile(r"<a\b([^>]*)>(.*?)</a>", re.I | re.S)
 _ARTICLES = {"the", "a", "an"}
-# Keys a desktop step may press: navigation and common edit shortcuts only —
-# never the Windows key, Alt combos or anything that reaches outside the app.
+# Keys a desktop step may press (pywinauto syntax: ^ Ctrl, % Alt, + Shift):
+# navigation keys, F1-F12, and modifier+letter/digit shortcuts such as ^s or
+# %{F4}. Never the Windows key, and never a modifier with DELETE (^%{DELETE}
+# reaches outside the app).
+_BRACED_KEY = (r"\{(?:ENTER|TAB|ESC|SPACE|UP|DOWN|LEFT|RIGHT|HOME|END|PGUP|PGDN|BACKSPACE|"
+               r"INS|F(?:[1-9]|1[0-2]))\}")
 SAFE_KEYS_RE = re.compile(
-    r"^(?:\{(?:ENTER|TAB|ESC|SPACE|UP|DOWN|LEFT|RIGHT|HOME|END|PGUP|PGDN|BACKSPACE|DELETE|F5)\}"
-    r"|\^[acfklvx])+$", re.I)
+    r"^(?:" + _BRACED_KEY + r"|\{DELETE\}"
+    r"|[\^%+]{1,3}[a-z0-9]"
+    r"|[\^%+]{1,3}" + _BRACED_KEY + r")+$", re.I)
 # pywinauto reads these as modifiers/groups; a typed name must send them literally.
 _TYPE_SPECIALS_RE = re.compile(r"([+^%~(){}\[\]])")
 _NAV_LABELS = {"home", "login", "log in", "sign in", "register", "next", "previous", "prev",
@@ -265,12 +270,15 @@ def _open(run, url, title):
                     f"back if it restores sessions. Say yes, or no to open it without clicks.",
                     "restart")
         if ok:
+            # The tab we just opened is the one a later click must hit.
+            run["url"] = url
             remember("page", run, url=url, title=title)
             return f"Opened {title} in {browser_cdp.label(browser)}.", None
         return f"[Error] {browser_cdp.label(browser)} didn't open its control port.", None
     out = tools._open_url_in_browser(url, title, browser, remember=False)
     if out.startswith("[Error]"):
         return out, None
+    run["url"] = url
     remember("page", run, url=url, title=title)
     return f"Opened {title}.", None
 
@@ -292,6 +300,7 @@ def _do_web(run, step):
         return (f"Top picks for {run['slot']}: {format_picks(picks)} Which one?"), "pick"
     if op == "open":
         url = run.get("url") or action.get("url")
+        run["url"] = url
         return _open(run, url, run.get("title") or action.get("site") or url)
     if op == "click":
         if run.get("no_clicks"):

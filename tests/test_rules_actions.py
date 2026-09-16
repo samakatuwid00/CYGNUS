@@ -337,3 +337,18 @@ def test_search_query_drops_trailing_jarvis():
     import tools
     assert tools.parse_search_command("search movies in brave browser, Jarvis.")["query"] \
         == "movies"
+
+
+def test_slot_keeps_interior_and_trailing_message_words():
+    """'message jd hello there' -> the message is 'hello there', not 'hello':
+    'there', 'to', 'and', 'name' are not trimmed off the end any more."""
+    rule = {"rule_id": "message_jd", "source_phrase": "message jd", "enforcement": "action",
+            "triggers": ["message jd", "text jd"],
+            "action": {"type": "steps", "steps": [{"op": "launch"},
+                                                  {"op": "type", "target": "box", "text": "{query}"}]}}
+    apps = {"telegram": {"category": "chat", "compiled_rules": [rule]}}
+    assert rules_engine.match_action("message jd hello there", apps)["slot"] == "hello there"
+    assert rules_engine.match_action("text jd I'm on my way to the office", apps)["slot"] \
+        == "I'm on my way to the office"
+    # Pure stop words still fall off the end.
+    assert rules_engine.match_action("message jd hello there please", apps)["slot"] == "hello there"

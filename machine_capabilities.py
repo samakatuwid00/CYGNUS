@@ -130,7 +130,110 @@ def _scan_windows():
                 out[k] = v
     except Exception:
         pass
+    # 6) Store (MSIX) apps from the Start menu: Telegram, Calculator, Windows
+    # Terminal. No .lnk, no uninstall key, no walkable folder - only
+    # Get-StartApps knows them. They win over a stale alias of the same name.
+    try:
+        for k, v in _scan_store().items():
+            if k not in out or not _is_launchable(out[k].get("bin")) \
+                    or str(out[k].get("bin", "")).lower().endswith(".lnk"):
+                out[k] = v
+    except Exception:
+        pass
     return out
+
+
+APPSFOLDER = "shell:AppsFolder\\"
+# Start-menu entries of Windows itself: registered, but hidden from the panel
+# until the user unhides them, like the sorter does for helper programs.
+_STORE_SYSTEM = {"click to do", "family", "feedback hub", "get help", "tips", "get started",
+                 "xbox game bar", "mixed reality portal", "windows security", "microsoft store",
+                 "windows backup", "quick assist", "power automate", "mixed reality link",
+                 "game bar", "phone link", "cortana", "solitaire & casual games",
+                 "microsoft solitaire collection", "windows input experience"}
+
+
+def _manifest_exe(xml_text, app_id):
+    """The program file of one Application in an AppxManifest.xml."""
+    if not xml_text:
+        return None
+    try:
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(xml_text)
+    except Exception:
+        return None
+    apps = [e for e in root.iter() if e.tag.rsplit("}", 1)[-1] == "Application"]
+    pick = next((e for e in apps if e.get("Id") == app_id), None)
+    if pick is None and apps:
+        pick = apps[0]
+    exe = (pick.get("Executable") if pick is not None else None) or ""
+    return os.path.basename(exe.replace("/", "\\")) or None
+
+
+def _store_entries(start_apps, packages, read_manifest):
+    """Registry entries for packaged (Store) apps. start_apps: Get-StartApps
+    rows {Name, AppID}; packages: Get-AppxPackage rows {Name,
+    PackageFamilyName, InstallLocation}; read_manifest(path) -> xml text or
+    None. bin is the shell:AppsFolder address ShellExecute opens; exe is the
+    program file the Running panel and "close it" see."""
+    by_pfn = {p.get("PackageFamilyName"): p for p in packages or [] if isinstance(p, dict)}
+    out = {}
+    for a in start_apps or []:
+        if not isinstance(a, dict):
+            continue
+        appid, name = str(a.get("AppID") or ""), str(a.get("Name") or "").strip()
+        if "!" not in appid or not name:
+            continue                       # a desktop shortcut or a path: the .lnk scan has it
+        pfn, _, app_id = appid.partition("!")
+        pkg = by_pfn.get(pfn) or {}
+        exe = None
+        if pkg.get("InstallLocation"):
+            exe = _manifest_exe(read_manifest(os.path.join(pkg["InstallLocation"], "AppxManifest.xml")),
+                                app_id)
+        key = name.lower()
+        entry = {"bin": APPSFOLDER + appid, "kind": "store", "category": _categorize(name),
+                 "confidence": "high", "version": None, "exe": exe, "package": pfn,
+                 "label": name}
+        if key in _STORE_SYSTEM or pfn.startswith("MicrosoftWindows.Client"):
+            entry["hidden"], entry["hidden_by"] = True, "scan"
+        out[key] = entry
+    return out
+
+
+def _scan_store():
+    """Packaged (Store) apps on the Start menu, via PowerShell (about 2 s)."""
+    if platform.system() != "Windows":
+        return {}
+    ps = ("$ProgressPreference='SilentlyContinue'; "
+          "Get-StartApps | Select-Object Name, AppID | ConvertTo-Json -Compress; "
+          "Write-Output '@@SPLIT@@'; "
+          "Get-AppxPackage -PackageTypeFilter Main | "
+          "Select-Object Name, PackageFamilyName, InstallLocation | ConvertTo-Json -Compress")
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+                           capture_output=True, text=True, timeout=90, encoding="utf-8",
+                           errors="replace", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception:
+        return {}
+    parts = (r.stdout or "").split("@@SPLIT@@")
+    if len(parts) != 2:
+        return {}
+
+    def rows(text):
+        try:
+            data = json.loads(text.strip() or "[]")
+        except ValueError:
+            return []
+        return data if isinstance(data, list) else [data]
+
+    def read_manifest(path):
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                return f.read()
+        except OSError:
+            return None
+
+    return _store_entries(rows(parts[0]), rows(parts[1]), read_manifest)
 
 
 def _start_menu_dirs():
@@ -205,6 +308,8 @@ def _is_launchable(path) -> bool:
         return False
     p = path.split(",")[0].strip()          # strip DisplayIcon ',0' suffixes
     low = p.lower()
+    if low.startswith("shell:appsfolder\\") and "!" in low:
+        return True                          # a Store app: ShellExecute opens it
     if not low.endswith((".exe", ".lnk")):
         return False
     if "package cache" in low:
@@ -441,6 +546,7 @@ USER_FIELDS = ("compiled_rules", "rule_drafts", "enabled", "registered", "hidden
 # app back to the AI sorter or make "Deep scan all" start over. pinned_by /
 # hidden_by say who set registered / hidden ("scan" or "user").
 LEARNED_FIELDS = ("app_kind", "deep_scan", "pinned_by", "hidden_by", "duplicate_of")
+# Store apps carry exe/package/label from the scan; a rescan refreshes them.
 
 
 def _keep_user_data(manifest, old_registry):

@@ -1695,6 +1695,18 @@ def try_rule_action(text: str):
     try:
         import rules_engine as _rules
         import rules_steps
+        # Our own open questions first: "Did you mean your gym time rule?"
+        # and "Change the rule to ...?" take a yes/no before anything else.
+        answer = _answer_rule_guess(t)
+        if answer is not None:
+            return answer
+        answer = _answer_rule_fix(t)
+        if answer is not None:
+            return answer
+        # "That didn't work": the last rule that ran gets corrected.
+        fix = _start_rule_fix(t)
+        if fix is not None:
+            return fix
         m = _rules.match_action(t)
         # A multi-step rule waiting on this user ("Which one?", "Press play?")
         # gets the reply first, unless the reply is itself a rule command.
@@ -1702,12 +1714,8 @@ def try_rule_action(text: str):
             out = rules_steps.resume(t, looks_new=bool(_NEW_COMMAND_RE.match(t)))
             if out is not None:
                 return out
-        if m and m["action"].get("type") == "steps":
-            return rules_steps.start(m["rule"], m["owner"], m["action"], m["slot"],
-                                     m.get("entry"))
         if m:
-            return run_rule_action(m["rule"], m["owner"], m["action"], m["slot"],
-                                   m.get("entry"))
+            return _run_matched_rule(m, t)
         # "play it" / "open number 2" right after a rule showed results.
         if rules_steps.is_follow_up(t):
             return rules_steps.follow_up(t)
@@ -1720,9 +1728,168 @@ def try_rule_action(text: str):
             if answer or not _NEW_COMMAND_RE.match(t):
                 slot = answer or _SLOT_LEAD_RE.sub("", t).strip(" .!?,")
                 return run_rule_action(pend["rule"], pend["owner"], pend["action"], slot)
+        # The fast tier missed: read the meaning. "It's gym time" is the
+        # "gym time" rule; "sum up this column" is "total it".
+        import rules_match
+        sm = rules_match.semantic(t)
+        if sm and sm["confidence"] >= rules_match.SURE:
+            rules_match.learn_trigger(sm["owner"], sm["rule"].get("rule_id"), t)
+            return _run_matched_rule(sm, t)
+        if sm and sm["confidence"] >= rules_match.ASK:
+            import dialogue_state
+            question = f"Did you mean {rules_match.describe(sm)}?"
+            _RULE_GUESS.clear()
+            _RULE_GUESS.update(match=sm, said=t, ts=_time.time())
+            dialogue_state.ask("rule_guess", question, {"rule": sm["rule"].get("rule_id")},
+                               owner="tools")
+            return question
     except Exception as e:
         print(f"[JARVIS] action-rule check failed: {e}")
     return None
+
+
+# The semantic tier's "Did you mean ...?" and the last rule that ran, for
+# "that didn't work" (rules_match / RULES_INTENT_PLAN.md phases 3 and 4).
+_RULE_GUESS = {}
+_LAST_RULE_RUN = {}
+_RULE_GUESS_TTL = 120
+_LAST_RUN_TTL = 600
+_DIDNT_WORK_RE = re.compile(
+    r"^(?:that|it|this|no,?\s*that|no,?\s*it)?\s*(?:didn'?t|did\s+not|doesn'?t|does\s+not|"
+    r"is\s+not|isn'?t|wasn'?t|was\s+not)\s+(?:work|right|it|what\s+i\s+(?:wanted|meant|asked)|"
+    r"correct)\b|^(?:wrong|not\s+(?:that|right|what\s+i\s+(?:wanted|meant)))\b", re.I)
+_EXPECT_HINTS = {}
+
+
+def _run_matched_rule(m, said):
+    """Run a matched rule (fast or semantic tier): its time condition first,
+    then the run, then a first-time hint on what the user should see."""
+    import time as _time
+    import rules_engine as _rules
+    import rules_steps
+    rule = m["rule"]
+    if not _rules.condition_holds(rule):
+        import rules_ai
+        when = rules_ai.describe_condition(rule.get("condition"))
+        return (f'Your rule "{rule.get("source_phrase") or rule.get("rule_id")}" only '
+                f"applies {when}, sir, so I left it.")
+    if m["action"].get("type") == "steps":
+        out = rules_steps.start(rule, m["owner"], m["action"], m["slot"], m.get("entry"))
+    else:
+        out = run_rule_action(rule, m["owner"], m["action"], m["slot"], m.get("entry"))
+    _LAST_RULE_RUN.clear()
+    _LAST_RULE_RUN.update(rule=rule, owner=m["owner"], said=said, ts=_time.time())
+    if out and not out.startswith("[Error]") and rule.get("expects") \
+            and not rules_steps.active():
+        rid = f'{m["owner"]}/{rule.get("rule_id")}'
+        n = _EXPECT_HINTS.get(rid, 0)
+        if n < 2:
+            _EXPECT_HINTS[rid] = n + 1
+            out = (f"{out.rstrip()} You should see: {rule['expects']}. "
+                   f"If not, say \"that didn't work\".")
+    return out
+
+
+def _answer_rule_guess(text):
+    """Yes/no to "Did you mean your <rule> rule?", else None."""
+    import time as _time
+    import dialogue_state
+    asked = dialogue_state.pending("rule_guess")
+    guess = dict(_RULE_GUESS)
+    if not asked or not guess or _time.time() - guess.get("ts", 0) > _RULE_GUESS_TTL:
+        return None
+    import consent
+    reply = consent.read(text, soft=True)
+    if reply.kind == "yes":
+        _RULE_GUESS.clear()
+        dialogue_state.answered()
+        import rules_match
+        sm = guess["match"]
+        rules_match.learn_trigger(sm["owner"], sm["rule"].get("rule_id"), guess["said"])
+        return _run_matched_rule(sm, guess["said"])
+    if reply.kind == "no":
+        _RULE_GUESS.clear()
+        dialogue_state.answered()
+        return "Okay, I'll leave it."
+    return None
+
+
+def _start_rule_fix(text):
+    """"That didn't work" after a rule ran: ask what should have happened, or
+    take the correction in the same breath and propose a new version."""
+    import time as _time
+    last = dict(_LAST_RULE_RUN)
+    if not last or _time.time() - last.get("ts", 0) > _LAST_RUN_TTL:
+        return None
+    m = _DIDNT_WORK_RE.match(text or "")
+    if not m:
+        return None
+    rest = (text or "")[m.end():].strip(" .,;:!?-")
+    rest = re.sub(r"^(?:it\s+should|i\s+wanted\s+it\s+to|i\s+meant|instead)\s*", "", rest, flags=re.I).strip()
+    rule = last["rule"]
+    import dialogue_state
+    if not rest:
+        _RULE_FIX.clear()
+        _RULE_FIX.update(owner=last["owner"], rule=rule, ts=_time.time(), stage="ask")
+        question = (f'Sorry, sir. For "{rule.get("source_phrase") or rule.get("rule_id")}", '
+                    f"what should have happened?")
+        dialogue_state.ask("rule_fix", question, {"rule": rule.get("rule_id")}, owner="tools")
+        return question
+    return _propose_rule_fix(last["owner"], rule, rest)
+
+
+_RULE_FIX = {}
+
+
+def _propose_rule_fix(owner, rule, feedback):
+    """Recompile the rule with the user's correction and hold the proposal
+    for a yes (save) or another correction."""
+    import time as _time
+    import dialogue_state
+    import rules_voice
+    step = rules_voice.begin_fix(owner, rule, feedback)
+    if step.get("status") != "proposal":
+        _RULE_FIX.clear()
+        return step.get("question") or step.get("error") or "I couldn't rework that rule, sir."
+    _RULE_FIX.clear()
+    _RULE_FIX.update(owner=owner, rule=rule, ts=_time.time(), stage="proposal")
+    question = (f"Here's a new version: {step.get('summary') or ''} "
+                f"Say yes to save it, or tell me what to change.").strip()
+    dialogue_state.ask("rule_fix", question, {"rule": rule.get("rule_id")}, owner="tools")
+    return question
+
+
+def _answer_rule_fix(text):
+    """The reply to "what should have happened?" or to the reworked proposal."""
+    import time as _time
+    import dialogue_state
+    asked = dialogue_state.pending("rule_fix")
+    fix = dict(_RULE_FIX)
+    if not asked or not fix or _time.time() - fix.get("ts", 0) > _RULE_GUESS_TTL:
+        return None
+    import consent
+    reply = consent.read(text, soft=True)
+    if reply.kind == "no" or _RULE_CANCEL_RE.match(text or ""):
+        _RULE_FIX.clear()
+        dialogue_state.answered()
+        import rules_voice
+        rules_voice.cancel_setup(fix["owner"])
+        return "Okay, the rule stays as it is."
+    if fix.get("stage") == "proposal" and reply.kind == "yes":
+        import rules_voice
+        step = rules_voice.handle_clarification(fix["owner"], "", "yes")
+        _RULE_FIX.clear()
+        dialogue_state.answered()
+        if step.get("status") == "committed":
+            return "Saved. The rule now does that."
+        return step.get("question") or step.get("error") or "I couldn't save it, sir."
+    if _NEW_COMMAND_RE.match(text or "") and fix.get("stage") == "ask":
+        # A new command, not an answer: drop the question.
+        _RULE_FIX.clear()
+        dialogue_state.answered()
+        return None
+    dialogue_state.answered()
+    return _propose_rule_fix(fix["owner"], fix["rule"], text)
 
 
 def _is_app_key(name: str) -> bool:
@@ -4349,6 +4516,17 @@ def _asked_for_new(app: str) -> bool:
                           r"|\bopen\s+(a\s+)?(new|another|second)\b", said or "", re.I))
 
 
+def _note_opened(name, entry=None):
+    """Remember the app just opened or shown: "close it" a moment later
+    means this one (the bare pronoun used to be refused)."""
+    try:
+        import dialogue_state
+        dialogue_state.remember_result("app", app=(entry or {}).get("label") or name,
+                                       title=name)
+    except Exception:
+        pass
+
+
 def _focus_running(names, binp) -> str | None:
     """Bring the app's open window forward rather than launch it again:
     "show PowerPoint" from the phone opened a second PowerPoint (2026-09-14)."""
@@ -4356,6 +4534,7 @@ def _focus_running(names, binp) -> str | None:
         import running_apps
         row = running_apps.app_window(names, exe=binp)
         if row:
+            _note_opened(row["name"])
             ok, said = running_apps.bring_to_front(row)
             # A window that won't come forward is still open: say so, never
             # launch a second copy.
@@ -4636,7 +4815,7 @@ def open_application(app: str, action: str = None, query: str = None,
     # Already open: bring its window forward. Launching again opens a second
     # window, and a second Office program opens an empty document.
     if not action and not new_window:
-        _front = _focus_running([requested, name], binp)
+        _front = _focus_running([requested, name], (entry or {}).get("exe") or binp)
         if _front:
             return _front
 
@@ -4684,6 +4863,7 @@ def open_application(app: str, action: str = None, query: str = None,
             subprocess.run(["open", "-a", cand])
         else:
             subprocess.run(["xdg-open", cand])
+        _note_opened(name, entry)
         _msg = f"Opened {name}"
         if _notices:
             _msg += f"\n\n{_notices}"
@@ -4694,6 +4874,7 @@ def open_application(app: str, action: str = None, query: str = None,
         try:
             if system == "Windows":
                 _os.startfile(alt)
+                _note_opened(name, entry)
                 return f"Opened {name}"
         except Exception:
             pass
@@ -4838,6 +5019,51 @@ def list_installed_apps() -> str:
     return "\n".join(lines)
 
 
+def _running_row_for(said):
+    """The Running-panel row whose name the user said, or None."""
+    try:
+        import running_apps
+        return running_apps.app_window([said], rows=running_apps.inventory())
+    except Exception:
+        return None
+
+
+def _close_row_windows(row):
+    """Ask each window of a Running row to close (WM_CLOSE, so an app may
+    still ask to save). True when at least one window was asked."""
+    if not row or not row.get("windows"):
+        return False
+    try:
+        import ctypes
+        asked = False
+        for w in row["windows"]:
+            if w.get("hwnd"):
+                ctypes.windll.user32.PostMessageW(int(w["hwnd"]), 0x0010, 0, 0)
+                asked = True
+        return asked
+    except Exception:
+        return False
+
+
+def _row_exe(row):
+    """The program file behind a Running row, without .exe: the one named
+    like the row ("chrome.exe" for Google Chrome, "windowsterminal.exe" for
+    Windows Terminal), else the first."""
+    exes = [e for e in row.get("exes") or [] if e.endswith(".exe")]
+    if not exes:
+        return ""
+    words = re.findall(r"[a-z0-9]+", (row.get("name") or "").lower())
+    joined = "".join(words)
+    for e in exes:
+        stem = e[:-4]
+        if stem in words or stem.replace("-", "").replace("_", "") == joined:
+            return stem
+    for e in exes:
+        if set(re.findall(r"[a-z0-9]+", e[:-4])) & set(words):
+            return e[:-4]
+    return exes[0][:-4]
+
+
 def close_application(app: str, force: bool = False) -> str:
     """Close a running application by friendly name, via registry lookup.
 
@@ -4852,8 +5078,17 @@ def close_application(app: str, force: bool = False) -> str:
         r"(?:close|quit|exit|kill|shut down)\s+(?:the\s+|my\s+|a\s+)*",
         "", requested, flags=re.IGNORECASE).strip()
     if requested.lower() in {"it", "this", "that", "app", "application",
-                             "the", "a", "my", ""}:
-        return "[Error] Which app should I close? Name it, e.g. 'close Spotify'."
+                             "the", "a", "my", "", "that app", "this app", "the app"}:
+        # "Open Calculator" ... "close it": the app just opened or shown.
+        try:
+            import dialogue_state
+            last = dialogue_state.last_result("app")
+        except Exception:
+            last = None
+        if last and (last.get("app") or last.get("title")):
+            requested = _clean_app_name(str(last.get("app") or last.get("title")))
+        else:
+            return "[Error] Which app should I close? Name it, e.g. 'close Spotify'."
     if requested.lower() in {"yourself", "you", "jarvis", "yourself jarvis", "cygnus", "yourself cygnus"}:
         return ("I can't close myself, sir. Close the Cygnus window, or say "
                 "\"go to sleep\" to end the session.")
@@ -4885,8 +5120,13 @@ def close_application(app: str, force: bool = False) -> str:
         entry = None
 
     binp = (entry or {}).get("bin") or ""
-    exe_name = os.path.splitext(os.path.basename(binp.strip('"')))[0] if binp else ""
-    name = (entry or {}).get("name", requested)
+    # A Store app's bin is a shell:AppsFolder address; its program file is
+    # the registry's `exe` (Telegram.exe, CalculatorApp.exe).
+    exe_file = (entry or {}).get("exe") or ""
+    if not exe_file and binp and not binp.lower().startswith("shell:"):
+        exe_file = os.path.basename(binp.strip('"'))
+    exe_name = os.path.splitext(exe_file)[0] if exe_file else ""
+    name = (entry or {}).get("label") or (entry or {}).get("name", requested)
 
     # Phase 3.5 runtime enforcement (close path): consult the app's
     # compiled_rules for a hard "must not close" guard. Like open_application,
@@ -4902,6 +5142,12 @@ def close_application(app: str, force: bool = False) -> str:
         _close_notices = ""
 
     if not exe_name:
+        # Not in the registry: the Running panel knows what is open by its
+        # window and program file ("close windows terminal" -> WindowsTerminal.exe).
+        row = _running_row_for(requested)
+        if row:
+            exe_name, name = _row_exe(row), row["name"]
+    if not exe_name:
         # No registry entry: try the raw name as an image name.
         exe_name = requested
 
@@ -4913,6 +5159,14 @@ def close_application(app: str, force: bool = False) -> str:
 
     if not _running(exe_name):
         return f"{name} is not running."
+
+    # 0) The window the Running panel shows gets WM_CLOSE first. A Store
+    # app's window belongs to ApplicationFrameHost, so closing "its" main
+    # window (step 1) does nothing to Calculator or Settings.
+    if _close_row_windows(_running_row_for(requested) or _running_row_for(name)):
+        time.sleep(2)
+        if not _running(exe_name):
+            return f"Closed {name}."
 
     # 1) Graceful: WM_CLOSE to all windows of the process.
     ps = (f"Get-Process -Name '{exe_name}' -ErrorAction SilentlyContinue | "

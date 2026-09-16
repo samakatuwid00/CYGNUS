@@ -250,3 +250,53 @@ def test_voice_setup_proposal_carries_the_verdict(tmp_path, monkeypatch):
     assert not any("guessed" in n for n in step["notes"])
     assert rules_sim.get_progress("brave")["done"] is True
     rules_voice.cancel_setup("brave")
+
+
+# ------------------------------------------------- phase 1 fixes (2026-09-15) --
+
+def test_click_target_matches_whole_words_only():
+    assert not site_probe.click_target_in_dom(_page("YT", "<button>New playlist</button>"), "play")
+    assert site_probe.click_target_in_dom(_page("YT", "<button>Shuffle play</button>"), "play")
+    assert not site_probe.click_target_in_dom(_page("YT", "<a href='/x'>replays</a>"), "play")
+
+
+def test_describe_open_step_names_the_site_unless_it_follows_a_pick():
+    assert rules_sim.describe_step({"op": "open"}) == "open the site"
+    assert rules_sim.describe_step({"op": "open"}, after_pick=True) == "open your pick"
+
+
+class _ShellProbe:
+    """A client-rendered page: the DOM dump is an empty app shell."""
+    def __init__(self, dom):
+        self.dom = dom
+
+    def load(self, url):
+        return {"url": url, "dom": self.dom, "title": "YouTube Music", "blocked": False}
+
+    def click_target_in_dom(self, dom, target):
+        return site_probe.click_target_in_dom(dom, target)
+
+
+def _steps_rule():
+    return {"rule_id": "play_music", "source_phrase": "play music", "enforcement": "action",
+            "triggers": ["play music"],
+            "action": {"type": "steps", "site": "music.youtube.com",
+                       "url": "https://music.youtube.com", "browser": "brave",
+                       "steps": [{"op": "open"}, {"op": "click", "target": "shuffle play"}]}}
+
+
+def test_app_shell_page_means_unverified_not_failed():
+    shell = _page("YouTube Music", "<div id='app'></div><script>boot()</script>")
+    rule, report = rules_sim.simulate("brave", _steps_rule(), {"category": "browser"},
+                                      llm=_llm(), probe=_ShellProbe(shell))
+    assert report["status"] == "unverified"
+    assert "draws itself in the browser" in report["steps"][-1]
+    assert "Press Test" in report["steps"][-1]
+
+
+def test_real_page_without_the_target_still_fails():
+    body = "<p>" + "Films and series to stream tonight. " * 12 + "</p><a href='/x'>Sign in</a>"
+    rule, report = rules_sim.simulate("brave", _steps_rule(), {"category": "browser"},
+                                      llm=_llm(), probe=_ShellProbe(_page("Site", body)))
+    assert report["status"] == "failed"
+    assert report["steps"][-1].startswith('FAILED "shuffle play" is not on')

@@ -103,8 +103,10 @@ def active_app():
         if not exe:
             return None
         for key, entry in app_abilities.load_apps()["apps"].items():
-            if isinstance(entry, dict) and \
-                    os.path.basename((entry.get("bin") or "").split(",")[0]).lower() == exe:
+            if not isinstance(entry, dict):
+                continue
+            if (entry.get("exe") or "").lower() == exe.lower() or \
+                    os.path.basename((entry.get("bin") or "").split(",")[0]).lower() == exe.lower():
                 return key
     except Exception:
         return None

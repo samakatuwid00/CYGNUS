@@ -55,16 +55,21 @@
     border-bottom: 1px solid var(--border);
   }
   .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
-  .top-row { display: flex; align-items: center; gap: 16px; padding-top: 18px; }
-  .title h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.012em; }
-  .title p { margin: 2px 0 0; font-size: 12.5px; color: var(--text-3); }
+  /* Top row: title on the left, one toolbar of actions on the right. The
+     toolbar never wraps: below 900px the scan/rules buttons fold into ⋯ and
+     only "Add app" (the everyday action) stays out. */
+  .top-row { display: flex; align-items: center; gap: 12px; padding-top: 16px; min-height: 40px; }
+  .title { flex: 0 1 auto; min-width: 0; }
+  .title h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.012em; line-height: 1.2; }
+  .title p { margin: 2px 0 0; font-size: 12.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .spacer { flex: 1; }
-  .stats { display: flex; gap: 18px; font-size: 12px; color: var(--text-3); }
+  /* Summary counts sit at the right end of the tab row, where there is room. */
+  .stats { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--text-3); white-space: nowrap; padding-bottom: 11px; }
   .stat b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 4px; }
   .stat.warn b { color: var(--warn); }
   .stat[hidden] { display: none; }
 
-  .controls { display: flex; align-items: center; gap: 10px; padding: 14px 0 12px; }
+  .controls { display: flex; align-items: center; gap: 10px; padding: 12px 0 10px; }
   .search {
     flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
     height: 32px; padding: 0 8px 0 10px;
@@ -76,6 +81,13 @@
   .search input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; font-size: 13px; color: var(--text); }
   .search input::placeholder { color: var(--text-3); }
   .search input::-webkit-search-cancel-button { display: none; }
+  .search .clear {
+    width: 22px; height: 22px; display: grid; place-items: center; flex: none;
+    border: 0; border-radius: 6px; background: transparent; color: var(--text-3); cursor: pointer;
+    transition: background .12s, color .12s;
+  }
+  .search .clear:hover { background: var(--hover); color: var(--text); }
+  .search .clear[hidden] { display: none; }
   kbd {
     font: 500 10.5px/1 var(--mono); color: var(--text-3);
     padding: 3px 5px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-2);
@@ -91,8 +103,10 @@
   .seg-btn:hover { color: var(--text); }
   .seg-btn.active { background: var(--surface-3); color: var(--text); box-shadow: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 1px 2px rgba(0, 0, 0, .4); }
   .seg-btn .n { font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+  .seg-btn .n:empty { display: none; }
 
-  .tabs { display: flex; gap: 20px; margin-bottom: -1px; }
+  .tabs-row { display: flex; align-items: flex-end; gap: 16px; margin-bottom: -1px; }
+  .tabs { display: flex; gap: 20px; flex: 1; min-width: 0; }
   .tab {
     position: relative; padding: 8px 0 11px; border: 0; background: transparent; cursor: pointer;
     font-size: 13px; font-weight: 500; color: var(--text-3);
@@ -122,6 +136,26 @@
   .icon-btn.ghost:hover { background: var(--hover); }
   .icon-btn.spinning svg { animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Header toolbar: Add app (primary) · a joined group of the three bulk
+     actions · Stop deep scan while one runs · ⋯ (narrow) · refresh. */
+  .head-acts { display: flex; align-items: center; gap: 8px; flex: none; }
+  .head-acts .btn svg { opacity: .8; }
+  .btn-group { display: inline-flex; align-items: stretch; }
+  .btn-group .btn { border-radius: 0; margin-left: -1px; position: relative; }
+  .btn-group .btn:first-child { border-radius: 7px 0 0 7px; margin-left: 0; }
+  .btn-group .btn:last-child { border-radius: 0 7px 7px 0; }
+  .btn-group .btn:hover, .btn-group .btn:focus-visible { z-index: 1; }
+  .head-tools { display: flex; align-items: center; gap: 6px; flex: none; }
+  .head-tools::before { content: ""; width: 1px; height: 20px; background: var(--border-strong); margin: 0 2px; }
+  #h-deep-cancel[hidden] { display: none; }
+  /* A busy button shows a small ring instead of only fading out. */
+  .btn.is-busy::before {
+    content: ""; width: 11px; height: 11px; flex: none; border-radius: 50%;
+    border: 2px solid currentColor; border-right-color: transparent;
+    animation: spin .7s linear infinite;
+  }
+  .btn.is-busy svg { display: none; }
 
   /* --------------------------------------------------------------- list -- */
   .list { padding-top: 12px; padding-bottom: 48px; }
@@ -160,10 +194,14 @@
   .name, .meta { display: block; }
   .aux { display: flex; align-items: center; gap: 8px; }
   .rules-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-2); }
+  .v-answer-row { display: flex; gap: 6px; margin: 6px 0 2px; }
   .ctl { width: 28px; display: flex; justify-content: center; }
   .acts { display: flex; align-items: center; gap: 4px; min-width: 30px; justify-content: flex-end; }
   .acts .btn { opacity: 0; transition: opacity .12s, background .12s, border-color .12s, color .12s; }
   .row:hover .acts .btn, .row:focus-within .acts .btn, .row.is-active .acts .btn { opacity: 1; }
+  /* No hover on touch screens: Open / Hide stay visible instead of only
+     appearing under a pointer that never arrives. */
+  @media (hover: none) { .acts .btn { opacity: 1; } }
   .chev { color: var(--text-3); padding: 0 2px; transition: transform .15s var(--ease), color .12s; }
   .row:hover .chev { color: var(--text-2); transform: translateX(2px); }
 
@@ -324,8 +362,8 @@
   }
   .rule-x:hover { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-ring); }
   .rule-x.is-busy { opacity: .5; cursor: progress; }
-  .head-acts { display: flex; flex-wrap: wrap; gap: 6px; }
-  .add-row { display: flex; gap: 6px; margin-top: 10px; }
+  .add-row { display: flex; gap: 6px; margin-top: 2px; padding-bottom: 10px; animation: rise .18s var(--ease); }
+  .add-row[hidden] { display: none; }
   .add-row input, .ab-val {
     flex: 1; min-width: 0; height: 28px; padding: 0 10px; border-radius: 7px;
     background: var(--surface-2); border: 1px solid var(--border); color: var(--text); font: inherit; font-size: 12.5px;
@@ -426,35 +464,70 @@
   }
   .toast .t-act:hover { background: var(--accent-soft); }
 
+  /* Below 900px the three bulk actions fold into ⋯. "Add app" stays out, and
+     so does Stop deep scan, so a running scan can always be stopped. */
+  @media (max-width: 899px) {
+    .title p { white-space: normal; }
+    .btn-group { display: none; }
+    .head-tools .head-more { display: block; }   /* beats the base .head-more rule below */
+  }
   @media (max-width: 640px) {
     .wrap { padding: 0 14px; }
     .stats, .rules-chip { display: none; }
+    .title p { display: none; }   /* "Apps" alone; the subtitle wrapped to three lines beside the toolbar */
+    .top-row { gap: 8px; }
+    .head-acts { gap: 6px; }
     .controls { flex-wrap: wrap; }
     .search { flex-basis: 100%; }
+    .seg { width: 100%; }
+    .seg-btn { flex: 1; justify-content: center; padding: 0 6px; }
     .acts .btn { display: none; }
-    /* View tabs stay on one line and scroll sideways instead of wrapping
-       ("Shadow review" was cut off at phone width). */
-    .tabs { gap: 16px; overflow-x: auto; scrollbar-width: none; }
+    /* View tabs stay on one line and scroll sideways instead of wrapping;
+       the right edge fades so a cut-off tab reads as "more to the right". */
+    .tabs { gap: 16px; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity;
+      -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent);
+      mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); }
     .tabs::-webkit-scrollbar { display: none; }
-    .tab { flex: 0 0 auto; white-space: nowrap; }
-    /* The four header actions fold into ⋯ (Stop deep scan stays out, so a
-       running scan can always be stopped). */
-    .head-acts .btn:not(#h-deep-cancel) { display: none; }
-    .top-row .head-more { display: block; }   /* beats the base .head-more rule below */
+    .tab { flex: 0 0 auto; white-space: nowrap; scroll-snap-align: start; }
+    .tab:last-child { padding-right: 28px; }
+    .add-row { flex-wrap: wrap; }
+    .add-row input { flex-basis: 100%; }
+    .add-row .btn { flex: 1; }
+  }
+  /* Touch: every header control is at least 40px tall. */
+  @media (pointer: coarse) {
+    .top .btn-sm { height: 40px; padding: 0 12px; font-size: 13px; }
+    .top .icon-btn { width: 40px; height: 40px; }
+    .seg { padding: 2px; }
+    .seg-btn { height: 40px; font-size: 13px; }
+    .search { height: 40px; }
+    .search input { font-size: 16px; }   /* iOS will not zoom a 16px field */
+    .tab { padding: 12px 0 13px; font-size: 13.5px; }
+    .head-menu button { padding: 12px 12px; }
+    .add-row input { height: 40px; font-size: 16px; }
   }
   .head-more { position: relative; display: none; }
   #h-more { font-size: 18px; line-height: 1; letter-spacing: 1px; }
-  .head-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: 230px; padding: 6px;
+  #h-more[aria-expanded="true"] { background: var(--surface-3); color: var(--text); border-color: var(--border-strong); }
+  .head-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: 250px; padding: 6px;
     display: grid; background: var(--surface-2, #16161c); border: 1px solid var(--border-strong, rgba(255, 255, 255, .17));
-    border-radius: 12px; box-shadow: 0 18px 40px rgba(0, 0, 0, .55); }
+    border-radius: 12px; box-shadow: 0 18px 40px rgba(0, 0, 0, .55); animation: rise .16s var(--ease); }
   .head-menu[hidden] { display: none; }
-  .head-menu button { text-align: left; font: inherit; font-size: 13.5px; color: var(--text); background: transparent;
-    border: 0; border-radius: 8px; padding: 9px 10px; cursor: pointer; }
+  .head-menu button { display: flex; align-items: center; gap: 10px; text-align: left; font: inherit; font-size: 13.5px;
+    color: var(--text); background: transparent; border: 0; border-radius: 8px; padding: 9px 10px; cursor: pointer; }
+  .head-menu button svg { color: var(--text-3); }
   .head-menu button:hover, .head-menu button:focus-visible { background: var(--hover, rgba(255, 255, 255, .06)); outline: none; }
+  .head-menu button:disabled { opacity: .5; cursor: default; }
   .head-menu hr { border: 0; border-top: 1px solid var(--border, rgba(255, 255, 255, .1)); margin: 4px 2px; }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
   }
+  /* Inside the HUD's Apps window (iframe): the window's own head already says
+     "CYGNUS APPS", so the page title goes and the toolbar starts at the left
+     edge; the summary counts stay at the end of the tab row. */
+  body.embedded .title, body.embedded .spacer { display: none; }
+  body.embedded .head-acts { margin-right: auto; }
+  body.embedded .top-row { padding-top: 12px; }
 </style>
 </head>
 <body>
@@ -466,35 +539,35 @@
           <p>Installed apps, websites and capabilities Cygnus can act on</p>
         </div>
         <div class="spacer"></div>
-        <div class="stats" aria-label="Summary">
-          <span class="stat"><b id="st-enabled">0</b>enabled</span>
-          <span class="stat"><b id="st-rules">0</b>rules</span>
-          <span class="stat warn" id="st-broken-wrap" hidden><b id="st-broken">0</b>broken</span>
-        </div>
-        <div class="head-acts">
-          <button class="btn btn-sm" id="h-add">Add app</button>
-          <button class="btn btn-sm" id="h-scan" title="Find every app on this computer">Full scan</button>
-          <button class="btn btn-sm btn-primary" id="h-gen" title="Give every registered app its predefined abilities">Create predefined rules for all</button>
-          <button class="btn btn-sm" id="h-deep" title="Open, read and close every registered app not scanned yet, one at a time">Deep scan all</button>
-          <button class="btn btn-sm btn-danger" id="h-deep-cancel" hidden>Stop deep scan</button>
-        </div>
-        <div class="head-more">
-          <button class="icon-btn" id="h-more" aria-haspopup="menu" aria-expanded="false"
-                  aria-label="More actions" title="More actions">⋯</button>
-          <div class="head-menu" id="h-menu" role="menu" hidden>
-            <button type="button" role="menuitem" data-for="h-add">Add app</button>
-            <button type="button" role="menuitem" data-for="h-scan">Full scan</button>
-            <button type="button" role="menuitem" data-for="h-deep">Deep scan all</button>
-            <hr>
-            <button type="button" role="menuitem" data-for="h-gen">Create predefined rules for all</button>
+        <div class="head-acts" role="toolbar" aria-label="App actions">
+          <button class="btn btn-sm btn-primary" id="h-add" aria-expanded="false" aria-controls="add-row"
+                  title="Register an app by name or program path"><span data-ico="plus"></span>Add app</button>
+          <div class="btn-group">
+            <button class="btn btn-sm" id="h-scan" title="Find every app on this computer"><span data-ico="scan"></span>Full scan</button>
+            <button class="btn btn-sm" id="h-deep" title="Open, read and close every registered app not scanned yet, one at a time"><span data-ico="deep"></span>Deep scan all</button>
+            <button class="btn btn-sm" id="h-gen" title="Give every registered app its predefined abilities"><span data-ico="sparkle"></span>Create predefined rules for all</button>
           </div>
+          <button class="btn btn-sm btn-danger" id="h-deep-cancel" hidden><span data-ico="stop"></span>Stop deep scan</button>
         </div>
-        <button class="icon-btn" id="refresh" title="Refresh" aria-label="Refresh"></button>
+        <div class="head-tools">
+          <div class="head-more">
+            <button class="icon-btn" id="h-more" aria-haspopup="menu" aria-expanded="false" aria-controls="h-menu"
+                    aria-label="More actions" title="More actions">⋯</button>
+            <div class="head-menu" id="h-menu" role="menu" aria-label="More actions" hidden>
+              <button type="button" role="menuitem" data-for="h-scan"><span data-ico="scan"></span>Full scan</button>
+              <button type="button" role="menuitem" data-for="h-deep"><span data-ico="deep"></span>Deep scan all</button>
+              <hr>
+              <button type="button" role="menuitem" data-for="h-gen"><span data-ico="sparkle"></span>Create predefined rules for all</button>
+            </div>
+          </div>
+          <button class="icon-btn" id="refresh" title="Refresh" aria-label="Refresh"></button>
+        </div>
       </div>
       <div class="controls">
         <label class="search">
           <span id="search-ico"></span>
           <input id="search" type="search" placeholder="Search apps, sites and capabilities" autocomplete="off" spellcheck="false" aria-label="Search" />
+          <button class="clear" id="search-clear" type="button" aria-label="Clear search" title="Clear (Esc)" hidden></button>
           <kbd>/</kbd>
         </label>
         <div class="seg" role="group" aria-label="Filter by type">
@@ -512,18 +585,25 @@
       <div class="progress" id="h-progress" role="status" aria-live="polite" hidden>
         <div class="progress-bar"><span></span></div><div class="progress-text"></div>
       </div>
-      <nav class="tabs" role="tablist" aria-label="View">
-        <button id="tab-curated" class="tab active" role="tab" aria-selected="true" data-tab="curated">
-          Curated Apps &amp; Sites <span class="count" id="count-curated">0</span>
-        </button>
-        <button id="tab-all" class="tab" role="tab" aria-selected="false" data-tab="all">
-          All Detected (Raw) <span class="count" id="count-all">0</span>
-        </button>
-        <button id="tab-shadow" class="tab" role="tab" aria-selected="false" data-tab="shadow"
-                title="Where the new understand-first router would have acted differently">
-          Shadow review <span class="count" id="count-shadow"></span>
-        </button>
-      </nav>
+      <div class="tabs-row">
+        <nav class="tabs" role="tablist" aria-label="View">
+          <button id="tab-curated" class="tab active" role="tab" aria-selected="true" data-tab="curated">
+            Curated Apps &amp; Sites <span class="count" id="count-curated">0</span>
+          </button>
+          <button id="tab-all" class="tab" role="tab" aria-selected="false" data-tab="all">
+            All Detected (Raw) <span class="count" id="count-all">0</span>
+          </button>
+          <button id="tab-shadow" class="tab" role="tab" aria-selected="false" data-tab="shadow"
+                  title="Where the new understand-first router would have acted differently">
+            Shadow review <span class="count" id="count-shadow"></span>
+          </button>
+        </nav>
+        <div class="stats" aria-label="Summary">
+          <span class="stat"><b id="st-enabled">0</b>enabled</span>
+          <span class="stat"><b id="st-rules">0</b>rules</span>
+          <span class="stat warn" id="st-broken-wrap" hidden><b id="st-broken">0</b>broken</span>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -564,6 +644,7 @@
         <div class="sec-h">
           <h3>Voice Rule Setup</h3>
           <span class="sub">Type a command, then tell Cygnus what it should do. Cygnus works out the rule with AI.</span>
+          <button class="link-btn" id="voice-clear" hidden>Clear conversation</button>
         </div>
         <div class="thread" id="v-thread"></div>
         <div class="progress" id="v-progress" role="status" aria-live="polite" hidden>
@@ -643,7 +724,12 @@ const ICONS = {
   shield: '<path d="M12 3 5 6v5.5c0 4.2 2.9 7.8 7 9.5 4.1-1.7 7-5.3 7-9.5V6Z"/>',
   check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
   alert: '<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/>',
-  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>'
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  scan: '<path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><path d="M4 12h16"/>',
+  deep: '<path d="m12 3 8 4.5-8 4.5-8-4.5Z"/><path d="m4 12 8 4.5 8-4.5"/><path d="m4 16.5 8 4.5 8-4.5"/>',
+  sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><path d="m12 7 1.6 3.4L17 12l-3.4 1.6L12 17l-1.6-3.4L7 12l3.4-1.6Z"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>'
 };
 
 const CATS = {
@@ -772,6 +858,34 @@ function updateCounts() {
   const by = { all: source.length, app: 0, website: 0, capability: 0 };
   for (const a of source) by[kindOf(a)]++;
   for (const k in by) $("#f-" + k).textContent = by[k];
+  tellHud("counts", { curated: S.curated.length, all: S.all.length, enabled, rules, broken, error: !!S.error });
+}
+
+// ------------------------------------------------------------- HUD bridge --
+// The HUD (jarvis_hud_v3.html) shows this page in its Apps window. Same
+// origin, so it could reach in, but a small message protocol keeps the two
+// pages independent: this page reports, the HUD asks.
+//   page -> HUD  { type: "cy-apps", event: "ready" | "counts" | "escape", ... }
+//   HUD -> page  { type: "cy-apps", cmd: "open" | "refresh" }
+const EMBEDDED = window.self !== window.top;
+
+function tellHud(event, extra) {
+  if (!EMBEDDED) return;
+  try { window.parent.postMessage(Object.assign({ type: "cy-apps", event }, extra || {}), "*"); } catch (e) {}
+}
+
+function onHudMessage(e) {
+  const m = e.data;
+  if (!m || m.type !== "cy-apps" || !m.cmd || e.source !== window.parent) return;
+  if (m.cmd === "refresh" || m.cmd === "open") {
+    if (!S.loading) loadApps();
+  }
+  if (m.cmd === "open") {
+    // Keyboard users land in the search box; on touch that would raise the
+    // on-screen keyboard over the list, so only where a pointer hovers.
+    const open = $("#drawer").classList.contains("open");
+    if (!open && window.matchMedia("(hover: hover)").matches) $("#search").focus({ preventScroll: true });
+  }
 }
 
 // -------------------------------------------------------------------- list --
@@ -805,6 +919,7 @@ function matches(a, q) {
 
 function render() {
   const list = $("#list");
+  $("#search-clear").hidden = !($("#search").value || "").trim();
   if (S.tab === "shadow") { renderShadow(); return; }
   if (S.loading && !S.all.length) {
     list.innerHTML = Array.from({ length: 7 }, () =>
@@ -820,7 +935,13 @@ function render() {
   const items = source.filter(a => (S.filter === "all" || kindOf(a) === S.filter) && matches(a, q));
   if (!items.length) {
     if (q || S.filter !== "all") {
-      list.innerHTML = emptyState("No matches", q ? `Nothing matches “${q}” in this view.` : "Nothing of this type in this view.", "clear", "Clear filters");
+      // A curated miss that the raw list would hit: offer that view instead
+      // of a dead end (the app is there, just not pinned yet).
+      const raw = S.tab === "curated" && q
+        ? S.all.filter(a => (S.filter === "all" || kindOf(a) === S.filter) && matches(a, q)).length : 0;
+      list.innerHTML = raw
+        ? emptyState("Not in curated", `${raw} match${raw > 1 ? "es" : ""} for “${q}” in All Detected.`, "browse", "Search all detected")
+        : emptyState("No matches", q ? `Nothing matches “${q}” in this view.` : "Nothing of this type in this view.", "clear", "Clear filters");
     } else if (S.tab === "curated") {
       list.innerHTML = emptyState("No apps yet", "Add an app, or run a Full scan to find the apps on this computer.", "add", "Add app");
     } else {
@@ -1192,6 +1313,24 @@ function renderThread() {
   $("#v-thread").innerHTML = DR.thread.map(m =>
     `<div class="bubble ${m.who} ${m.tone}">${m.who === "jarvis" ? '<span class="who">Cygnus</span>' : ""}` +
     `${escapeHtml(m.text)}</div>`).join("");
+  $("#voice-clear").hidden = !DR.thread.length;
+}
+
+// Wipes the propose-rules conversation for the current app without touching
+// saved rules or drafts. Cancels a pending clarify/proposal on the server
+// first so it doesn't linger after the thread that referenced it is gone.
+async function clearVoiceThread(key, btn) {
+  if (!DR.thread.length && !DR.voiceStatus) return;
+  if (!confirm("Clear this conversation? Nothing saved will be lost.")) return;
+  setBusy(btn, true);
+  if (DR.voiceRuleId) {
+    try {
+      await fetch("/apps/rules/clarify", post({ app_key: key, rule_id: DR.voiceRuleId, answer: "cancel" }));
+    } catch (e) {}
+  }
+  setBusy(btn, false);
+  resetVoice();
+  toast("Conversation cleared");
 }
 
 function showAsk(on) {
@@ -1408,6 +1547,7 @@ async function appsJob(url, body, label, btn) {
 
 function showAddRow(on) {
   $("#add-row").hidden = !on;
+  $("#h-add").setAttribute("aria-expanded", String(on));
   if (on) $("#add-q").focus();
 }
 
@@ -1583,6 +1723,44 @@ async function voiceTest(key, btn) {
   setBusy(btn, false);
   if (!res || !res.ok) { toast(d.error || "Test failed", "err"); return; }
   say("jarvis", "Test: " + (d.result || "done") + (d.url ? " — " + d.url : ""), d.ok ? "ok" : "");
+  showTestAnswer(key, !!d.question);
+}
+
+// The tested rule stopped on a question ("Restart Brave so I can click?",
+// "Press play?"). Only a spoken reply used to reach it; these buttons do.
+function showTestAnswer(key, on) {
+  let row = $("#v-answer-row");
+  if (!row) {
+    row = document.createElement("div");
+    row.id = "v-answer-row";
+    row.className = "v-answer-row";
+    row.innerHTML = '<button type="button" class="btn btn-sm btn-primary" data-answer="yes">Yes</button>' +
+      '<button type="button" class="btn btn-sm" data-answer="no">No</button>';
+    $("#v-thread").insertAdjacentElement("afterend", row);
+    row.addEventListener("click", e => {
+      const b = e.target.closest("button[data-answer]");
+      if (b) testAnswer(DR.key, b.dataset.answer, b);
+    });
+  }
+  row.hidden = !on;
+}
+
+async function testAnswer(key, answer, btn) {
+  setBusy(btn, true);
+  let res = null, d = {};
+  try {
+    res = await fetch("/apps/rules/test/answer", post({ app_key: key, answer }));
+    d = await res.json().catch(() => ({}));
+  } catch (e) {}
+  setBusy(btn, false);
+  say("user", answer);
+  if (!res || !res.ok) {
+    say("jarvis", d.error || "Couldn't send that answer");
+    showTestAnswer(key, false);
+    return;
+  }
+  say("jarvis", d.result || "done", d.ok ? "ok" : "");
+  showTestAnswer(key, !!d.question);
 }
 
 async function refreshRules(key) {
@@ -1629,15 +1807,46 @@ function trapFocus(e) {
   else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
 }
 
+function clearSearch(refocus) {
+  const box = $("#search");
+  if (box.value) { box.value = ""; render(); }
+  if (refocus) box.focus({ preventScroll: true });
+}
+
+// ↑ / ↓ walk the list one row at a time; Home / End jump to the ends.
+function rowKeyNav(e) {
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return false;
+  const mains = [...document.querySelectorAll("#list .row .main")];
+  if (!mains.length) return false;
+  const from = document.activeElement && document.activeElement.closest(".row");
+  const i = from ? mains.findIndex(m => m.closest(".row") === from) : -1;
+  let to;
+  if (e.key === "Home") to = 0;
+  else if (e.key === "End") to = mains.length - 1;
+  else if (i < 0) to = e.key === "ArrowDown" ? 0 : mains.length - 1;
+  else to = Math.min(mains.length - 1, Math.max(0, i + (e.key === "ArrowDown" ? 1 : -1)));
+  e.preventDefault();
+  mains[to].focus();
+  mains[to].scrollIntoView({ block: "nearest" });
+  return true;
+}
+
 function init() {
   $("#refresh").innerHTML = svg("refresh", 15);
   $("#search-ico").innerHTML = svg("search", 15);
+  $("#search-clear").innerHTML = svg("close", 13);
   $("#dr-close").innerHTML = svg("close", 16);
   $("#mic-ico").innerHTML = svg("mic", 15);
   $("#drafts-chev").innerHTML = svg("chevron", 14);
+  document.querySelectorAll("[data-ico]").forEach(el => { el.innerHTML = svg(el.dataset.ico, 14); });
+  if (EMBEDDED) {
+    document.body.classList.add("embedded");
+    window.addEventListener("message", onHudMessage);
+  }
 
   $("#refresh").addEventListener("click", loadApps);
   $("#search").addEventListener("input", render);
+  $("#search-clear").addEventListener("click", () => clearSearch(true));
   document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => setTab(t.dataset.tab)));
   document.querySelectorAll(".seg-btn").forEach(b => b.addEventListener("click", () => setFilter(b.dataset.filter)));
 
@@ -1671,6 +1880,7 @@ function init() {
   $("#v-confirm").addEventListener("click", e => voiceClarify(DR.key, e.currentTarget));
   $("#v-cancel").addEventListener("click", e => voiceClarify(DR.key, e.currentTarget, "cancel"));
   $("#v-test").addEventListener("click", e => voiceTest(DR.key, e.currentTarget));
+  $("#voice-clear").addEventListener("click", e => clearVoiceThread(DR.key, e.currentTarget));
   $(".v-sample").addEventListener("keydown", e => { if (e.key === "Enter") $("#v-test").click(); });
   $("#d-save").addEventListener("click", e => saveRules(DR.key, e.currentTarget));
   $("#d-compile").addEventListener("click", e => compileRules(DR.key, e.currentTarget));
@@ -1678,24 +1888,55 @@ function init() {
   $("#rules-clear").addEventListener("click", e => removeRule(DR.key, "", e.currentTarget));
   $("#h-add").addEventListener("click", () => showAddRow($("#add-row").hidden));
   $("#add-cancel").addEventListener("click", () => showAddRow(false));
+  // Escape in the Add box closes the box and stops there (the page-level
+  // handler below would otherwise pass the same Escape on to the HUD).
+  $("#add-q").addEventListener("keydown", e => {
+    if (e.key === "Escape") { e.stopPropagation(); showAddRow(false); $("#h-add").focus(); }
+  });
   $("#add-row").addEventListener("submit", addApp);
   $("#h-scan").addEventListener("click", e => fullScan(e.currentTarget));
   $("#h-gen").addEventListener("click", e => generateAll(e.currentTarget));
   $("#h-deep").addEventListener("click", e => deepScanAll(e.currentTarget));
   $("#h-deep-cancel").addEventListener("click", e => cancelDeepScan(e.currentTarget));
-  // Narrow screens fold the four header actions into ⋯. Each item presses the
-  // real button, so its handler, busy state and disabled state stay the same.
+  // Narrow screens fold the bulk actions into ⋯. Each item presses the real
+  // button, so its handler and busy state stay the same; an item is greyed
+  // out while its button is busy. Arrow keys walk the menu.
   const moreBtn = $("#h-more"), moreMenu = $("#h-menu");
-  const setMoreMenu = open => { moreMenu.hidden = !open; moreBtn.setAttribute("aria-expanded", String(open)); };
-  moreBtn.addEventListener("click", e => { e.stopPropagation(); setMoreMenu(moreMenu.hidden); });
+  const menuItems = () => [...moreMenu.querySelectorAll("[data-for]")];
+  const setMoreMenu = (open, focusFirst) => {
+    moreMenu.hidden = !open;
+    moreBtn.setAttribute("aria-expanded", String(open));
+    if (!open) return;
+    menuItems().forEach(item => { item.disabled = document.getElementById(item.dataset.for).disabled; });
+    if (focusFirst) { const first = menuItems().find(i => !i.disabled); if (first) first.focus(); }
+  };
+  moreBtn.addEventListener("click", e => { e.stopPropagation(); setMoreMenu(moreMenu.hidden, e.detail === 0); });
+  moreBtn.addEventListener("keydown", e => { if (e.key === "ArrowDown") { e.preventDefault(); setMoreMenu(true, true); } });
   moreMenu.addEventListener("click", e => {
     const item = e.target.closest("[data-for]");
-    if (!item) return;
+    if (!item || item.disabled) return;
     setMoreMenu(false);
     document.getElementById(item.dataset.for).click();
   });
+  moreMenu.addEventListener("keydown", e => {
+    const items = menuItems().filter(i => !i.disabled);
+    const i = items.indexOf(document.activeElement);
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      items[(i + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus();
+    } else if (e.key === "Home" || e.key === "End") {
+      e.preventDefault();
+      items[e.key === "Home" ? 0 : items.length - 1].focus();
+    } else if (e.key === "Tab") {
+      setMoreMenu(false);
+    }
+  });
   document.addEventListener("click", e => { if (!moreMenu.hidden && !e.target.closest(".head-more")) setMoreMenu(false); });
-  document.addEventListener("keydown", e => { if (e.key === "Escape") setMoreMenu(false); });
+  // Escape closes the menu and stops there (the page-level handler below
+  // would otherwise pass the same Escape on to the HUD).
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && !moreMenu.hidden) { setMoreMenu(false); moreBtn.focus(); e.stopImmediatePropagation(); }
+  });
   $("#list").addEventListener("click", e => {
     const v = e.target.closest("[data-verdict]");
     if (v) return labelShadow(v.dataset.sid, v.dataset.verdict, v);
@@ -1730,14 +1971,21 @@ function init() {
     const open = $("#drawer").classList.contains("open");
     if (e.key === "Escape") {
       if (open) { closeDrawer(); return; }
-      if (document.activeElement === $("#search") && $("#search").value) { $("#search").value = ""; render(); }
+      if (document.activeElement === $("#search") && $("#search").value) { clearSearch(false); return; }
+      // Nothing left to dismiss here: a keypress inside the iframe never
+      // reaches the HUD, so tell it and let it close the Apps window.
+      tellHud("escape");
       return;
     }
     if (e.key === "Tab" && open) { trapFocus(e); return; }
-    const typing = /^(INPUT|TEXTAREA)$/.test((document.activeElement || {}).tagName || "");
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || "");
     if (e.key === "/" && !typing && !open) { e.preventDefault(); $("#search").focus(); }
+    if (!typing && !open && rowKeyNav(e)) return;
+    // From the search box, ↓ steps into the first result.
+    if (e.key === "ArrowDown" && document.activeElement === $("#search") && !open) rowKeyNav(e);
   });
 
+  tellHud("ready");
   loadApps();
 }
 

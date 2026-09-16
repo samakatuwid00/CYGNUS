@@ -120,7 +120,8 @@ def _registry_keys(row: dict, apps: dict) -> list[str]:
     file (PowerPoint is both "powerpnt" and "powerpoint")."""
     exes = set(row.get("exes") or [])
     return [k for k, e in apps.items()
-            if e.get("bin") and os.path.basename(str(e["bin"])).lower() in exes]
+            if (e.get("exe") and str(e["exe"]).lower() in exes)
+            or (e.get("bin") and os.path.basename(str(e["bin"])).lower() in exes)]
 
 
 def _usable(ability: dict) -> bool:

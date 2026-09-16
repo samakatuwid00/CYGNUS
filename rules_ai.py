@@ -64,25 +64,28 @@ _SPECIFIC_STOP = {"a", "an", "the", "some", "in", "on", "at", "for", "me", "my",
 _VERBS = {"search", "find", "look", "lookup", "open", "launch", "visit", "go",
           "take", "play", "watch", "browse", "show"}
 
-_PROMPT = """You compile ONE user rule for the JARVIS voice assistant.
+_PROMPT = """You compile ONE user rule for the JARVIS voice assistant (the user calls it Cygnus).
 The rule belongs to the app "{app}".{browser_note}
-
+{context}
 The user wrote:
 COMMAND PHRASE: "{trigger}"
 WHAT CYGNUS SHOULD DO: "{action}"{feedback}
 
-Work out what the user really means and return ONLY one JSON object:
+Work out what the user really means - the goal behind the words, not the words - and return ONLY one JSON object:
 {
   "type": "search_site" | "open_site" | "steps" | "block" | "reminder",
-  "trigger": the command phrase, cleaned up (lowercase, no filler words),
+  "goal": one short sentence, in plain words, of what the user wants to happen,
+  "trigger": the command phrase, cleaned up (lowercase, no filler words); for a block or reminder, a short name for it,
   "triggers": 3 to 6 other natural ways to say the same command, keeping its key words (the browser name and the kind of thing, e.g. "movies"),
-  "site": the website domain the user wrote (e.g. "example.com"), or null,
+  "site": the website domain the user wrote or clearly named (e.g. "example.com"; "youtube music" means "music.youtube.com"), or null,
   "search_url": for search_site, the site's search address with {query} where the search words go, or null if unsure,
-  "slot": for search_site, a short name for what the user fills in (e.g. "movie name"), or null,
+  "slot": for search_site or a steps rule with a search or a typed message, a short name for what the user fills in (e.g. "movie name", "message"), or null,
   "sample": for search_site, one realistic example of what the user would fill in (e.g. "Inception" for a movie), or null,
   "browser": "brave" | "chrome" | "msedge" | "firefox" | null,
   "applies_to": for block only: "launch" | "play" | "close" | "all",
   "adapter_check": for music limits only, exactly "pre_play: skip if track.explicit" or "pre_play: cap {app} volume at N%", otherwise "",
+  "condition": when the rule applies, or null when it always applies: {"kind": "time_after" | "time_before" | "time_between", "start": "HH:MM", "end": "HH:MM"} for clock times; {"kind": "other", "text": "<the condition in the user's words>"} for anything Cygnus cannot check (unsaved work, meetings, who is around),
+  "expects": one short sentence describing what the user would see when the rule worked (e.g. "music is playing", "the file is saved", "the search results are on screen"),
   "steps": for steps only, the ordered list of steps (see below)
 }
 Meaning of type:
@@ -91,12 +94,35 @@ Meaning of type:
 - steps: the user wants more than one action in a row (e.g. search, choose a result, open it, press play), or actions inside a desktop app.
 Steps for a website: {"op": "search"}, {"op": "pick", "count": 5} (show the top results and let the user choose), {"op": "open"}, {"op": "click", "target": "play"} (target = the button or thing to click, in words), {"op": "wait", "seconds": 2}.
 Steps for a desktop app: {"op": "launch"}, {"op": "click", "target": "<button name>"}, {"op": "type", "target": "<box name>", "text": "{query}"}, {"op": "key", "keys": "{ENTER}"}.
+Keys use this notation: {ENTER} {TAB} {ESC} {UP} {DOWN} {LEFT} {RIGHT} {HOME} {END} {F1}..{F12}, ^ = Ctrl, % = Alt, + = Shift, so Ctrl+S is "^s", Alt+F4 is "%{F4}", Ctrl+Shift+T is "^+t".
+For a desktop app, prefer a click target that is one of the app's KNOWN CONTROLS OR ABILITIES listed above, written exactly as listed.
 Add "confirm": true to any step the user would want to approve first. After a search, always add a pick step so the user chooses.
-- block: the user wants something prevented (never / don't / no).
-- reminder: a preference Cygnus should keep in mind.
-Only use a site the user actually wrote. Never invent one.
-If WHAT CYGNUS SHOULD DO is empty, the command phrase may hold both parts - split it yourself.
+- block: the user wants something prevented (never / don't / no). A block with a time in it gets a time condition.
+- reminder: a preference or limit Cygnus should keep in mind (volume caps, explicit content, "always use X").
+Only use a site the user wrote or clearly named by a well-known name. Never invent one.
+If WHAT CYGNUS SHOULD DO is empty, the command phrase holds the whole rule - read it as one.
 JSON only. /no_think"""
+
+# Well-known names the user may say instead of a domain. A model site is
+# accepted when the user's words name it here (or in web_registry), so
+# "open youtube music" no longer asks "Which website?".
+_KNOWN_SITES = {
+    "youtube music": "music.youtube.com", "yt music": "music.youtube.com",
+    "youtube": "youtube.com", "gmail": "mail.google.com",
+    "google drive": "drive.google.com", "google docs": "docs.google.com",
+    "google maps": "maps.google.com", "google": "google.com",
+    "netflix": "netflix.com", "spotify web": "open.spotify.com",
+    "facebook": "facebook.com", "messenger": "messenger.com",
+    "whatsapp web": "web.whatsapp.com", "whatsapp": "web.whatsapp.com",
+    "instagram": "instagram.com", "tiktok": "tiktok.com",
+    "twitter": "x.com", "x.com": "x.com", "reddit": "reddit.com",
+    "github": "github.com", "chatgpt": "chatgpt.com", "wikipedia": "wikipedia.org",
+    "amazon": "amazon.com", "discord": "discord.com", "twitch": "twitch.tv",
+    "linkedin": "linkedin.com", "pinterest": "pinterest.com",
+    "duckduckgo": "duckduckgo.com", "bing": "bing.com", "outlook": "outlook.live.com",
+}
+_TIME_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+_CONDITION_KINDS = ("time_after", "time_before", "time_between", "other")
 
 
 # ------------------------------------------------------------------ helpers --
@@ -199,7 +225,7 @@ def _router_models(config):
         getattr(config, "ROUTER_FALLBACK_MODELS", []) or [])[:2]
 
 
-def _ask_llm(prompt, local=True):
+def _ask_llm(prompt, local=True, timeout=20, max_tokens=600):
     """(parsed JSON dict, model) from the first model that answers, else
     (None, reason). 9router's answering models first, then - unless
     local=False - the local Ollama model, which on this CPU takes ~20 s or
@@ -209,7 +235,7 @@ def _ask_llm(prompt, local=True):
         import config
     except Exception as e:
         return None, f"no LLM client ({type(e).__name__})"
-    tries = [(config.ROUTER_BASE_URL, config.ROUTER_API_KEY or "dummy", m, 20)
+    tries = [(config.ROUTER_BASE_URL, config.ROUTER_API_KEY or "dummy", m, timeout)
              for m in dict.fromkeys(_router_models(config))]
     if local:
         tries.append((config.OLLAMA_BASE_URL, config.OLLAMA_API_KEY or "ollama",
@@ -222,7 +248,7 @@ def _ask_llm(prompt, local=True):
         try:
             client = OpenAI(base_url=base, api_key=key, timeout=timeout, max_retries=0)
             r = client.chat.completions.create(
-                model=model, temperature=0, max_tokens=600,
+                model=model, temperature=0, max_tokens=max_tokens,
                 messages=[{"role": "user", "content": prompt}])
             data = _parse_json(r.choices[0].message.content or "")
             if data:
@@ -268,14 +294,27 @@ def _summary(rule_type, trigger, site, slot, browser, app_key, action_text, appl
 
 
 def _clean_steps(raw_steps, web):
+    """The model's steps, made safe (see _clean_steps_report)."""
+    return _clean_steps_report(raw_steps, web)[0]
+
+
+def _clean_steps_report(raw_steps, web):
     """The model's steps, made safe: allowed ops only, bounded fields, a pick
     after every search (the user chooses), an open before any page click, and
-    "confirm" forced on clicks that play, buy, send or delete."""
+    "confirm" forced on clicks that play, buy, send or delete.
+
+    Returns (steps, dropped): `dropped` says, in plain words, what the model
+    asked for that Cygnus cannot do, so the user is told instead of finding a
+    silently weaker rule ("press ctrl s" used to vanish)."""
     import rules_steps
     allowed = rules_steps.WEB_OPS if web else rules_steps.DESKTOP_OPS
-    out = []
+    out, dropped = [], []
     for s in raw_steps if isinstance(raw_steps, list) else []:
-        if not isinstance(s, dict) or s.get("op") not in allowed:
+        if not isinstance(s, dict):
+            continue
+        if s.get("op") not in allowed:
+            where = "a website" if web else "a desktop app"
+            dropped.append(f'the step "{s.get("op")}" (not something I can do in {where})')
             continue
         step = {"op": s["op"]}
         for key, cap in (("target", 60), ("text", 100), ("keys", 30), ("question", 120)):
@@ -293,6 +332,8 @@ def _clean_steps(raw_steps, web):
                                       or _CONSEQUENTIAL_RE.search(step.get("target", ""))):
             step["confirm"] = True
         if step["op"] == "key" and not rules_steps.SAFE_KEYS_RE.match(step.get("keys", "")):
+            dropped.append(f'pressing "{step.get("keys", "")}" (only Enter, Tab, arrows, '
+                           f'function keys and Ctrl/Alt/Shift letter shortcuts)')
             continue
         out.append(step)
     ops = [s["op"] for s in out]
@@ -301,7 +342,112 @@ def _clean_steps(raw_steps, web):
     ops = [s["op"] for s in out]
     if web and "click" in ops and "open" not in ops:
         out.insert(ops.index("click"), {"op": "open"})
-    return out[:MAX_STEPS]
+    return out[:MAX_STEPS], dropped
+
+
+def _control_names(entry):
+    """What the app is known to have: its abilities and the buttons a window
+    scan found (app_abilities stores scanned controls as abilities too)."""
+    names = []
+    for a in (entry or {}).get("abilities") or []:
+        if isinstance(a, dict) and (a.get("name") or a.get("id")):
+            names.append(str(a.get("name") or a.get("id")))
+    return names
+
+
+def _target_known(target, names):
+    """Does a click target name one of the app's known controls? Every word
+    of the target must appear in one control's name (word-boundary)."""
+    words = [w for w in re.findall(r"[a-z0-9]+", (target or "").lower()) if len(w) > 1]
+    if not words:
+        return False
+    for name in names:
+        low = name.lower()
+        if all(re.search(r"(?<![a-z0-9])" + re.escape(w) + r"(?![a-z0-9])", low) for w in words):
+            return True
+    return False
+
+
+def _app_context(app_key, entry):
+    """The APP CONTEXT block of the prompt: known controls, existing rules."""
+    entry = entry if isinstance(entry, dict) else {}
+    lines = []
+    names = _control_names(entry)
+    if names:
+        shown = sorted(dict.fromkeys(n[:40] for n in names))[:60]
+        lines.append("KNOWN CONTROLS OR ABILITIES of this app (buttons and actions "
+                     "Cygnus can already use): " + "; ".join(shown))
+    rules = [r for r in entry.get("compiled_rules") or [] if isinstance(r, dict)]
+    if rules:
+        lines.append("RULES THE USER ALREADY HAS for this app: " + "; ".join(
+            f'"{r.get("source_phrase", "")}" -> {r.get("goal") or r.get("summary") or r.get("intent") or ""}'[:120]
+            for r in rules[:8]))
+    return ("\n" + "\n".join(lines) + "\n") if lines else ""
+
+
+def _catalog_site(text):
+    """The domain of a well-known site the user named in words ("youtube
+    music"), from the built-in list or the user's own web registry."""
+    low = " " + re.sub(r"[^a-z0-9. ]+", " ", (text or "").lower()) + " "
+    best = None
+    for name, host in _KNOWN_SITES.items():
+        if f" {name} " in low and (best is None or len(name) > len(best[0])):
+            best = (name, host)
+    if best:
+        return best[1]
+    try:
+        import web_registry as wr
+        for n in (3, 2, 1):
+            words = low.split()
+            for i in range(len(words) - n + 1):
+                phrase = " ".join(words[i:i + n])
+                if phrase in _SPECIFIC_STOP or phrase in _VERBS:
+                    continue
+                key = wr.resolve_site(phrase)
+                site = wr.get_site(key) if key else None
+                if site and site.get("host"):
+                    return _bare_host(site["host"])
+    except Exception:
+        pass
+    return None
+
+
+def _clean_condition(raw):
+    """A usable condition, or None. Time conditions are checked at run time;
+    anything else is kept as words and reported as a gap by the caller."""
+    if not isinstance(raw, dict):
+        return None
+    kind = str(raw.get("kind") or "").lower()
+    if kind not in _CONDITION_KINDS:
+        return None
+    if kind == "other":
+        text = str(raw.get("text") or "").strip()[:120]
+        return {"kind": "other", "text": text} if text else None
+    start = str(raw.get("start") or raw.get("time") or "").strip()
+    end = str(raw.get("end") or "").strip()
+    if kind == "time_after" and _TIME_RE.match(start):
+        return {"kind": "time_after", "start": start}
+    if kind == "time_before" and _TIME_RE.match(end or start):
+        return {"kind": "time_before", "end": end or start}
+    if kind == "time_between" and _TIME_RE.match(start) and _TIME_RE.match(end):
+        return {"kind": "time_between", "start": start, "end": end}
+    return None
+
+
+def describe_condition(cond):
+    """'after 23:00', 'before 07:00', 'between 22:00 and 07:00'."""
+    if not isinstance(cond, dict):
+        return ""
+    k = cond.get("kind")
+    if k == "time_after":
+        return f"after {cond.get('start')}"
+    if k == "time_before":
+        return f"before {cond.get('end')}"
+    if k == "time_between":
+        return f"between {cond.get('start')} and {cond.get('end')}"
+    if k == "other":
+        return cond.get("text") or ""
+    return ""
 
 
 def _steps_summary(trigger, action, app_key):
@@ -311,8 +457,14 @@ def _steps_summary(trigger, action, app_key):
     said = f'When you say "{trigger}"' + (f" with {article} {slot}" if slot else "")
     where = (f"{action['site']} in {browser_label(action.get('browser'))}" if action.get("site")
              else app_key)
-    parts = [rules_sim.describe_step(s).replace("the site", action.get("site") or "the site")
-             for s in action["steps"]]
+    parts, seen_pick = [], False
+    for s in action["steps"]:
+        try:
+            text = rules_sim.describe_step(s, after_pick=seen_pick)
+        except TypeError:
+            text = rules_sim.describe_step(s)
+        parts.append(text.replace("the site", action.get("site") or "the site"))
+        seen_pick = seen_pick or s.get("op") == "pick"
     plan = parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])}, then {parts[-1]}"
     return f"{said}, I'll {plan} ({where})."
 
@@ -336,6 +488,7 @@ def compile_rule(app_key, trigger, action_text="", feedback="", entry=None, llm=
               .replace("{browser_note}", " It is a web browser." if is_browser_app
                        else " It is a desktop app, not a web browser." if entry.get("bin")
                        else "")
+              .replace("{context}", _app_context(app_key, entry))
               .replace("{trigger}", trigger)
               .replace("{action}", action_text)
               .replace("{feedback}",
@@ -350,14 +503,20 @@ def compile_rule(app_key, trigger, action_text="", feedback="", entry=None, llm=
 
     user_text = f"{trigger} {action_text} {feedback}"
     user_domains = _domains_in(user_text)
+    gaps = []
 
     rule_type = raw.get("type") if raw.get("type") in ACTION_TYPES else None
     site = _bare_host(raw.get("site") or "")
-    if site and site not in user_domains:
-        # The model named a site the user never wrote: keep the user's own.
-        site = ""
+    named = _catalog_site(user_text)
+    if site and site not in user_domains and not (
+            named and rules_engine.same_site("https://" + site, named)):
+        # The model named a site the user never wrote nor named: keep the
+        # user's own (a well-known name like "youtube music" counts as named).
+        site = named or ""
     if not site and user_domains:
         site = user_domains[0]
+    if not site and named and (rule_type in RUNNABLE_TYPES or rule_type is None):
+        site = named
     if rule_type is None:
         rule_type = ("search_site" if site and _SEARCH_RE.search(user_text)
                      else "open_site" if site
@@ -378,10 +537,21 @@ def compile_rule(app_key, trigger, action_text="", feedback="", entry=None, llm=
     steps = []
     web = rule_type != "steps" or bool(site) or is_browser_app
     if rule_type == "steps":
-        steps = _clean_steps(raw.get("steps"), web)
+        steps, dropped = _clean_steps_report(raw.get("steps"), web)
+        gaps.extend(dropped)
         if not steps:
             rule_type = ("search_site" if site and _SEARCH_RE.search(user_text)
                          else "open_site" if site else "reminder")
+            if dropped:
+                gaps.append("so this became a reminder, not something I can run")
+        elif not web:
+            # A desktop click must name a control the app is known to have;
+            # otherwise say so now instead of failing when the command is used.
+            known = _control_names(entry)
+            for s_ in steps:
+                if s_.get("op") == "click" and known and not _target_known(s_.get("target"), known):
+                    gaps.append(f"I don't know a \"{s_.get('target')}\" button in {app_key} yet; "
+                                f"I'll look for it on screen when you use the command")
     has_search = rule_type == "search_site" or any(s["op"] == "search" for s in steps)
 
     action = {"type": rule_type}
@@ -430,6 +600,16 @@ def compile_rule(app_key, trigger, action_text="", feedback="", entry=None, llm=
         # ignores this enforcement, so opening the browser stays silent.
         enforcement = "action"
 
+    condition = _clean_condition(raw.get("condition"))
+    if condition and condition.get("kind") == "other":
+        gaps.append(f"I can't check \"{condition['text']}\" yet, so the rule applies every time")
+        condition = None
+    if rule_type == "block" and not condition and re.search(
+            r"\b(after|before|until|between|past)\s+\d{1,2}(:\d{2})?\s*(am|pm)?\b", user_text, re.I):
+        gaps.append("I couldn't read the time in that, so the rule applies every time")
+    goal = str(raw.get("goal") or "").strip()[:200]
+    expects = str(raw.get("expects") or "").strip()[:160]
+
     triggers = []
     for t in [clean_trigger] + [_clean_phrase(str(x)) for x in (raw.get("triggers") or [])
                                 if isinstance(x, str)]:
@@ -442,11 +622,17 @@ def compile_rule(app_key, trigger, action_text="", feedback="", entry=None, llm=
                else _summary(rule_type, clean_trigger, site or "the site",
                              action.get("slot", ""), browser, app_key,
                              action_text, applies_to))
+    if condition:
+        summary = summary.rstrip(".") + f" (only {describe_condition(condition)})."
     rule = {
         "rule_id": _slug(clean_trigger),
         "source_phrase": clean_trigger,
         "intent": summary,
         "summary": summary,
+        "goal": goal or (action_text or trigger),
+        "expects": expects,
+        "condition": condition,
+        "gaps": gaps,
         "action_text": action_text or trigger,
         "enforcement": enforcement,
         "adapter_check": adapter_check,
@@ -529,6 +715,12 @@ def propose_markdown(app_key, rules, notes=None):
         else:
             lines.append(f"    {r.get('enforcement', 'soft')} | check: "
                          f"{r.get('adapter_check') or '(none)'}")
+        if r.get("condition"):
+            lines.append(f"    only {describe_condition(r['condition'])}")
+        if r.get("expects"):
+            lines.append(f"    done when: {r['expects']}")
+        for g in r.get("gaps") or []:
+            lines.append(f"    can't yet: {g}")
         if r.get("compiled_by"):
             lines.append(f"    compiled by: {r['compiled_by']}")
         v = r.get("verification") or {}

@@ -181,7 +181,9 @@ def test_typed_names_are_literal_and_unsafe_keys_are_refused(monkeypatch):
 
 
 def test_compile_drops_unsafe_key_steps():
-    reply = {"type": "steps", "steps": [{"op": "launch"}, {"op": "key", "keys": "%{F4}"},
+    # Alt+F4 is an edit shortcut the app owns (allowed since 2026-09-15); the
+    # Windows key reaches outside the app and is still dropped.
+    reply = {"type": "steps", "steps": [{"op": "launch"}, {"op": "key", "keys": "{LWIN}"},
                                         {"op": "key", "keys": "{ENTER}"}]}
     rule, _ = rules_ai.compile_rule("notepad", "save and close", "press enter",
                                     entry={"bin": "C:/notepad.exe"}, llm=_llm(reply))
@@ -302,3 +304,39 @@ def test_trailer_alone_is_not_a_player():
     only_trailer = '<iframe id="iframe-trailer" src="https://youtube.com/embed/x"></iframe>'
     assert not site_probe.click_target_in_dom(only_trailer, "play")
     assert site_probe.click_target_in_dom(MOVIE_PAGE, "play")
+
+
+# ------------------------------------------------- phase 1 fixes (2026-09-15) --
+
+def test_click_after_open_targets_the_opened_tab(web):
+    """A rule that opens a site then clicks: the click must carry the opened
+    url as its hint, or browser_cdp picks whatever tab Brave lists first."""
+    action = {"type": "steps", "site": "music.youtube.com", "url": "https://music.youtube.com",
+              "browser": "brave", "steps": [{"op": "open"}, {"op": "click", "target": "shuffle"}]}
+    rule = {"rule_id": "play_music", "source_phrase": "play music", "action": action}
+    out = rules_steps.start(rule, "brave", action, "")
+    assert out == "Opened music.youtube.com in Brave. Clicked the player in Brave."
+    assert web == [("open", "brave", "https://music.youtube.com"),
+                   ("click", "brave", "shuffle", "https://music.youtube.com")]
+
+
+def test_plain_open_also_records_the_url(monkeypatch):
+    import audit
+    import tools
+    monkeypatch.setattr(audit, "log_call", lambda *a, **k: None)
+    monkeypatch.setattr(tools, "_open_url_in_browser",
+                        lambda url, name, browser=None, remember=True: f"Opened {name}.")
+    action = {"type": "steps", "site": "example.com", "url": "https://example.com",
+              "browser": "firefox", "steps": [{"op": "open"}]}
+    run = {"rule": {"rule_id": "r"}, "owner": "firefox", "action": action, "slot": "", "i": 0,
+           "entry": {}}
+    assert rules_steps._open(run, "https://example.com", "example.com")[0] == "Opened example.com."
+    assert run["url"] == "https://example.com"
+
+
+def test_safe_keys_allow_edit_shortcuts_but_not_the_windows_key():
+    ok = rules_steps.SAFE_KEYS_RE.match
+    assert ok("^s") and ok("^z") and ok("%{F4}") and ok("{F12}") and ok("+{TAB}") and ok("^%d")
+    assert ok("{DELETE}") and ok("{INS}") and ok("^s{ENTER}")
+    assert not ok("{LWIN}") and not ok("{LWIN}r") and not ok("^%{DELETE}") and not ok("{PRTSC}")
+    assert not ok("^") and not ok("abc")

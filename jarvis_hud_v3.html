@@ -440,7 +440,7 @@
 
   /* ---- Apps modal: same holo/dark language as the rest of the HUD. ---- */
   #jv-apps-modal { position: fixed; inset: 0; display: none; z-index: 80;
-    background: rgba(4, 6, 10, .74); backdrop-filter: blur(6px); }
+    background: rgba(4, 6, 10, .74); backdrop-filter: blur(6px); overscroll-behavior: contain; }
   #jv-apps-modal.show { display: flex; align-items: center; justify-content: center; }
   #jv-apps-card { width: min(960px, 96vw); height: min(780px, 94vh); height: min(780px, 94dvh); display: flex;
     flex-direction: column; border-radius: 14px;
@@ -480,6 +480,9 @@
       padding-bottom: env(safe-area-inset-bottom); }
     #jv-apps-frame { border-radius: 0; }
     #jv-apps-back { display: inline-grid; }
+    /* The panel's own summary row carries the counts here; in the head they
+       only wrapped the title. */
+    #jv-apps-count { display: none; }
   }
 
 
@@ -666,6 +669,9 @@
   .jv-gate-head { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; line-height: 1.45; }
   .jv-gate-head .t { font: 700 12.5px/1.45 var(--font-display); letter-spacing: .1em;
     color: #ffc14d; white-space: nowrap; }
+  /* Without min-width the one-line task below stretches the message to its
+     full length, and on a phone the text runs off the card's right edge. */
+  .jv-gate-head > div { flex: 1 1 auto; min-width: 0; }
   .jv-gate-task { color: #d8b98a; font-size: 11.5px; margin-top: 2px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .jv-gate-btns { display: flex; gap: 8px; margin-top: 9px; }
@@ -732,7 +738,7 @@
   #jv-drawer-tabs [data-tab][aria-selected="true"] { color: var(--holo); border-color: var(--hairline);
     background: color-mix(in srgb, var(--holo) 9%, transparent); }
   #jv-drawer-tabs [data-tab]:focus-visible { outline: 2px solid var(--holo); outline-offset: 1px; }
-  @media (pointer: coarse) { #jv-drawer-tabs [data-tab] { min-height: 40px; } }
+  @media (pointer: coarse) { #jv-drawer-tabs [data-tab] { min-height: 44px; } }
   #jv-tab-count { min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--holo); color: #1a1005;
     font: 700 9.5px/16px var(--font-data); letter-spacing: 0; text-align: center; }
   #jv-tab-count[hidden] { display: none; }
@@ -1016,9 +1022,12 @@
         <span class="jv-tools">
         <button id="jv-panels" class="jv-btn" type="button" aria-label="Panels" aria-controls="jv-drawer"
                 aria-expanded="false"><svg class="jv-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg><span class="jv-btn-label">Panels</span><span id="jv-panels-badge" hidden></span></button>
-        <button id="jv-apps" class="jv-btn" type="button" aria-label="Apps" title="Apps Cygnus can open"><svg class="jv-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span class="jv-btn-label">Apps</span></button>
+        <button id="jv-apps" class="jv-btn" type="button" aria-label="Apps" title="Apps Cygnus can open"
+                aria-haspopup="dialog" aria-controls="jv-apps-modal" aria-expanded="false"><svg class="jv-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span class="jv-btn-label">Apps</span></button>
         <span class="jv-sep" id="jv-desk-sep" hidden></span>
-        <span id="jv-desk-ctl" hidden><button id="jv-desk-expand" class="jv-btn" type="button" aria-label="Full HUD"
+        <span id="jv-desk-ctl" hidden><button id="jv-desk-taskbar" class="jv-btn" type="button" aria-label="Minimize to taskbar"
+                title="Minimize to taskbar" hidden><svg class="jv-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h14"/></svg></button><button
+                id="jv-desk-expand" class="jv-btn" type="button" aria-label="Full HUD"
                 title="Full HUD"><svg class="jv-ico i-expand" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg><svg
                 class="jv-ico i-panel" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2.2"/><path d="M10 17h4"/></svg></button><button
                 id="jv-desk-mini" class="jv-btn" type="button" aria-label="Mini orb" title="Mini orb"><svg class="jv-ico" viewBox="0 0 24 24"
@@ -1157,7 +1166,7 @@
   </div>
 
   <div id="jv-apps-modal">
-    <div id="jv-apps-card">
+    <div id="jv-apps-card" role="dialog" aria-modal="true" aria-labelledby="jv-apps-title">
       <div id="jv-apps-head">
         <button id="jv-apps-back" class="jv-btn" type="button" aria-label="Back" title="Back"><svg class="jv-ico" viewBox="0 0 24 24"
                 aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
@@ -1165,7 +1174,7 @@
         <span id="jv-apps-count"></span>
         <button id="jv-apps-close" class="jv-btn" type="button" aria-label="Close Apps" title="Close">×</button>
       </div>
-      <iframe id="jv-apps-frame" src="/apps.html" allowtransparency="false"></iframe>
+      <iframe id="jv-apps-frame" src="/apps.html" title="Apps Cygnus can open" allowtransparency="false"></iframe>
     </div>
   </div>
 
@@ -1703,6 +1712,7 @@
 
   if (IS_DESKTOP && window.jarvisDesktop) {
     var expandBtn = document.getElementById('jv-desk-expand');
+    var taskbarBtn = document.getElementById('jv-desk-taskbar');
     document.getElementById('jv-desk-ctl').hidden = false;
     document.getElementById('jv-desk-sep').hidden = false;
     jarvisDesktop.onMode(function (m) {
@@ -1710,11 +1720,15 @@
       var label = m === 'expanded' ? 'Panel' : 'Full HUD';
       expandBtn.title = label;
       expandBtn.setAttribute('aria-label', label);
+      // Only the full HUD gets a taskbar entry (desktop/main.js setMode), so
+      // minimize-to-taskbar only makes sense there.
+      taskbarBtn.hidden = m !== 'expanded';
     });
     expandBtn.onclick = function () {
       var expanded = document.documentElement.getAttribute('data-desk') === 'expanded';
       jarvisDesktop.setMode(expanded ? 'sticky' : 'expanded');
     };
+    taskbarBtn.onclick = function () { jarvisDesktop.minimize(); };
     document.getElementById('jv-desk-mini').onclick = function () { jarvisDesktop.setMode('mini'); };
     bindDrag(miniOrb, function () { jarvisDesktop.setMode('sticky'); });
     bindDrag(document.getElementById('jv-topbar'));   // the shell ignores it outside the panel
@@ -3646,28 +3660,63 @@
   });
 
   // ---------------------------------------------------------------- apps modal
-  var appsData = null, appCat = 'all';
+  // /apps.html runs in the iframe. The two pages talk over postMessage (the
+  // "HUD bridge" in apps_panel.html): the page reports ready / counts /
+  // escape; the HUD asks it to refetch on open instead of reloading it, so
+  // its search, tab and open drawer survive a close and reopen.
   var appsModal = document.getElementById('jv-apps-modal');
   var appsFrame = document.getElementById('jv-apps-frame');
+  var appsBtn = document.getElementById('jv-apps');
+  var appsCount = document.getElementById('jv-apps-count');
+  var appsReady = false;
+
+  function tellApps(cmd) {
+    if (!appsReady || !appsFrame || !appsFrame.contentWindow) return false;
+    try { appsFrame.contentWindow.postMessage({ type: 'cy-apps', cmd: cmd }, '*'); return true; }
+    catch (e) { return false; }
+  }
 
   function openApps() {
     closeDrawer();
     dockUnderBar();
     appsModal.classList.add('show');
-    // iframe auto-loads /apps.html on each open; no local data fetch needed.
-    if (appsFrame) { try { appsFrame.contentWindow.location.reload(); } catch (e) {} }
+    appsBtn.setAttribute('aria-expanded', 'true');
+    // A page that has answered is asked to refetch; one that never loaded
+    // (server was down when the HUD opened) is reloaded, as before.
+    if (!tellApps('open') && appsFrame) { try { appsFrame.contentWindow.location.reload(); } catch (e) {} }
+    if (appsFrame) { try { appsFrame.focus({ preventScroll: true }); } catch (e) {} }
   }
 
-  function closeApps() { appsModal.classList.remove('show'); }
+  function closeApps() {
+    if (!appsModal.classList.contains('show')) return;
+    appsModal.classList.remove('show');
+    appsBtn.setAttribute('aria-expanded', 'false');
+    // Focus that went into the window comes back to the button that opened it.
+    var a = document.activeElement;
+    if (a === appsFrame || appsModal.contains(a) || a === document.body) {
+      try { appsBtn.focus({ preventScroll: true }); } catch (e) {}
+    }
+  }
 
-  document.getElementById('jv-apps').onclick = openApps;
+  window.addEventListener('message', function (e) {
+    var m = e.data;
+    if (!m || m.type !== 'cy-apps' || !m.event || !appsFrame || e.source !== appsFrame.contentWindow) return;
+    if (m.event === 'ready') appsReady = true;
+    else if (m.event === 'escape') closeApps();
+    else if (m.event === 'counts') {
+      appsCount.textContent = m.error ? 'OFFLINE'
+        : m.curated + ' CURATED · ' + m.all + ' DETECTED' + (m.broken ? ' · ' + m.broken + ' BROKEN' : '');
+    }
+  });
+
+  appsBtn.onclick = openApps;
   document.getElementById('jv-apps-close').onclick = closeApps;
   document.getElementById('jv-apps-back').onclick = closeApps;
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && appsModal.classList.contains('show')) closeApps();
   });
   appsModal.onclick = function (e) {
-    if (e.target === appsModal) appsModal.classList.remove('show');
+    if (e.target === appsModal) closeApps();
   };
 
   // ---------------------------------------------------------------- voice feedback toggle

@@ -249,7 +249,9 @@ def click_target_in_dom(dom, target):
                 return True
     words = [w for w in re.findall(r"[a-z0-9]+", (target or "").lower()) if len(w) > 2]
     text = visible_text(dom).lower()
-    return bool(words) and all(w in text for w in words)
+    # Whole words only: "play" must not hit "playlist".
+    return bool(words) and all(
+        re.search(r"(?<![a-z0-9])" + re.escape(w) + r"(?![a-z0-9])", text) for w in words)
 
 
 def probe_open(url):

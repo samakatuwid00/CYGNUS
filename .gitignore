@@ -47,6 +47,8 @@ jarvis-profile.md
 sessions/
 # Routing eval labels: real utterances with their conversation context
 eval/routing_gold.jsonl
+# The owner's voice test set (scripts/voice_testset_record.py)
+eval/voice_testset/
 # Capability manifest (leaks installed software inventory)
 capabilities.json
 # Local-only Manus cookie handoff (PRIVACY: never commit — like .env)

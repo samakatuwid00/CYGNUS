@@ -196,13 +196,24 @@ def _simulate_search(action, sample, steps, say, probe, llm):
     return "failed", None
 
 
-def describe_step(step):
-    """Plain words for one step, for proposals and simulation reports."""
+def app_shell(dom):
+    """A page that renders itself in the browser: the DOM dump has almost no
+    text and no buttons or links, so a missing click target is unknown, not
+    absent."""
+    import site_probe
+    low = (dom or "").lower()
+    has_controls = "<button" in low or "<a " in low
+    return not has_controls or len(site_probe.visible_text(dom or "").strip()) < 200
+
+
+def describe_step(step, after_pick=False):
+    """Plain words for one step, for proposals and simulation reports.
+    `after_pick`: an open that follows a pick opens the user's choice."""
     op, target = step.get("op"), step.get("target") or ""
     return {
         "search": "search the site for the name",
         "pick": "show you the top picks to choose from",
-        "open": "open your pick",
+        "open": "open your pick" if after_pick else "open the site",
         "click": ("ask you, then " if step.get("confirm") else "") + f'click "{target}"',
         "launch": "open the app",
         "type": f'type "{step.get("text", "")}" into "{target}"',
@@ -230,7 +241,8 @@ def _simulate_steps(app_key, rule, entry, steps, say, probe, llm):
         return "failed", None
     steps.append(f'OK "{spoken}" matches the rule' + (f', name = "{m["slot"]}"' if sample else ""))
     if not (action.get("url") or action.get("site")):
-        plan = "; ".join(describe_step(s) for s in action["steps"])
+        plan = "; ".join(describe_step(s, after_pick="pick" in ops[:i])
+                         for i, s in enumerate(action["steps"]))
         steps.append(f"Planned in {app_key}: {plan}. Desktop steps run for real when you "
                      "use the command.")
         return "simulated", None
@@ -255,14 +267,25 @@ def _simulate_steps(app_key, rule, entry, steps, say, probe, llm):
     if targets and callable(load) and callable(finder):
         say(f"Checking {page_url} for what to click...", 88)
         page = load(page_url)
+        unseen = False
         for target in targets:
             if page["blocked"]:
                 steps.append(f'Could not check "{target}": the page is behind a bot check.')
+                unseen = True
             elif finder(page["dom"], target):
                 steps.append(f'OK "{target}" is on {page_url}')
+            elif app_shell(page["dom"]):
+                # YouTube Music and the like draw every button in the browser;
+                # the DOM dump is an empty shell, so absence proves nothing.
+                steps.append(f'Could not check "{target}": the page draws itself in the '
+                             "browser, so the hidden check can't see it. Press Test to "
+                             "try it in yours.")
+                unseen = True
             else:
                 steps.append(f'FAILED "{target}" is not on {page_url}')
                 return "failed", page_url
+        if unseen:
+            return "unverified", page_url
     return "verified", page_url
 
 

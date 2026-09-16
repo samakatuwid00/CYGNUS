@@ -54,7 +54,7 @@ def evaluate_app_rules(entry, action):
     blocks = []
 
     for rule in rules:
-        if not isinstance(rule, dict):
+        if not isinstance(rule, dict) or not condition_holds(rule):
             continue
         rule_id = rule.get("rule_id", "?")
         intent = rule.get("intent", "")
@@ -165,6 +165,35 @@ def _redirect_target(rule):
     return None
 
 
+def _minutes(hhmm):
+    h, m = str(hhmm).split(":", 1)
+    return int(h) * 60 + int(m)
+
+
+def condition_holds(rule, now=None):
+    """Does the rule's `condition` apply right now? A rule without one always
+    applies. Clock conditions read the local time; "time_between" wraps past
+    midnight (22:00-07:00)."""
+    cond = (rule or {}).get("condition") if isinstance(rule, dict) else None
+    if not isinstance(cond, dict):
+        return True
+    try:
+        import datetime as _dt
+        now = now or _dt.datetime.now()
+        cur = now.hour * 60 + now.minute
+        kind = cond.get("kind")
+        if kind == "time_after":
+            return cur >= _minutes(cond.get("start"))
+        if kind == "time_before":
+            return cur < _minutes(cond.get("end"))
+        if kind == "time_between":
+            a, b = _minutes(cond.get("start")), _minutes(cond.get("end"))
+            return a <= cur < b if a <= b else (cur >= a or cur < b)
+    except (TypeError, ValueError, AttributeError):
+        return True
+    return True
+
+
 def check(app_key, context=None):
     """Runtime gate consulted before opening an app or a site.
 
@@ -203,6 +232,9 @@ def check(app_key, context=None):
                 continue
             scope = _gate_scope(rule.get("adapter_check"))
             if scope != "all" and scope != acting:
+                continue
+            # "never open spotify after 23:00" is nothing to do with 3 pm.
+            if not condition_holds(rule):
                 continue
             rule_id = rule.get("rule_id", "?")
             enforcement = (rule.get("enforcement") or "soft").strip().lower()
@@ -253,6 +285,9 @@ _MATCH_STOP = {"a", "an", "the", "some", "please", "jarvis", "sir", "hey", "ok",
 # Trimmed off the ends of the name the user filled in.
 _SLOT_EDGE = _MATCH_STOP | {"named", "called", "titled", "about", "in", "on", "at",
                             "to", "and", "of", "name", "title", "there", "instead", "again"}
+# Trimmed off the END only: pure stop words and pointer words. "there", "to",
+# "and", "name" stay - "message jd hello there" is the message "hello there".
+_SLOT_TAIL = _MATCH_STOP | {"named", "called", "titled", "instead", "again"}
 # "search that site for Blade Runner instead": the pointer phrase, not the
 # bare words - "that"/"this" as edge words cost "This Is Us" its first word.
 _SLOT_POINTER_RE = re.compile(
@@ -345,7 +380,7 @@ def _match_trigger(trigger, toks):
                                               if i not in matched)).split()
     while words and words[0].lower() in _SLOT_EDGE:
         words.pop(0)
-    while words and words[-1].lower() in _SLOT_EDGE:
+    while words and words[-1].lower() in _SLOT_TAIL:
         words.pop()
     return {"slot": " ".join(words), "score": len(t_keys)}
 
@@ -483,7 +518,7 @@ def answer_slot(text, rule):
     words = [w for w, k in toks if not (k and k in rule_words)]
     while words and words[0].lower() in _SLOT_EDGE:
         words.pop(0)
-    while words and words[-1].lower() in _SLOT_EDGE:
+    while words and words[-1].lower() in _SLOT_TAIL:
         words.pop()
     return " ".join(words) or None
 

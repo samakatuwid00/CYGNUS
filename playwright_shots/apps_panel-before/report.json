@@ -1,0 +1,154 @@
+[
+ [
+  "360x720-touch",
+  {
+   "headerHeight": 222,
+   "visible": [
+    "h-more 30x30",
+    "refresh 30x30",
+    "search 263x30",
+    "seg-btn 53x26",
+    "seg-btn 61x26",
+    "seg-btn 83x26",
+    "seg-btn 98x26",
+    "tab-curated 156x39",
+    "tab-all 141x39",
+    "tab-shadow 108x39"
+   ],
+   "issues": [
+    "off-screen tab-shadow",
+    "small touch targets: h-more 30x30, refresh 30x30, All 10 53x26, Apps 7 61x26, Websites 2 83x26, Capabilities 1 98x26, tab-curated 156x39, tab-all 141x39, tab-shadow 108x39"
+   ],
+   "errors": []
+  }
+ ],
+ [
+  "400x780-touch",
+  {
+   "headerHeight": 222,
+   "visible": [
+    "h-more 30x30",
+    "refresh 30x30",
+    "search 303x30",
+    "seg-btn 53x26",
+    "seg-btn 61x26",
+    "seg-btn 83x26",
+    "seg-btn 98x26",
+    "tab-curated 156x39",
+    "tab-all 141x39",
+    "tab-shadow 108x39"
+   ],
+   "issues": [
+    "off-screen tab-shadow",
+    "small touch targets: h-more 30x30, refresh 30x30, All 10 53x26, Apps 7 61x26, Websites 2 83x26, Capabilities 1 98x26, tab-curated 156x39, tab-all 141x39, tab-shadow 108x39"
+   ],
+   "errors": []
+  }
+ ],
+ [
+  "700x600-touch",
+  {
+   "headerHeight": 205,
+   "visible": [
+    "stat 53x18",
+    "stat 36x18",
+    "st-broken-wrap 48x18",
+    "h-add 67x26",
+    "h-scan 67x26",
+    "h-gen 182x26",
+    "h-deep 92x26",
+    "refresh 30x30",
+    "search 266x30",
+    "seg-btn 53x26",
+    "seg-btn 61x26",
+    "seg-btn 83x26",
+    "seg-btn 98x26",
+    "tab-curated 156x39",
+    "tab-all 141x39",
+    "tab-shadow 108x39"
+   ],
+   "issues": [
+    "small touch targets: h-add 67x26, h-scan 67x26, h-gen 182x26, h-deep 92x26, refresh 30x30, All 10 53x26, Apps 7 61x26, Websites 2 83x26, Capabilities 1 98x26, tab-curated 156x39, tab-all 141x39, tab-shadow 108x39"
+   ],
+   "errors": []
+  }
+ ],
+ [
+  "860x700",
+  {
+   "headerHeight": 180,
+   "visible": [
+    "stat 53x18",
+    "stat 36x18",
+    "st-broken-wrap 48x18",
+    "h-add 67x26",
+    "h-scan 67x26",
+    "h-gen 182x26",
+    "h-deep 92x26",
+    "refresh 30x30",
+    "search 426x30",
+    "seg-btn 53x26",
+    "seg-btn 61x26",
+    "seg-btn 83x26",
+    "seg-btn 98x26",
+    "tab-curated 156x39",
+    "tab-all 141x39",
+    "tab-shadow 108x39"
+   ],
+   "issues": [],
+   "errors": []
+  }
+ ],
+ [
+  "958x720",
+  {
+   "headerHeight": 180,
+   "visible": [
+    "stat 53x18",
+    "stat 36x18",
+    "st-broken-wrap 48x18",
+    "h-add 67x26",
+    "h-scan 67x26",
+    "h-gen 182x26",
+    "h-deep 92x26",
+    "refresh 30x30",
+    "search 524x30",
+    "seg-btn 53x26",
+    "seg-btn 61x26",
+    "seg-btn 83x26",
+    "seg-btn 98x26",
+    "tab-curated 156x39",
+    "tab-all 141x39",
+    "tab-shadow 108x39"
+   ],
+   "issues": [],
+   "errors": []
+  }
+ ],
+ [
+  "1200x800",
+  {
+   "headerHeight": 161,
+   "visible": [
+    "stat 53x18",
+    "stat 36x18",
+    "st-broken-wrap 48x18",
+    "h-add 67x26",
+    "h-scan 67x26",
+    "h-gen 182x26",
+    "h-deep 92x26",
+    "refresh 30x30",
+    "search 646x30",
+    "seg-btn 53x26",
+    "seg-btn 61x26",
+    "seg-btn 83x26",
+    "seg-btn 98x26",
+    "tab-curated 156x39",
+    "tab-all 141x39",
+    "tab-shadow 108x39"
+   ],
+   "issues": [],
+   "errors": []
+  }
+ ]
+]

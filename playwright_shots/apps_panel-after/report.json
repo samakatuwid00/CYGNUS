@@ -1,0 +1,286 @@
+[
+ [
+  "360x720-touch",
+  {
+   "headerHeight": 219,
+   "visible": [
+    "h-add 96x40",
+    "h-more 40x40",
+    "refresh 40x40",
+    "search 263x38",
+    "seg-btn 75x40",
+    "seg-btn 75x40",
+    "seg-btn 77x40",
+    "seg-btn 92x40",
+    "tab-curated 160x45",
+    "tab-all 145x45",
+    "tab-shadow 139x45"
+   ],
+   "issues": [],
+   "errors": []
+  }
+ ],
+ [
+  "360x720-touch-embedded",
+  {
+   "headerHeight": 215,
+   "visible": [
+    "h-add 96x40",
+    "h-more 40x40",
+    "refresh 40x40",
+    "search 263x38",
+    "seg-btn 75x40",
+    "seg-btn 75x40",
+    "seg-btn 77x40",
+    "seg-btn 92x40",
+    "tab-curated 160x45",
+    "tab-all 145x45",
+    "tab-shadow 139x45"
+   ],
+   "issues": [],
+   "errors": []
+  }
+ ],
+ [
+  "400x780-touch",
+  {
+   "headerHeight": 219,
+   "visible": [
+    "h-add 96x40",
+    "h-more 40x40",
+    "refresh 40x40",
+    "search 303x38",
+    "seg-btn 89x40",
+    "seg-btn 89x40",
+    "seg-btn 89x40",
+    "seg-btn 92x40",
+    "tab-curated 160x45",
+    "tab-all 145x45",
+    "tab-shadow 139x45"
+   ],
+   "issues": [],
+   "errors": []
+  }
+ ],
+ [
+  "400x780-touch-embedded",
+  {
+   "headerHeight": 215,
+   "visible": [
+    "h-add 96x40",
+    "h-more 40x40",
+    "refresh 40x40",
+    "search 303x38",
+    "seg-btn 89x40",
+    "seg-btn 89x40",
+    "seg-btn 89x40",
+    "seg-btn 92x40",
+    "tab-curated 160x45",
+    "tab-all 145x45",
+    "tab-shadow 139x45"
+   ],
+   "issues": [],
+   "errors": []
+  }
+ ],
+ [
+  "700x600-touch",
+  {
+   "headerHeight": 170,
+   "visible": [
+    "h-add 96x40",
+    "h-more 40x40",
+    "refresh 40x40",
+    "search 260x38",
+    "seg-btn 54x40",
+    "seg-btn 62x40",
+    "seg-btn 85x40",
+    "seg-btn 100x40",
+    "tab-curated 160x45",
+    "tab-all 145x45",
+    "tab-shadow 111x45",
+    "stat 53x18",
+    "stat 36x18",
+    "st-broken-wrap 48x18"
+   ],
+   "issues": [],
+   "errors": []
+  }
+ ],
+ [
+  "700x600-touch-embedded",
+  {
+   "headerHeight": 165,
+   "visible": [
+    "h-add 96x40",
+    "h-more 40x40",
+    "refresh 40x40",
+    "search 260x38",
+    "seg-btn 54x40",
+    "seg-btn 62x40",
+    "seg-btn 85x40",
+    "seg-btn 100x40",
+    "tab-curated 160x45",
+    "tab-all 145x45",
+    "tab-shadow 111x45",
+    "stat 53x18",
+    "stat 36x18",
+    "st-broken-wrap 48x18"
+   ],
+   "issues": [],
+   "errors": []
+  }
+ ],
+ [
+  "860x700",
+  {
+   "headerHeight": 150,
+   "visible": [
+    "h-add 87x26",
+    "h-more 30x30",
+    "refresh 30x30",
+    "search 426x30",
+    "seg-btn 53x26",
+    "seg-btn 61x26",
+    "seg-btn 83x26",
+    "seg-btn 98x26",
+    "tab-curated 156x39",
+    "tab-all 141x39",
+    "tab-shadow 108x39",
+    "stat 53x18",
+    "stat 36x18",
+    "st-broken-wrap 48x18"
+   ],
+   "issues": [],
+   "errors": []
+  }
+ ],
+ [
+  "860x700-embedded",
+  {
+   "headerHeight": 135,
+   "visible": [
+    "h-add 87x26",
+    "h-more 30x30",
+    "refresh 30x30",
+    "search 426x30",
+    "seg-btn 53x26",
+    "seg-btn 61x26",
+    "seg-btn 83x26",
+    "seg-btn 98x26",
+    "tab-curated 156x39",
+    "tab-all 141x39",
+    "tab-shadow 108x39",
+    "stat 53x18",
+    "stat 36x18",
+    "st-broken-wrap 48x18"
+   ],
+   "issues": [],
+   "errors": []
+  }
+ ],
+ [
+  "958x720",
+  {
+   "headerHeight": 150,
+   "visible": [
+    "h-add 87x26",
+    "h-scan 87x26",
+    "h-deep 112x26",
+    "h-gen 202x26",
+    "refresh 30x30",
+    "search 524x30",
+    "seg-btn 53x26",
+    "seg-btn 61x26",
+    "seg-btn 83x26",
+    "seg-btn 98x26",
+    "tab-curated 156x39",
+    "tab-all 141x39",
+    "tab-shadow 108x39",
+    "stat 53x18",
+    "stat 36x18",
+    "st-broken-wrap 48x18"
+   ],
+   "issues": [],
+   "errors": []
+  }
+ ],
+ [
+  "958x720-embedded",
+  {
+   "headerHeight": 135,
+   "visible": [
+    "h-add 87x26",
+    "h-scan 87x26",
+    "h-deep 112x26",
+    "h-gen 202x26",
+    "refresh 30x30",
+    "search 524x30",
+    "seg-btn 53x26",
+    "seg-btn 61x26",
+    "seg-btn 83x26",
+    "seg-btn 98x26",
+    "tab-curated 156x39",
+    "tab-all 141x39",
+    "tab-shadow 108x39",
+    "stat 53x18",
+    "stat 36x18",
+    "st-broken-wrap 48x18"
+   ],
+   "issues": [],
+   "errors": []
+  }
+ ],
+ [
+  "1200x800",
+  {
+   "headerHeight": 150,
+   "visible": [
+    "h-add 87x26",
+    "h-scan 87x26",
+    "h-deep 112x26",
+    "h-gen 202x26",
+    "refresh 30x30",
+    "search 646x30",
+    "seg-btn 53x26",
+    "seg-btn 61x26",
+    "seg-btn 83x26",
+    "seg-btn 98x26",
+    "tab-curated 156x39",
+    "tab-all 141x39",
+    "tab-shadow 108x39",
+    "stat 53x18",
+    "stat 36x18",
+    "st-broken-wrap 48x18"
+   ],
+   "issues": [],
+   "errors": []
+  }
+ ],
+ [
+  "1200x800-embedded",
+  {
+   "headerHeight": 135,
+   "visible": [
+    "h-add 87x26",
+    "h-scan 87x26",
+    "h-deep 112x26",
+    "h-gen 202x26",
+    "refresh 30x30",
+    "search 646x30",
+    "seg-btn 53x26",
+    "seg-btn 61x26",
+    "seg-btn 83x26",
+    "seg-btn 98x26",
+    "tab-curated 156x39",
+    "tab-all 141x39",
+    "tab-shadow 108x39",
+    "stat 53x18",
+    "stat 36x18",
+    "st-broken-wrap 48x18"
+   ],
+   "issues": [],
+   "errors": []
+  }
+ ]
+]
