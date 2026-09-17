@@ -26,10 +26,20 @@ name = "compile"
 command = "python -m compileall -q tests"
 timeout = 120
 
-# Gate 2: the real oracle. 861 tests, green at baseline commit bca53fa
-# (860 passed, 1 skipped, 66.7s). Do not pipe the command - a pipe hides
+# Gate 2: don't break anything. 861 tests, green at bca53fa and 994e70f
+# (860 passed, 1 skipped, ~67s). Do not pipe the command - a pipe hides
 # pytest's exit code and the gate would always report pass.
 [[gates]]
 name = "tests"
 command = "python -m pytest -q"
 timeout = 600
+
+# Gate 3: did the routing defects actually get fixed. Red at 994e70f with
+# 6 of 11 checks failing. Deterministic - no model call, no network - which is
+# why this and not the agent_loop numbers, which swing 30 points between
+# identical runs. Includes a latency ceiling so a fix cannot route a hard case
+# to a model, and gold/stress floors so it cannot special-case the test set.
+[[gates]]
+name = "routing"
+command = "python eval/gate_routing.py"
+timeout = 300
