@@ -1,0 +1,35 @@
+# agentloop config for CYGNUS.
+# Run from C:\Users\deped\agentloop:
+#   PYTHONPATH=. python -m agentloop "<task>" --project C:\Users\deped\Documents\CYGNUS
+
+[loop]
+model = "claude-opus-5"
+max_iterations = 5
+max_cost_usd = 15.0
+phase_cost_usd = 5.0
+max_wall_seconds = 3600        # suite alone is ~67s, so budget room for ~5 rounds
+max_verify_rounds = 2
+
+# Loads this project's .claude/settings.local.json plus your user CLAUDE.md,
+# Second Brain hooks, and skills. Also what enables the /sb and SB: prefixes.
+setting_sources = ["user", "project", "local"]
+
+# Keep CLAUDE.md and project settings, but drop the "/sb full " / "SB: "
+# prompt prefixes. In an unattended session those classify the turn as a
+# light/full Second Brain task, and sb-stop-guard.ps1 then refuses to let the
+# phase stop until a vault record is written - which nothing in the loop does.
+sb_prefixes = false
+
+# Gate 1: nothing ships that will not import.
+[[gates]]
+name = "compile"
+command = "python -m compileall -q tests"
+timeout = 120
+
+# Gate 2: the real oracle. 861 tests, green at baseline commit bca53fa
+# (860 passed, 1 skipped, 66.7s). Do not pipe the command - a pipe hides
+# pytest's exit code and the gate would always report pass.
+[[gates]]
+name = "tests"
+command = "python -m pytest -q"
+timeout = 600
