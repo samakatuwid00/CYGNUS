@@ -20,6 +20,25 @@ setting_sources = ["user", "project", "local"]
 # phase stop until a vault record is written - which nothing in the loop does.
 sb_prefixes = false
 
+# Files the loop may read and run but never modify. A build once edited
+# routing_eval.py to add a `return "multi"` branch so the gate would pass, and
+# all three gates went green on the tampered evidence - only the adversarial
+# verify phase caught it. The prompt already said not to; a prompt is not
+# enforcement. Now a PreToolUse hook denies the write, and content hashes
+# checked after every phase restore anything that slips past it.
+frozen = [
+  "eval/gate_routing.py",
+  "eval/routing_gold.jsonl",
+  "eval/stress_prompts.jsonl",
+  "routing_eval.py",
+  "stress_eval.py",
+]
+
+# Snapshot the tree whenever all gates pass, and restore the best snapshot if
+# the run ends without reaching `done`, so a verify round cannot leave the loop
+# worse off than a state it already reached.
+checkpoint = true
+
 # Gate 1: nothing ships that will not import.
 [[gates]]
 name = "compile"
