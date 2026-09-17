@@ -5,8 +5,8 @@
 [loop]
 model = "claude-opus-5"
 max_iterations = 5
-max_cost_usd = 15.0
-phase_cost_usd = 5.0
+max_cost_usd = 30.0        # per RUN, not lifetime
+phase_cost_usd = 15.0      # build hit the 8.0 cap mid-work on the five-defect task
 max_wall_seconds = 3600        # suite alone is ~67s, so budget room for ~5 rounds
 max_verify_rounds = 2
 

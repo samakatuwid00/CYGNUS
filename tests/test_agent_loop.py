@@ -211,3 +211,25 @@ def test_an_ability_marked_ask_is_asked_not_run(monkeypatch):
     assert out == "[Held] Should I save in PowerPoint, sir?" and ran == []
     assert dialogue_state.pending()["kind"] == "ability"
     dialogue_state.reset()
+
+
+def test_the_prompt_path_keeps_its_line_breaks():
+    """_safe() is on the prompt path for encoding safety - a lone surrogate
+    raised UnicodeEncodeError while the request body was being built. It must
+    not reflow the text on the way: collapsing whitespace flattened the whole
+    system prompt onto one line, and every prior answer in the history with it,
+    code blocks included. Nothing else covers prompt formatting."""
+    assert al._SYSTEM.count("\n") >= 3
+    assert al._system({"client": "default"}).count("\n") >= al._SYSTEM.count("\n")
+    answer = "Here, sir:\n\n```python\nx = 1\n```\n\nRun it when ready."
+    assert al._safe(answer) == answer
+    # the encoding safety itself is unchanged
+    assert al._safe("a\ud800b\x1b[0m\nc") == "ab\nc"
+
+
+def test_the_history_keeps_a_multi_line_answer_whole():
+    brain = FakeBrain()
+    brain.conversation = [{"role": "user", "content": "how do I?"},
+                          {"role": "assistant", "content": "One:\n  step\n\nTwo:\n  step"},
+                          {"role": "user", "content": "the turn"}]
+    assert al._history(brain)[1]["content"] == "One:\n  step\n\nTwo:\n  step"

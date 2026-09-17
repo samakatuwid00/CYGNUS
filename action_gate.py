@@ -58,7 +58,9 @@ def _app_and_site(target):
     if kind != "clarify":
         return None
     if isinstance(found, dict):
-        return found.get("name") or target
+        # A referent payload ("open it") carries no name: nothing answers to
+        # two things here, there is simply nothing named at all.
+        return found.get("name") or (None if found.get("referent") else target)
     return target
 
 

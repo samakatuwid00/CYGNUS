@@ -351,14 +351,34 @@ def _system(ctx: dict) -> str:
     cur = _current_app.get(ctx.get("client", "default"))
     if cur:
         extra += f"\nThe app in play from the last turns: {cur}."
-    return _SYSTEM.format(extra=extra)
+    # The app names come from the same transcripts the user's text does.
+    return _safe(_SYSTEM.format(extra=extra))
+
+
+def _safe(text: str) -> str:
+    """Text a request body can carry. A lone surrogate (U+D800, from a broken
+    UTF-16 boundary upstream) raised UnicodeEncodeError while the request was
+    being encoded, on every one of the three router models, so the loop could
+    not take that turn at all - a guaranteed bypass back to the old routing.
+    Scrubbed here, before the message list is built, not caught after.
+
+    collapse=False: this is the prompt path. Encoding safety is the whole
+    reason to be here, and folding whitespace as well flattened the system
+    prompt and every prior answer in the history onto one line."""
+    try:
+        import intake
+        return intake.scrub(text or "", collapse=False)
+    except Exception:
+        return (text or "").encode("utf-8", "replace").decode("utf-8", "replace")
 
 
 def _history(brain, n: int = 8) -> list:
     out = []
     for m in brain.conversation[-(n + 1):-1]:
         if m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str):
-            out.append({"role": m["role"], "content": m["content"][:1500]})
+            # The surrogate can arrive from the conversation too, not only from
+            # this turn's text.
+            out.append({"role": m["role"], "content": _safe(m["content"])[:1500]})
     return out
 
 
@@ -379,6 +399,7 @@ def run(brain, text: str, ctx: dict) -> str | None:
     global _last_stats
     if not _lock.acquire(blocking=False):
         return None
+    text = _safe(text)
     saved_deadline = getattr(bg._progress_local, "deadline", None)
     start = time.monotonic()
     deadline = start + BUDGET_S
@@ -496,6 +517,7 @@ def run(brain, text: str, ctx: dict) -> str | None:
 def shadow(brain, text: str, ctx: dict) -> None:
     """Off the turn's path: what the loop's first decision would be, logged
     next to what the old routing does, to compare before leading."""
+    text = _safe(text)
     base = [{"role": "system", "content": _system(ctx)}] + _history(brain) + [{"role": "user", "content": text}]
 
     def work():

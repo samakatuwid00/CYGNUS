@@ -38,6 +38,7 @@ import difflib
 import json
 import os
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -110,13 +111,101 @@ _FILLERS = {
 _PUNCT = re.compile(r"[^\w\s]", re.UNICODE)
 _WS = re.compile(r"\s+")
 
+# ---- scrub: the characters no router rule should ever have to read ---------
+# A transcript arrives from a microphone, a websocket and a phone, and picks up
+# things a person never said: a NUL from a truncated buffer, an ANSI escape
+# from a terminal paste, a zero-width joiner or an RTL override from copied
+# web text, a lone surrogate from a broken UTF-16 boundary, and Cyrillic or
+# Greek letters that look exactly like Latin ones. None of them change what was
+# meant; all of them change what an ASCII regex matches, and a lone surrogate
+# raises UnicodeEncodeError the moment the text is put in an HTTP body.
+_SURROGATE_RE = re.compile(r"[\ud800-\udfff]")
+# CSI ("\x1b[31m"), OSC ("\x1b]0;title\x07"), then any remaining two-byte
+# escape. Left in, "\x1b[31mopen chrome\x1b[0m" normalized to
+# "31mopen chrome 0m" and matched no open rule.
+_ANSI_OSC_RE = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
+_ANSI_CSI_RE = re.compile(r"\x1b\[[0-9;:<=>?]*[ -/]*[@-~]")
+_ANSI_ESC_RE = re.compile(r"\x1b[@-Z\\-_]?")
+# C0 and C1 controls, keeping \t \n \r as whitespace for _WS to collapse.
+_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
+# Zero-width and bidi formatting: invisible, and they split words for \b.
+_INVISIBLE_RE = re.compile(r"[​-‏‪-‮⁠-⁤⁦-⁩﻿]")
+# Homoglyph folding, bounded to the letters that actually collide with Latin.
+# "ореn chrome" is three Cyrillic letters and one Latin one; it
+# reads as "open chrome" and matched nothing.
+_CONFUSABLES = str.maketrans({
+    "а": "a", "е": "e", "о": "o", "р": "p", "с": "c",
+    "х": "x", "у": "y", "і": "i", "ѕ": "s", "к": "k",
+    "в": "b", "н": "h", "м": "m", "т": "t",
+    "А": "A", "Е": "E", "О": "O", "Р": "P", "С": "C",
+    "Х": "X", "У": "Y", "І": "I", "К": "K", "В": "B",
+    "Н": "H", "М": "M", "Т": "T",
+    "ο": "o", "ρ": "p", "α": "a", "ε": "e", "ν": "v",
+    "Α": "A", "Ε": "E", "Ο": "O", "Ρ": "P", "Τ": "T",
+})
+_LATIN_RE = re.compile(r"[A-Za-z]")
+
+
+def _fold_confusables(text: str) -> str:
+    """Fold Latin look-alikes in MIXED-SCRIPT tokens only.
+
+    "ореn chrome" is an attack: three Cyrillic letters wearing Latin clothes
+    inside a word that is otherwise Latin. "Кино" is just a word. Folding every
+    token turned the second into the first's shape - "play Кино" normalized to
+    "play kиho", and normalize() is what resolve_intent fuzzy-matches against
+    apps, artists, projects and contacts, so a Cyrillic artist or contact name
+    stopped matching its own corpus entry.
+
+    A token with no ASCII letter in it is left alone. That is deliberate and it
+    is a real limit: a word spelled ENTIRELY in Cyrillic look-alikes ("орен")
+    is indistinguishable from a Cyrillic word and is not folded. Corrupting
+    every non-Latin name to catch that one is the worse trade.
+    """
+    return "".join(tok.translate(_CONFUSABLES) if _LATIN_RE.search(tok) else tok
+                   for tok in re.split(r"(\s+)", text))
+
+
+def scrub(text: str, collapse: bool = True) -> str:
+    """Strip what a person cannot say and a matcher cannot survive.
+
+    Removes lone surrogates, ANSI escapes, C0/C1 controls, zero-width and bidi
+    formatting; folds Cyrillic/Greek Latin look-alikes in mixed-script tokens;
+    NFKC-normalises. Case, words and punctuation are left alone -- this is a
+    sanitizer, not the normalizer. Safe to call on anything: the result always
+    encodes to UTF-8.
+
+    collapse folds every run of whitespace (including U+00A0) to one space. A
+    routing rule wants that; a prompt does not. The system prompt and the
+    conversation history go through here only for the encoding safety, and
+    collapsing flattened both to a single line -- paragraphs, bullets and any
+    code block in a prior answer among them.
+    """
+    if not text:
+        return ""
+    t = _SURROGATE_RE.sub("", text)
+    t = _ANSI_OSC_RE.sub("", t)
+    t = _ANSI_CSI_RE.sub("", t)
+    t = _ANSI_ESC_RE.sub("", t)
+    t = _CONTROL_RE.sub("", t)
+    t = _INVISIBLE_RE.sub("", t)
+    t = unicodedata.normalize("NFKC", t)
+    t = _fold_confusables(t)
+    return (_WS.sub(" ", t) if collapse else t).strip()
+
+
+def is_blank(text: str) -> bool:
+    """True when nothing was actually said: no letter and no digit survives
+    scrub(). "", "   ", ".", "!!!!", "\\xa0\\xa0", "\\x00" are all blank, and a
+    blank turn is a question to ask, not a request to route."""
+    return not any(ch.isalnum() for ch in scrub(text))
+
 
 def normalize(text: str) -> str:
     """Lowercase, strip punctuation, drop fillers, collapse whitespace.
     Returns a clean token string suitable for fuzzy matching."""
     if not text:
         return ""
-    t = text.lower()
+    t = scrub(text).lower()
     t = _PUNCT.sub(" ", t)
     toks = [w for w in _WS.split(t) if w and w not in _FILLERS]
     return " ".join(toks)
