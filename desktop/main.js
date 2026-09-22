@@ -27,7 +27,8 @@ const HOTKEY = 'Control+Alt+J'
 // square that vanished on a dark taskbar. tray@2x.png is picked on scaled
 // displays.
 const TRAY_ICON = path.join(__dirname, 'assets', 'tray.png')
-const LOG_FILE = path.join(REPO, 'logs', 'desktop-backend.log')
+// The backend's runtime data lives in data/ (or CYGNUS_DATA_DIR), like cygnus/paths.py.
+const LOG_FILE = path.join(readEnv('CYGNUS_DATA_DIR') || path.join(REPO, 'data'), 'logs', 'desktop-backend.log')
 const READY_TIMEOUT_MS = 180000
 // What the tray checks besides the backend: Chrome started with its debugging
 // port (clicks inside the browser) and Ollama (the offline fallback), read

@@ -217,7 +217,7 @@ This phase makes the later moves safe.
   empty.
 - Move the root `*_test.py` files into `tests/`.
 
-### Phase 4: runtime data into `data/`
+### Phase 4: runtime data into `data/` - done 2026-09-22
 
 - `paths.DATA_DIR` defaults to `ROOT/data` and can be changed with
   `CYGNUS_DATA_DIR`.

@@ -33,7 +33,7 @@ WEB_DIR = ROOT / "web"
 STATIC_DIR = WEB_DIR / "static"
 EVAL_DIR = ROOT / "eval"
 SCRIPTS_DIR = ROOT / "scripts"
-DATA_DIR = Path(os.getenv("CYGNUS_DATA_DIR") or ROOT)
+DATA_DIR = Path(os.getenv("CYGNUS_DATA_DIR") or ROOT / "data")
 
 LOG_DIR = DATA_DIR / "logs"
 MEMORY_DIR = DATA_DIR / "memory"

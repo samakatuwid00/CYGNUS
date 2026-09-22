@@ -15,7 +15,7 @@ One command runs every check in order and writes one report:
   python scripts/prod_check.py --no-server     only 1-3 (no running server needed)
 
 Exit code 0 only when every check that ran passed. The report goes to
-logs/prod-check-<time>.json. Run it before a push, after a restructure step,
+data/logs/prod-check-<time>.json. Run it before a push, after a restructure step,
 and on a schedule (see the README's "Routine check").
 """
 
@@ -31,6 +31,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PY = sys.executable
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 sys.path.insert(0, REPO)
+from cygnus import paths  # noqa: E402
 
 # Fewer healthy cloud models than this and one quota reset leaves Cygnus on
 # the local model (2026-09-22: 16 answered, 60% of 9router's list was dead).
@@ -113,8 +114,8 @@ def main(argv=None):
     args = ap.parse_args(argv)
     # Run by the daily scheduled task through pythonw: no console to print to.
     if sys.stdout is None:
-        os.makedirs(os.path.join(REPO, "logs"), exist_ok=True)
-        sys.stdout = open(os.path.join(REPO, "logs", "prod-check-last.txt"), "w", encoding="utf-8")
+        os.makedirs(paths.LOG_DIR, exist_ok=True)
+        sys.stdout = open(paths.log("prod-check-last.txt"), "w", encoding="utf-8")
     # The Windows console is cp1252; a reply with a curly quote crashed the report.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -139,8 +140,8 @@ def main(argv=None):
         if base:
             record(check_smoke(base, args.tier))
 
-    os.makedirs(os.path.join(REPO, "logs"), exist_ok=True)
-    path = os.path.join(REPO, "logs", f"prod-check-{time.strftime('%Y%m%d-%H%M%S')}.json")
+    os.makedirs(paths.LOG_DIR, exist_ok=True)
+    path = paths.log(f"prod-check-{time.strftime('%Y%m%d-%H%M%S')}.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "tier": args.tier, "results": results},
                   f, indent=2, ensure_ascii=False)

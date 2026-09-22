@@ -122,8 +122,8 @@ def verdict(kind, arg, want_kind, want_key, apps):
 def audit():
     from cygnus.apps import abilities as app_abilities
     from cygnus.apps import web_registry as wr
-    apps = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                       "app_registry.json"), encoding="utf-8"))["apps"]
+    from cygnus import paths
+    apps = json.load(open(paths.APP_REGISTRY, encoding="utf-8"))["apps"]
     abilities = app_abilities.load_apps()["apps"]
     targets = [("app", k, APP_PHRASES) for k, v in apps.items()
                if isinstance(v, dict) and not v.get("hidden")]

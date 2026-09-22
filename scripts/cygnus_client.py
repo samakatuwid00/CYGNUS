@@ -8,6 +8,7 @@ tools ran from logs/audit.jsonl (the server runs on this machine).
 import asyncio
 import json
 import os
+import sys
 import time
 from dataclasses import dataclass, field
 
@@ -15,7 +16,10 @@ import httpx
 import websockets
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-AUDIT = os.path.join(REPO, "logs", "audit.jsonl")
+sys.path.insert(0, REPO)
+from cygnus import paths  # noqa: E402
+
+AUDIT = paths.log("audit.jsonl")
 CANDIDATES = ("http://127.0.0.1:8001", "http://127.0.0.1:8000")
 
 
@@ -158,5 +162,5 @@ def percentile(values, q):
 
 
 def report_path(kind):
-    os.makedirs(os.path.join(REPO, "logs"), exist_ok=True)
-    return os.path.join(REPO, "logs", f"cygnus-{kind}-{time.strftime('%Y%m%d-%H%M%S')}.json")
+    os.makedirs(paths.LOG_DIR, exist_ok=True)
+    return paths.log(f"cygnus-{kind}-{time.strftime('%Y%m%d-%H%M%S')}.json")

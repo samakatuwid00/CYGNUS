@@ -71,7 +71,7 @@ start a server on the same port.
 
 ## Routine check
 
-One command runs every check and writes `logs/prod-check-<time>.json`:
+One command runs every check and writes `data/logs/prod-check-<time>.json`:
 compile, the pytest suite, the routing gate, the running server (9router up
 and answering, at least three healthy cloud models, not on the local model),
 and the smoke test against it.
@@ -87,7 +87,7 @@ everything that ran passed.
 
 A Windows scheduled task, "Cygnus prod check", runs the safe tier every day
 at 09:00 (or at the next wake if the laptop was asleep). It runs hidden; the
-printout goes to `logs/prod-check-last.txt`, and a failed check keeps its
+printout goes to `data/logs/prod-check-last.txt`, and a failed check keeps its
 last 80 lines of output in the JSON report. Remove it in Task Scheduler.
 
 ## Settings

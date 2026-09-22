@@ -78,3 +78,6 @@ nul
 
 # Playwright screenshots and probe output (generated, not source)
 playwright_shots/
+
+# Runtime data (logs, memory, sessions, models, scans, profile): cygnus/paths.py DATA_DIR
+data/

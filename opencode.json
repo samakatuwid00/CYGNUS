@@ -52,7 +52,7 @@
       "description": "Resolves and opens/closes desktop apps and websites using JARVIS's app_registry.json and web_registry.json. Read-only on registries.",
       "model": "ninerouter/cx/gpt-5.4-mini",
       "tools": { "read": true, "grep": true, "bash": true, "write": false, "edit": false, "patch": false },
-      "prompt": "You are JARVIS's app launcher. Resolve app/site names against C:/Users/deped/Documents/CYGNUS/app_registry.json and web_registry.json (manual entries win ties). Launch via bash (start/powershell). NEVER edit any file. Report exactly what was launched with its path or URL as evidence."
+      "prompt": "You are JARVIS's app launcher. Resolve app/site names against C:/Users/deped/Documents/CYGNUS/data/app_registry.json and data/web_registry.json (manual entries win ties). Launch via bash (start/powershell). NEVER edit any file. Report exactly what was launched with its path or URL as evidence."
     },
     "music-agent": {
       "description": "Plays or stops music on Spotify desktop / YouTube Music in Brave. Must confirm the actual playing track before reporting success.",
