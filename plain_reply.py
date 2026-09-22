@@ -99,6 +99,8 @@ def for_user(text):
                 + (f"{effect} " if effect else "") + "Say confirm to go ahead, or no to cancel.")
     t = _SAY_CONFIRM.sub("Before I do this, please confirm. I will ", t)
     t = re.sub(r"^\[NEEDS_PICK\]\s*", "", t)
+    # The safety gate's question (safety.py) is already worded for the user.
+    t = re.sub(r"^\[NEEDS_CONFIRM:safety\]\s*", "", t)
     t = _BACKGROUND_MARK.sub("", t)
     t = _JOB_ID.sub("", t)
     t = re.sub(r"^\[Error\]\s*", "That didn't work. ", t)

@@ -206,6 +206,8 @@ def _run_ability(app, ability_id, args, apps):
     out = app_abilities.run_ability(app, ability_id, args or {})
     if out.startswith("[Error]"):
         return out, False
+    if out.startswith("[NEEDS_CONFIRM"):          # held by safety.py: the question goes out
+        return out, True
     name = out[len("Done: "):].rstrip(".") if out.startswith("Done: ") else out
     # Say what was used: "Search the web, sir (Chrome)." hid the query.
     detail = ", ".join(str(v) for v in (args or {}).values() if str(v).strip())

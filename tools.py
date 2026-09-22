@@ -5543,6 +5543,30 @@ def play_spotify(query: str) -> str:
         return f"[Error] Could not start playback: {e}"
 
 
+# The player Cygnus last started. "pause the music" went to the browser
+# player only: after play_spotify it answered "Nothing is playing - the music
+# window is not open" while Spotify played on (2026-09-22).
+_LAST_PLAYER = {"name": None}
+
+
+def _played(player: str, result):
+    if not str(result or "").startswith("[Error]"):
+        _LAST_PLAYER["name"] = player
+    return result
+
+
+def _stop_last_player() -> str:
+    import music_agent
+    music_agent.set_progress_cb(getattr(_tools_tls, "cb", None))
+    out = music_agent.stop_music()
+    if str(out).startswith("Nothing is playing") and _LAST_PLAYER["name"] == "spotify":
+        # Spotify pauses by the play/pause media key, which toggles: pressed
+        # only once for the play Cygnus started, never on a second "pause".
+        _LAST_PLAYER["name"] = None
+        return stop_spotify()
+    return out
+
+
 def stop_spotify() -> str:
     """Pause the desktop Spotify app by sending the system MediaPlayPause key to the
     foreground window (no auth, no GUI clicks). Returns a short status string."""
@@ -6140,15 +6164,12 @@ TOOL_MAP = {
     "ask_ai": _ask_ai,
     "manus_status": lambda **kw: __import__("manus_agent").manus_status(),
     "browser_status": lambda **kw: __import__("browser_agent").browser_status(),
-    "play_music": lambda **kw: (
+    "play_music": lambda **kw: _played("browser", (
         __import__("music_agent").set_progress_cb(getattr(_tools_tls, "cb", None)),
         __import__("music_agent").play_music(kw["query"])
-    )[-1],
-    "stop_music": lambda **kw: (
-        __import__("music_agent").set_progress_cb(getattr(_tools_tls, "cb", None)),
-        __import__("music_agent").stop_music()
-    )[-1],
-    "play_spotify": lambda **kw: play_spotify(kw["query"]),
+    )[-1]),
+    "stop_music": lambda **kw: _stop_last_player(),
+    "play_spotify": lambda **kw: _played("spotify", play_spotify(kw["query"])),
     "stop_spotify": lambda **kw: stop_spotify(),
     "get_credentials": _get_credentials_tool,
     "launch_project": lambda **kw: __import__("project_agent").launch_project(kw["name"]),
@@ -6187,8 +6208,24 @@ def execute_tool(name: str, arguments: dict) -> str:
         _audit_log(f"execute_tool:{name}", json.dumps(arguments, default=str)[:500], "unknown_tool", result=f"[Error] Unknown tool: {name}")
         return f"[Error] Unknown tool: {name}"
     print(f"[TOOL] {name} args={json.dumps(arguments, default=str)[:200]}", flush=True)
+    # The one safety gate (safety.py): a confirm flag the model set counts only
+    # when the tool asked in an earlier turn, and an action that needs a
+    # confirm is held until the user says yes. _safety_ok marks the held call
+    # being run after that yes.
+    import safety
+    arguments = dict(arguments or {})
+    approved = bool(arguments.pop("_safety_ok", False))
+    if name in safety.SELF_LATCHED and _truthy(arguments.get("confirm", False))             and not safety.confirm_flag_allowed(name):
+        print(f"[SAFETY] {name}: confirm set in the turn that asked; asking the user", flush=True)
+        arguments["confirm"] = False
+    if not approved:
+        decision = safety.assess(name, arguments)
+        if decision.kind != "act":
+            held_args = dict(arguments)
+            return safety.gate(f"{name} {json.dumps(held_args, default=str)[:200]}", decision,
+                               lambda: execute_tool(name, {**held_args, "_safety_ok": True}))
     start = time.monotonic()
-    confirmed = _truthy(arguments.get("confirm", False))
+    confirmed = _truthy(arguments.get("confirm", False)) or approved
     # Phase 1b: quarantine instruction-like content in arguments that came from external sources
     # (e.g., pasted browser text). This is data, not directions.
     try:
@@ -6216,11 +6253,6 @@ def execute_tool(name: str, arguments: dict) -> str:
         dur = time.monotonic() - start
         print(f"[TOOL] {name} raised {type(e).__name__} after {dur:.1f}s", flush=True)
         _audit_log(f"execute_tool:{name}", json.dumps(arguments, default=str)[:500], "error", result=result, confirm=confirmed, extra={"duration_ms": int(dur*1000)})
-        try:
-            import audit
-            audit.log_call(name, arguments, dur, result, confirmed=confirmed, decision="error")
-        except Exception:
-            pass
         return result
     dur = time.monotonic() - start
     print(f"[TOOL] {name} done in {dur:.1f}s", flush=True)
@@ -6233,9 +6265,8 @@ def execute_tool(name: str, arguments: dict) -> str:
         except Exception:
             pass
     _audit_log(f"execute_tool:{name}", json.dumps(arguments, default=str)[:500], "executed", result=result, confirm=confirmed, extra={"duration_ms": int(dur*1000)})
-    try:
-        import audit
-        audit.log_call(name, arguments, dur, result, confirmed=confirmed, decision="executed")
-    except Exception:
-        pass
+    # _audit_log is this call's one line in logs/audit.jsonl. An audit.log_call here
+    # always raised (it has no decision= parameter) and was swallowed; made to
+    # work it would have written every call twice (2026-09-22).
+    safety.note_asked(name, result)
     return result

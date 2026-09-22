@@ -22,6 +22,7 @@ and on a schedule (see the README's "Routine check").
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -44,8 +45,12 @@ def _run(name, cmd, timeout):
         ok, out = p.returncode == 0, (p.stdout + p.stderr).strip()
     except subprocess.TimeoutExpired:
         ok, out = False, f"timed out after {timeout}s"
-    tail = "\n".join(out.splitlines()[-6:])
-    return {"check": name, "ok": ok, "seconds": round(time.monotonic() - start, 1), "detail": tail}
+    lines = out.splitlines()
+    # The summary line ("1066 passed", "13 of 13 steps passed", "GATE PASSED")
+    # last, even when a background thread printed after it.
+    summary = next((l for l in reversed(lines) if re.search(r"passed|failed|GATE|error", l, re.I)), "")
+    tail = [l for l in lines[-6:] if l != summary] + ([summary] if summary else [])
+    return {"check": name, "ok": ok, "seconds": round(time.monotonic() - start, 1), "detail": "\n".join(tail)}
 
 
 def check_compile():

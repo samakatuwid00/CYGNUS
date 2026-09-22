@@ -53,3 +53,14 @@ def offline_probe(monkeypatch, tmp_path_factory):
     import router_keeper
     monkeypatch.setattr(router_keeper, "port_open", lambda timeout=0.5: True)
     monkeypatch.setattr(router_keeper, "responds", lambda timeout=5.0: True)
+    # Tests never write the owner's audit log: the smoke test and "what did
+    # you do?" read logs/audit.jsonl, and test calls were landing in it
+    # (found 2026-09-22). Tests that read an audit log set their own path.
+    import pathlib
+    audit_dir = pathlib.Path(tmp_path_factory.mktemp("audit"))
+    monkeypatch.setattr(tools, "_AUDIT_PATH", audit_dir / "audit.jsonl")
+    import audit
+    monkeypatch.setattr(audit, "AUDIT_DIR", str(audit_dir))
+    monkeypatch.setattr(audit, "AUDIT_PATH", str(audit_dir / "audit.jsonl"))
+    import intent_router
+    monkeypatch.setattr(intent_router, "AUDIT_LOG", str(audit_dir / "audit.jsonl"))

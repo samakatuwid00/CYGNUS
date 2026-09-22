@@ -139,6 +139,12 @@ def semantic(utterance, apps=None, llm=None, front=None):
     except (TypeError, ValueError):
         conf = 0.0
     owner, _, rid = key.partition("/")
+    other = _names_other_app(text, owner)
+    if other:
+        # "play lo-fi on spotify" was offered the "play music brave" rule
+        # (2026-09-22): the user named the app, and it is not this rule's.
+        print(f"[rules] semantic guess {key} dropped: the words name {other}", flush=True)
+        return None
     for o, rule, action, entry in cat:
         if o == owner and rule.get("rule_id") == rid:
             slot = str(raw.get("slot") or "").strip(" .!?,")[:120]
@@ -146,6 +152,23 @@ def semantic(utterance, apps=None, llm=None, front=None):
             return {"rule": rule, "owner": o, "action": action, "slot": slot,
                     "confidence": conf, "entry": entry, "trigger": None}
     return None
+
+
+def _known_apps():
+    """The owner's active apps (registered and enabled), by key."""
+    try:
+        import app_abilities
+        import curate
+        return {k for k in app_abilities.load_apps().get("apps", {}) if curate.is_registered(k)}
+    except Exception:
+        return set()
+
+
+def _names_other_app(text, owner):
+    """An active app the words name that is not `owner`, else None."""
+    words = set(re.findall(r"[a-z0-9]+", (text or "").lower()))
+    others = sorted(k for k in _known_apps() if len(k) >= 4 and k in words and k != (owner or "").lower())
+    return others[0] if others else None
 
 
 def _audit(text, key, conf, slot, model, took):

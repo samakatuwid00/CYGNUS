@@ -1479,7 +1479,8 @@ async def post_apps_abilities_test(message: Request):
     needs = list((ability.get("needs") or {}).keys())
     if needs and str(body.get("value") or "").strip():
         args[needs[0]] = str(body["value"]).strip()[:300]
-    result = await asyncio.to_thread(app_abilities.run_ability, key, aid, args)
+    # The owner clicked Test in the Apps panel: that is the confirm.
+    result = await asyncio.to_thread(app_abilities.run_ability, key, aid, args, True)
     return JSONResponse({"ok": not result.startswith("[Error]"), "result": result})
 
 

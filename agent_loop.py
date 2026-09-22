@@ -289,7 +289,12 @@ def _run_tool(name: str, args: dict, ctx: dict) -> str:
                 q = f"Should I {step['label'].lower()} in {target['name']}, sir?"
                 dialogue_state.ask("ability", q, payload={"app": step["app"], "id": step["id"], "args": step["args"]})
                 return "[Held] " + q
-            return app_commands.run(target["slug"], [step], rows=rows)
+            # The safety gate (safety.py): text for Hermes that may change
+            # things, and typing or keys in a terminal, wait for a yes.
+            import safety
+            decision = safety.assess_app_step(target["slug"], {**step, "do": args.get("do")})
+            return safety.gate(f"app_step {target['slug']} {args.get('do')} {json.dumps(raw)[:160]}", decision,
+                               lambda: app_commands.run(target["slug"], [step], rows=rows))
         intent = {"show_window": "running_front", "read_window": "running_text",
                   "describe_window": "running_describe"}[name]
         phrase = {"running_front": f"show {target['name']}", "running_text": f"read the {target['name']} window",

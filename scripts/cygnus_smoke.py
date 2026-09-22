@@ -66,6 +66,29 @@ def process_is(image, running):
     return check
 
 
+def spotify_paused():
+    """Spotify's window shows the track while it plays and "Spotify ..." when
+    paused: "pause the music" once answered while Spotify played on."""
+    def title():
+        out = subprocess.run(["powershell", "-NoProfile", "-Command",
+                              "(Get-Process Spotify -ErrorAction SilentlyContinue | "
+                              "Where-Object { $_.MainWindowTitle }).MainWindowTitle"],
+                             capture_output=True, text=True).stdout.strip()
+        return out
+    if _eventually(lambda: title().startswith("Spotify") or not title(), 6):
+        return None
+    return f"Spotify is still playing ({title()})"
+
+
+def close_started(*images):
+    """Close what a case opened. Only ever called for a case whose apps were
+    not running before it (see "absent"), so nothing of the owner's is shut."""
+    def cleanup():
+        for image in images:
+            subprocess.run(["taskkill", "/IM", image], capture_output=True)
+    return cleanup
+
+
 def sandbox_appears():
     return None if _eventually(lambda: os.path.isdir(SANDBOX), 240) else f"{SANDBOX} never appeared"
 
@@ -109,14 +132,19 @@ CASES = [
     {"name": "taglish", "tier": "safe", "steps": [
         step("anong oras na ngayon?", reply=r"\w", forbid=ACTING)]},
     # ---- live: reversible desktop actions ----
-    {"name": "notepad open and close", "tier": "live", "steps": [
+    # "absent": skipped when that app is already open, so the owner's own
+    # window (an unsaved Notepad, 2026-09-22) is never the one closed.
+    # "close" may ask first (the app's close ability is set to ask): the
+    # yes that follows is part of the case, and the check is the process.
+    {"name": "notepad open and close", "tier": "live", "absent": ["Notepad.exe"],
+     "cleanup": close_started("Notepad.exe"), "steps": [
         step("open notepad", tools={"open_application"}, check=process_is("Notepad.exe", True)),
-        step("close notepad", tools={"close_application"}, check=process_is("Notepad.exe", False))]},
-    {"name": "chain: two apps at once", "tier": "live", "steps": [
+        step("close notepad", reply=r"\w"),
+        step("yes", check=process_is("Notepad.exe", False))]},
+    {"name": "chain: two apps at once", "tier": "live", "absent": ["Notepad.exe", "CalculatorApp.exe"],
+     "cleanup": close_started("Notepad.exe", "CalculatorApp.exe"), "steps": [
         step("open notepad and calculator", count={"open_application": 2},
-             check=process_is("CalculatorApp.exe", True)),
-        step("close notepad and calculator", count={"close_application": 2},
-             check=process_is("CalculatorApp.exe", False))]},
+             check=process_is("CalculatorApp.exe", True))]},
     {"name": "github site", "tier": "live", "steps": [
         step("can you open github for me?", tools={"open_site"}, forbid={"open_application"},
              reject=r"error|could not")]},
@@ -124,7 +152,7 @@ CASES = [
         step("open youtube site", tools={"open_site"}, reject=r"no registered site")]},
     {"name": "music play and pause", "tier": "live", "steps": [
         step("play lo-fi on spotify", tools={"play_spotify", "play_music", "abilities.run"}, timeout=90),
-        step("pause the music", tools={"stop_music", "stop_spotify", "abilities.run"})]},
+        step("pause the music", tools={"stop_music", "stop_spotify", "abilities.run"}, check=spotify_paused)]},
     # ---- agent: a confirmed autonomous job in a sandbox folder ----
     {"name": "autonomous folder job", "tier": "agent", "cleanup": remove_sandbox, "steps": [
         step(f"create a folder called {os.path.basename(SANDBOX)} in my Documents", reply=r"confirm"),
@@ -184,6 +212,12 @@ async def run(base, cases):
     timed out must not be read as the next case's reply."""
     results = []
     for case in cases:
+        busy = [image for image in case.get("absent", ()) if _running(image)]
+        if busy:
+            print(f"  SKIP  {case['name']}: {', '.join(busy)} already open (the owner's; not touched)")
+            results.append({"case": case["name"], "tier": case["tier"], "say": "", "reply": "",
+                            "problems": [], "skipped": f"{', '.join(busy)} already open"})
+            continue
         async with connect(base) as ws:
             await hello(ws, f"smoke-{case['name']}")
             for expect in case["steps"]:
@@ -207,10 +241,12 @@ def main(argv=None):
     print(f"Cygnus at {base} - {len(cases)} cases, tiers: {', '.join(tiers)}")
     results = asyncio.run(run(base, cases))
     failed = [r for r in results if r["problems"]]
+    skipped = [r for r in results if r.get("skipped")]
     path = report_path("smoke")
     with open(path, "w", encoding="utf-8") as f:
         json.dump({"base": base, "tiers": tiers, "results": results}, f, indent=2, ensure_ascii=False)
-    print(f"\n{len(results) - len(failed)} of {len(results)} steps passed; report: {path}")
+    print(f"\n{len(results) - len(failed) - len(skipped)} of {len(results) - len(skipped)} steps passed"
+          + (f", {len(skipped)} case(s) skipped" if skipped else "") + f"; report: {path}")
     return 1 if failed else 0
 
 

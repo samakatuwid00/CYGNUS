@@ -2310,6 +2310,10 @@ class JarvisBrain:
         _tools_jobs.set_job_callback(on_hermes_done)
         self._maybe_reset_idle()
         self._last_turn_ts = time.time()
+        # A new user turn for the safety gate: a held action runs only on a
+        # yes in a later turn, and a tool's confirm flag counts only then.
+        import safety as _safety
+        _safety.begin_turn()
         self.conversation.append({"role": "user", "content": user_input})
         self._cap_conversation()
 
@@ -2373,7 +2377,8 @@ class JarvisBrain:
                 import rules_steps as _rs
                 import tools as _td
                 if not _rs.active() and not _td._PENDING_RULE_SLOT:
-                    _declined = _td.decline_pending()
+                    import safety as _sf
+                    _declined = _sf.decline_pending() or _td.decline_pending()
                     if _declined is not None:
                         self.conversation.append({"role": "assistant", "content": _declined})
                         self.last_backend = "instant"
@@ -2451,9 +2456,21 @@ class JarvisBrain:
         if _BARE_CONFIRM_RE.match((user_input or "").strip()):
             try:
                 import tools as _t
+                import safety as _sf
                 hermes_pending = _t.pending_confirm_task()
                 auton_pending = _t.pending_autonomous_goal()
                 out = None
+                # An action the safety gate held, when it is the newest
+                # question: that is the one the user just heard.
+                _held_ts = _sf.pending_ts()
+                if _held_ts and _held_ts >= max((_t._PENDING_HERMES_CALL or {}).get("ts") or 0.0,
+                                                _t._PENDING_DESTRUCTIVE.get("autonomous_ts") or 0.0):
+                    out = _sf.confirm_pending()
+                    if out is not None:
+                        self.conversation.append({"role": "assistant", "content": out})
+                        self.last_backend = "safety-confirm"
+                        self.last_stats = {"backend": "safety-confirm", "intent": "confirm"}
+                        return out
                 if auton_pending or hermes_pending:
                     hermes_ts = (_t._PENDING_HERMES_CALL or {}).get("ts") or 0.0
                     auton_ts = _t._PENDING_DESTRUCTIVE.get("autonomous_ts") or 0.0

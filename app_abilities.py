@@ -852,8 +852,10 @@ def _run_op(key, entry, op, args):
     return f"[Error] I don't know how to do \"{kind}\"."
 
 
-def run_ability(key, ability_id, args=None):
-    """Run one ability of one app (the panel's Test). Returns what happened."""
+def run_ability(key, ability_id, args=None, confirmed=False):
+    """Run one ability of one app (the panel's Test). Returns what happened.
+    Typing, keys or clicks in a terminal wait for a yes (safety.py) unless
+    `confirmed`: the Apps panel's Test button is the owner's own click."""
     args = {k: v for k, v in (args or {}).items() if str(v).strip()}
     entry = load_apps()["apps"].get(key) or {}
     ability = next((a for a in entry.get("abilities") or [] if a.get("id") == ability_id), None)
@@ -866,6 +868,12 @@ def run_ability(key, ability_id, args=None):
     missing = [n for n in ability.get("needs") or {} if n not in args]
     if missing:
         return f"[Error] \"{ability['name']}\" needs a {missing[0]}."
+    if not confirmed:
+        import safety
+        decision = safety.assess_ability(key, ability)
+        if decision.kind != "act":
+            return safety.gate(f"ability {key} {ability_id} {args}", decision,
+                               lambda: run_ability(key, ability_id, args, confirmed=True))
     t0 = time.time()
     for op in ability["how"]:
         err = _run_op(key, entry, op, args)
