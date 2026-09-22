@@ -179,8 +179,10 @@ _ALLOWED_ROOTS = [
     Path.home() / "Downloads",
     Path.home() / "Documents" / "Second Brain",
     Path.home() / "Documents" / "Portfolio",
-    Path(__file__).parent,  # jarvis-demo itself (configs, logs) — scoped
+    Path(__file__).parent,  # the project folder itself (configs, logs) — scoped
 ]
+# Its name in the blocked-path replies ("CYGNUS"), so they name the real folder.
+_PROJECT_NAME = Path(__file__).parent.name
 
 def _is_allowed_path(p: Path) -> bool:
     """True if p is under any allowed root (resolved, case-insensitive on Windows)."""
@@ -206,7 +208,7 @@ def read_file(path: str) -> str:
         # Scope check before touching disk (Phase 7)
         if not _is_allowed_path(p if p.is_absolute() else _resolve_write_path(str(p))):
             _audit_log("read_file", str(p), "blocked_scope", result="outside allowed roots")
-            return f"[Blocked] Path outside allowed scope: {p}. Allowed: Documents, Desktop, Downloads, Second Brain, Portfolio, or jarvis-demo."
+            return f"[Blocked] Path outside allowed scope: {p}. Allowed: Documents, Desktop, Downloads, Second Brain, Portfolio, or {_PROJECT_NAME}."
         if not p.exists():
             _audit_log("read_file", str(p), "not_found")
             return f"[Error] File not found: {path}"
@@ -280,7 +282,7 @@ def write_file(path: str, content: str, overwrite: bool = False) -> str:
         # Phase 7: scope check — writes must be under allowed roots
         if not _is_allowed_path(p):
             _audit_log("write_file", str(p), "blocked_scope", result="outside allowed roots", extra={"overwrite": overwrite})
-            return f"[Blocked] Write outside allowed scope: {p}. Allowed: Documents, Desktop, Downloads, Second Brain, Portfolio, jarvis-demo."
+            return f"[Blocked] Write outside allowed scope: {p}. Allowed: Documents, Desktop, Downloads, Second Brain, Portfolio, {_PROJECT_NAME}."
         if p.exists() and not overwrite:
             size = p.stat().st_size
             _audit_log("write_file", str(p), "blocked_exists", extra={"size": size, "overwrite": overwrite})
@@ -1680,11 +1682,13 @@ def _answer_preference(text: str):
     return None
 
 
-def try_rule_action(text: str):
+def try_rule_action(text: str, semantic: bool = True):
     """Answer a spoken command from the Apps-panel action rules, else None.
 
     Also answers our own 'Which movie, sir?' follow-up: while that question is
-    open, a reply that is not a new command is the missing name.
+    open, a reply that is not a new command is the missing name. semantic=False
+    skips the last tier, the model call that reads a rule by meaning: the turn
+    passes it when an instant answer is waiting (time, maths, a greeting).
     """
     import time as _time
     # "I mean search movie X" / "no, search movie X" is the same command.
@@ -1740,6 +1744,8 @@ def try_rule_action(text: str):
                 return run_rule_action(pend["rule"], pend["owner"], pend["action"], slot)
         # The fast tier missed: read the meaning. "It's gym time" is the
         # "gym time" rule; "sum up this column" is "total it".
+        if not semantic:
+            return None
         import rules_match
         sm = rules_match.semantic(t)
         if sm and sm["confidence"] >= rules_match.SURE:

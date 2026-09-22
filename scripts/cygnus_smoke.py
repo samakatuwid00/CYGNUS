@@ -37,7 +37,9 @@ from cygnus_client import (Turn, ask, audit_mark, connect, find_server, hello, r
 TIERS = ("safe", "live", "agent")
 # Tools that change something on the machine or hand work to an agent.
 ACTING = {"open_application", "close_application", "open_site", "play_music", "play_spotify",
-          "run_autonomous", "delegate_to_hermes", "delegate", "write_file", "search_web"}
+          "run_autonomous", "delegate_to_hermes", "delegate", "write_file", "search_web",
+          # the agent loop's own app tools, audited as agent.<tool>
+          "agent.app_step", "agent.show_window", "agent.describe_window", "agent.remember"}
 SANDBOX = os.path.join(os.path.expanduser("~"), "Documents", f"cygnus-smoke-{time.strftime('%Y%m%d')}")
 
 
@@ -99,10 +101,10 @@ CASES = [
         step("can you visit websites?", forbid=ACTING)]},
     {"name": "garbled speech is not acted on", "tier": "safe", "steps": [
         step("In the open, which was to do for the people.",
-             forbid={"open_application", "open_site", "run_autonomous", "delegate_to_hermes"})]},
+             forbid=ACTING)]},
     {"name": "delete asks, no cancels", "tier": "safe", "steps": [
         step(r"delete the file C:\cygnus_smoke_missing\old.txt", reply=r"confirm",
-             forbid={"write_file", "delegate_to_hermes"}),
+             forbid=ACTING),
         step("no", reply=r"cancel|won't|okay|alright")]},
     {"name": "taglish", "tier": "safe", "steps": [
         step("anong oras na ngayon?", reply=r"\w", forbid=ACTING)]},

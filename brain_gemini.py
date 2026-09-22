@@ -1490,11 +1490,14 @@ def _format_recall_for_speech(raw: str) -> str:
     caps at ~3 facts / ~480 chars, and leads with a natural phrase."""
     import re as _re
     text = raw.strip()
-    # drop label lines
-    text = _re.sub(r"(?im)^\s*(SUMMARY|RECENT)\s*:?\s*$", "", text)
-    # split into bullet facts
-    facts = [l.strip(" -–•\t") for l in text.splitlines() if l.strip()]
-    facts = [f for f in facts if f and not f.lower().startswith(("summary:", "recent:"))]
+    # Honcho's labels go, the fact after one stays ("SUMMARY: likes tea").
+    text = _re.sub(r"(?im)^\s*(SUMMARY|RECENT)\s*:?", "", text)
+    # With Honcho down the raw profile file comes back: its headings and
+    # notes are not facts ("From what I remember, # Cygnus Profile; > Tier-2
+    # durable profile...", 2026-09-22).
+    lines = [l for l in text.splitlines() if not _re.match(r"\s*(#|>)", l)]
+    facts = [l.strip(" -–•\t") for l in lines if l.strip()]
+    facts = [f for f in facts if f]
     # natural phrasing, cap 3
     if not facts:
         return "I don't have anything specific remembered about you yet, but I'm ready to learn."
@@ -2361,12 +2364,14 @@ class JarvisBrain:
             pass
 
         # Apps-panel action rules ("search movies Dune in brave" -> the rule's
-        # site, in the rule's browser). Deterministic, no model call; also
-        # answers our own "Which movie, sir?" follow-up before any other path
-        # can mistake the bare name for a new request.
+        # site, in the rule's browser); also answers our own "Which movie,
+        # sir?" follow-up before any other path can mistake the bare name for
+        # a new request. Its last tier asks a model what a rule means; an
+        # instant answer skips that tier, which made "what time is it" take
+        # about 4 s (2026-09-22).
         try:
             import tools as _tr
-            _rule_out = _tr.try_rule_action(user_input)
+            _rule_out = _tr.try_rule_action(user_input, semantic=fast_path_answer(user_input)[0] is None)
         except Exception:
             _rule_out = None
         if _rule_out is not None:

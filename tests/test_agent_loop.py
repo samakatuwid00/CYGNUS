@@ -173,7 +173,12 @@ def test_tidy_agent_output():
     ("display hermes", "general", True), ("on the new session, prompt: what is musubae?", "general", True),
     ("open notepad", "app_reference", True), ("what time is it", "time", False), ("stop the music", "stop", False),
     ("/hermes hi", "general", False), ("ok", "general", False), ("what's running", "running", True),
-    ("prompt hermes: what day is it today?", "time", True), ("ask claude to stop the music", "stop", True)])
+    ("prompt hermes: what day is it today?", "time", True), ("ask claude to stop the music", "stop", True),
+    # Destructive requests go to the old routing and its confirm gate: the
+    # loop once answered "delete the file C:\...\old.txt" by opening
+    # PowerShell unconfirmed (smoke run, 2026-09-22).
+    (r"delete the file C:\cygnus_smoke_missing\old.txt", "general", False),
+    ("wipe my downloads folder", "general", False), ("kill the node process", "general", False)])
 def test_which_turns_the_loop_takes(text, intent, taken, monkeypatch):
     import app_commands
     monkeypatch.setattr(app_commands, "targets", lambda rows=None, apps=None: [])
@@ -233,3 +238,19 @@ def test_the_history_keeps_a_multi_line_answer_whole():
                           {"role": "assistant", "content": "One:\n  step\n\nTwo:\n  step"},
                           {"role": "user", "content": "the turn"}]
     assert al._history(brain)[1]["content"] == "One:\n  step\n\nTwo:\n  step"
+
+
+def test_the_loops_own_tools_are_audited(loop, monkeypatch):
+    # The smoke test reads logs/audit.jsonl to see what ran; the loop's app
+    # tools never reached it, so a garbled sentence that opened a Hermes
+    # session and brought it forward passed as "nothing ran" (2026-09-22).
+    import audit
+    logged = []
+    monkeypatch.setattr(audit, "log_call", lambda tool, args, d, result, confirmed=False: logged.append((tool, args)))
+    loop([reply(tool_calls=[call("whats_running", {})]),
+          reply(tool_calls=[call("show_window", {"app": "hermes"})]),
+          reply(tool_calls=[call("open_app", {"name": "notepad"})]),
+          reply("Hermes is in front, sir.")])
+    al.run(FakeBrain(), "show hermes", {"client": "audit"})
+    # open_app goes through execute_tool, which audits it itself: not twice.
+    assert logged == [("agent.whats_running", {}), ("agent.show_window", {"app": "hermes"})]

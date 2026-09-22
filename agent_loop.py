@@ -175,6 +175,11 @@ def takes(text: str, intent: str, client: str | None = None) -> bool:
         import tools
         if tools._is_not_a_task(t):
             return False
+        # Destructive requests go to the old routing, whose confirm gates
+        # latch the task: the loop has none, and once answered "delete the
+        # file C:\...\old.txt" by opening PowerShell unconfirmed (2026-09-22).
+        if tools._DESTRUCTIVE_RE.search(t):
+            return False
     except Exception:
         pass
     # "What is the status?" after a task the loop ran is about that task,
@@ -227,6 +232,10 @@ TOOLS = [
 ]
 
 _APP_TOOLS = {"app_actions", "app_step", "show_window", "read_window", "describe_window"}
+# Tools that do not pass through execute_tool, which audits the rest itself.
+# Without these lines the audit log (and the smoke test that reads it) never
+# saw a garbled sentence open a Hermes session and bring it forward (2026-09-22).
+_AUDITED = _APP_TOOLS | {"whats_running", "remember"}
 
 
 def _target(app: str):
@@ -335,6 +344,7 @@ def _clean(text: str) -> str:
 
 _SYSTEM = """You are Cygnus, a voice assistant on the owner's Windows laptop. Address them as sir; answer in one to three short spoken sentences, no markup or lists.
 Work like an agent: read what the user means, use a tool, look at what it returned, then decide the next step. Check results; if something failed, try one other way, then say plainly what happened. Never say you did something no tool did. Ask only when a real choice is open.
+The words come from speech recognition and can be misheard. When they do not make a clear request (a fragment, words that do not fit together), use no tool: ask the user to say it again, in one short sentence.
 Running programs are addressed by slug (see whats_running). For a running app: app_actions first, then app_step with one of its actions. Hermes's actions are new_session, open_session (a title from the list), send (the user's words). Send in the session that is open unless the user asks for a new one or names another. An app with no action for the request: say what it can do and that a rule can be added in the Apps panel; do not improvise.
 Hand bigger jobs (code, files, research) to delegate; say the answer comes later.{extra}"""
 
@@ -448,10 +458,14 @@ def run(brain, text: str, ctx: dict) -> str | None:
                         stop = None
                         for tc in msg.tool_calls:
                             args = bg._safe_json(tc.function.arguments)
+                            t0 = time.monotonic()
                             try:
                                 out = _run_tool(tc.function.name, args, ctx)
                             except Exception as e:
                                 out = f"[Tool Error] {tc.function.name}: {type(e).__name__}: {e}"
+                            if tc.function.name in _AUDITED:
+                                import audit
+                                audit.log_call("agent." + tc.function.name, args, time.monotonic() - t0, out)
                             if tc.function.name == "delegate":
                                 out = tidy_agent_output(out, (args.get("agent") or "hermes").title())
                             ran.append((tc.function.name, args, out[:4000]))
