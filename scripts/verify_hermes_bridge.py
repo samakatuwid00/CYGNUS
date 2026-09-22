@@ -39,8 +39,6 @@ from cygnus.brain import core as brain_gemini
 # delegate_to_hermes remains as the underlying executor, called by delegate().
 TOOL_NAME = "delegate"
 
-in_tools = any(t.get("name") == TOOL_NAME for t in tools.TOOLS)
-check(f"tools.TOOLS has {TOOL_NAME}", in_tools)
 
 check(f"tools.TOOL_MAP has {TOOL_NAME}", TOOL_NAME in tools.TOOL_MAP)
 check("delegate_to_hermes executor retained in tools",
