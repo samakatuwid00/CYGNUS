@@ -226,7 +226,20 @@ This phase makes the later moves safe.
   already exists, and never overwrites.
 - Tidy `.gitignore` down to one rule: `data/`.
 
-### Phase 5: split the three large files (after the others)
+### Phase 5: split the three large files (after the others) - done 2026-09-22
+
+What was done, and why not more: only blocks that no test patches across the
+cut were moved (a test that patches `tools.X` must still reach the code that
+calls X), and every moved name is re-exported, so callers are unchanged.
+- tools.py 6268 -> tools/__init__.py 5018 + vault.py, phrases.py, memory.py;
+  the dead legacy TOOLS list (466 lines) deleted.
+- brain/core.py 3845 -> 2725 + intents.py, prompts.py, tool_schema.py.
+- server/app.py 2775 -> 1813 + apps_routes.py (an APIRouter) and speech.py.
+What remains in tools/__init__.py (delegation, confirm latches, apps, sites,
+rules) and in JarvisBrain is tightly linked and heavily patched by tests;
+splitting it means moving the tests' patch targets with it, a separate job.
+
+The original plan for this phase:
 
 Split along the section markers already in the code, re-exporting from the
 package `__init__` so callers do not change:

@@ -107,9 +107,9 @@ All settings live in `.env` (see `.env.example`). The ones most often changed:
 
 | Path | What it is |
 |---|---|
-| `cygnus/server/app.py` | FastAPI backend: WebSocket turns, HUD, Running endpoints (`python -m cygnus`) |
-| `cygnus/brain/` | Routing, the model chain (`core.py`), the agent loop, 9router health and keeper |
-| `cygnus/tools.py` | Tools: apps, sites, music, delegation, files |
+| `cygnus/server/` | FastAPI backend (`python -m cygnus`): `app.py` WebSocket turns, HUD, Running endpoints; `apps_routes.py` the Apps panel; `speech.py` TTS |
+| `cygnus/brain/` | The model chain (`core.py`), intents, prompts, tool schema, the agent loop, 9router health and keeper |
+| `cygnus/tools/` | Tools: apps, sites, music, delegation, files (`__init__.py`); the vault, phrase helpers, memory |
 | `cygnus/safety.py` | The one confirm gate in front of every action |
 | `cygnus/apps/` | Installed apps, their abilities, what is running |
 | `cygnus/rules/` | The Apps-panel rules: compile, match, simulate, run |
