@@ -113,7 +113,8 @@ All settings live in `.env` (see `.env.example`). The ones most often changed:
 | `jarvis_hud_v3.html` | The HUD |
 | `desktop/` | Electron desktop app |
 | `tests/` | pytest suite (`.venv\Scripts\python -m pytest tests`) |
-| `*_PLAN.md` | Design notes and decisions for each feature |
+| `docs/plans/`, `docs/reviews/` | Design notes and decisions for each feature; reviews |
+| `scripts/prod_check.py` | The routine check (see above) |
 
 ## Author
 

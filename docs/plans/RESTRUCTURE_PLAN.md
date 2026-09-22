@@ -153,7 +153,7 @@ Archiving jarvis-demo (done on 2026-09-22, except the deletions in step 6):
    (`diag_*`, `analyze.py`, `check_files.py`, `debug_stdin.py`,
    `examine_code.py`, `_hud_edit.py`, `benchmark_turbovec_vs_substring.py`).
 
-### Phase 0: clear the clutter (no code changes)
+### Phase 0: clear the clutter (no code changes) - done 2026-09-22
 
 - Delete throwaway files: `_probe.py`, `.tmp-getvol.py`, `.tmp-setvol40.py`,
   `verify_out.txt`, `Ollama`, `.patchtmp/`, `jarvis_hud_v3.html.bak-r3`,

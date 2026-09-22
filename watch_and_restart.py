@@ -8,7 +8,7 @@ WATCH = [os.path.join(ROOT, f) for f in ("brain_gemini.py", "tools.py", "autonom
                                            "music_agent.py", "voice_engine.py", "wake_engine.py",
                                            "config.py", "session_store.py", "browser_agent.py",
                                            "project_agent.py", "report_agent.py",
-                                           "warm_harness.py", "jarvis_visual.html")]
+                                           "warm_harness.py")]
 WEB = os.path.join(ROOT, "jarvis_web.py")
 POLL = 2  # seconds
 

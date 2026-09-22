@@ -1723,7 +1723,7 @@ def _ws_origin_allowed(websocket: WebSocket) -> bool:
     tools. The Host must be one of _ALLOWED_HOSTS (HTTP middleware does not
     run for WebSockets). Then accept JARVIS's own pages (Origin matches
     Host), the JARVIS_ALLOWED_ORIGINS list, and non-browser clients that
-    send no Origin (ws_verify.py)."""
+    send no Origin (test clients)."""
     host = websocket.headers.get("host", "")
     if _hostname(host) not in _ALLOWED_HOSTS:
         return False

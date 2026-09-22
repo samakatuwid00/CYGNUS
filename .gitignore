@@ -75,3 +75,6 @@ nul
 
 # agentloop run state (session-local, regenerated each run)
 .agentloop/
+
+# Playwright screenshots and probe output (generated, not source)
+playwright_shots/
