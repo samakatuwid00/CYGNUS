@@ -28,8 +28,8 @@ def _find_root() -> Path:
 
 
 ROOT = _find_root()
-CONFIG_DIR = ROOT
-WEB_DIR = ROOT
+CONFIG_DIR = ROOT / "config"
+WEB_DIR = ROOT / "web"
 STATIC_DIR = WEB_DIR / "static"
 EVAL_DIR = ROOT / "eval"
 SCRIPTS_DIR = ROOT / "scripts"

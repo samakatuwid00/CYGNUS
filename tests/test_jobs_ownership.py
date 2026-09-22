@@ -7,8 +7,8 @@ import re
 
 
 def test_importing_jarvis_web_does_not_claim_the_jobs_registry():
-    src = open("jarvis_web.py", encoding="utf-8").read()
-    body, _, main = src.partition('if __name__ == "__main__":')
+    src = open("cygnus/server/app.py", encoding="utf-8").read()
+    body, _, main = src.partition("def main():")
     assert not re.search(r"^\s*\w*\.?claim_ownership\(\)", body, re.M), \
         "claim_ownership() at import time marks other processes' running jobs interrupted"
     assert "claim_ownership()" in main

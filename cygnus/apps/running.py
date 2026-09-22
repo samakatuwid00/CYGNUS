@@ -169,7 +169,9 @@ def _agent_name(proc):
 
 
 def _is_cygnus_backend(proc):
-    return "jarvis_web.py" in " ".join(proc["cmdline"])
+    cmd = " ".join(proc["cmdline"])
+    # "python -m cygnus" since the restructure; "jarvis_web.py" before it.
+    return "jarvis_web.py" in cmd or bool(re.search(r"-m\s+cygnus(\s|$)", cmd))
 
 
 def _window_app(proc, titles):

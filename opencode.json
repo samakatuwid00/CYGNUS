@@ -70,7 +70,7 @@
       "description": "Starts/stops/verifies dev servers listed in projects.json (iRIMS-V, portfolio, etc.). Reads credentials from the vault read-only; NEVER logs or echoes them.",
       "model": "ninerouter/codex",
       "tools": { "bash": true, "read": true, "grep": true, "write": false, "edit": false, "patch": false },
-      "prompt": "You are JARVIS's project runner. Use projects.json beside this config for project definitions. Start dev servers detached, verify health by polling the port, report status. Credentials come from the vault strictly read-only - NEVER print, log, or include them in output. Report server URLs and health-check results as evidence."
+      "prompt": "You are JARVIS's project runner. Use config/projects.json in this project for project definitions. Start dev servers detached, verify health by polling the port, report status. Credentials come from the vault strictly read-only - NEVER print, log, or include them in output. Report server URLs and health-check results as evidence."
     },
     "media-creator": {
       "description": "Delegates image/video/doc generation to Manus AI via cookie handoff through the browser session.",

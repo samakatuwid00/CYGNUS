@@ -2757,7 +2757,8 @@ async def post_music(message: Request):
     return JSONResponse({"error": f"unknown action: {action}"}, status_code=400)
 
 
-if __name__ == "__main__":
+def main():
+    """Start the server (python -m cygnus)."""
     import uvicorn
     import jobs as _jobs_owner
     _jobs_owner.claim_ownership()
@@ -2769,3 +2770,7 @@ if __name__ == "__main__":
     host = os.environ.get("JARVIS_HOST", "127.0.0.1")
     print(f"[JARVIS Web] Starting on http://{host}:{port}  (ws://{host}:{port}/ws)")
     uvicorn.run(app, host=host, port=port)
+
+
+if __name__ == "__main__":
+    main()

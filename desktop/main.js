@@ -151,7 +151,7 @@ async function startBackend () {
 function spawnBackend () {
   fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
   const log = fs.openSync(LOG_FILE, 'a')
-  const proc = spawn(PYTHON, ['jarvis_web.py'], {
+  const proc = spawn(PYTHON, ['-m', 'cygnus'], {
     cwd: REPO,
     windowsHide: true,
     stdio: ['ignore', log, log],
