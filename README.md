@@ -83,6 +83,11 @@ and the smoke test against it.
 Run it before a push and after each restructure step. Exit code 0 means
 everything that ran passed.
 
+A Windows scheduled task, "Cygnus prod check", runs the safe tier every day
+at 09:00 (or at the next wake if the laptop was asleep). It runs hidden; the
+printout goes to `logs/prod-check-last.txt`, and a failed check keeps its
+last 80 lines of output in the JSON report. Remove it in Task Scheduler.
+
 ## Settings
 
 All settings live in `.env` (see `.env.example`). The ones most often changed:

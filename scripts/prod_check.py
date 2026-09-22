@@ -47,10 +47,15 @@ def _run(name, cmd, timeout):
         ok, out = False, f"timed out after {timeout}s"
     lines = out.splitlines()
     # The summary line ("1066 passed", "13 of 13 steps passed", "GATE PASSED")
-    # last, even when a background thread printed after it.
-    summary = next((l for l in reversed(lines) if re.search(r"passed|failed|GATE|error", l, re.I)), "")
+    # last, even when a background thread printed after it; errors only when
+    # there is no summary.
+    summary = next((l for pat in (r"\d+ (passed|failed)|steps passed|GATE", r"error")
+                    for l in reversed(lines) if re.search(pat, l, re.I)), "")
     tail = [l for l in lines[-6:] if l != summary] + ([summary] if summary else [])
-    return {"check": name, "ok": ok, "seconds": round(time.monotonic() - start, 1), "detail": "\n".join(tail)}
+    result = {"check": name, "ok": ok, "seconds": round(time.monotonic() - start, 1), "detail": "\n".join(tail)}
+    if not ok:
+        result["output"] = "\n".join(lines[-80:])      # enough to see why, in the report
+    return result
 
 
 def check_compile():
@@ -106,6 +111,10 @@ def main(argv=None):
     ap.add_argument("--url", help="server base URL (default: JARVIS_PORT, then 8001, then 8000)")
     ap.add_argument("--no-server", action="store_true", help="skip the server and smoke checks")
     args = ap.parse_args(argv)
+    # Run by the daily scheduled task through pythonw: no console to print to.
+    if sys.stdout is None:
+        os.makedirs(os.path.join(REPO, "logs"), exist_ok=True)
+        sys.stdout = open(os.path.join(REPO, "logs", "prod-check-last.txt"), "w", encoding="utf-8")
     # The Windows console is cp1252; a reply with a curly quote crashed the report.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
