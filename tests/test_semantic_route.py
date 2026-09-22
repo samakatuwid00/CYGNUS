@@ -46,6 +46,10 @@ def test_nearest_examples_vote_and_weak_matches_abstain():
 def test_shadow_is_off_by_default_in_tests_and_logs_when_on(monkeypatch):
     assert sr.shadow("play a song") is None
     monkeypatch.setattr(sr, "MODE", "shadow")
+    # The bank is cached: one built earlier from the real labels (another
+    # test, or the warm() thread a jarvis_web import starts) would be used
+    # instead of the labels below. Failed once in a full run, 2026-09-22.
+    monkeypatch.setattr(sr, "_bank", None)
     monkeypatch.setattr(sr, "_confident_labels", lambda path=sr.GOLD: [
         {"text": "play a song", "route": "music", "act": "command"},
         {"text": "put on some music", "route": "music", "act": "command"},

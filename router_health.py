@@ -162,6 +162,17 @@ def mark_unhealthy(model: str, reason: str = "") -> None:
                          "latency": None}
 
 
+def forgive_timeouts() -> int:
+    """Drop the cooldowns a hung router caused ("Request timed out." on every
+    model at once); router_keeper calls this after restarting it. Refusals the
+    providers named (quota, 403, paid) stand. Returns how many were dropped."""
+    with _lock:
+        hit = [m for m, v in _state.items() if not v.get("ok") and "timed out" in v.get("reason", "").lower()]
+        for m in hit:
+            del _state[m]
+    return len(hit)
+
+
 def mark_healthy(model: str, latency: float | None = None) -> None:
     with _lock:
         _state[model] = {"ok": True, "until": 0, "reason": "", "ts": time.time(), "latency": latency}
@@ -202,6 +213,10 @@ def probe_once(models: list[str] | None = None) -> dict:
             # Every call would fail with "Connection error": that is the
             # router, not the models. Start it; probe next round.
             router_keeper.ensure_up(wait=0)
+            return snapshot()
+        if not router_keeper.responds(timeout=10):
+            # Open but silent (hung): every model would time out and be
+            # blamed for it. router_keeper restarts a router that stays so.
             return snapshot()
     except ImportError:
         pass

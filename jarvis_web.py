@@ -2686,6 +2686,7 @@ async def get_status():
         # models it would walk right now (router_keeper, router_health).
         "router_up": __import__("router_keeper").port_open(),
         "router_restarts": __import__("router_keeper").state.get("started", 0),
+        "router_restarts_hung": __import__("router_keeper").state.get("restarts_hung", 0),
         "router_models": __import__("router_health").healthy_models()[:8],
         "last_backend": brain.last_backend,
         "voice": f"whisper:{WHISPER_MODEL}",

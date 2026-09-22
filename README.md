@@ -67,6 +67,22 @@ one from `.venv`, restarts it if it crashes, and stops it on quit. Do not run
 `watch_and_restart.py` while the app owns the backend: both would start a
 server on the same port.
 
+## Routine check
+
+One command runs every check and writes `logs/prod-check-<time>.json`:
+compile, the pytest suite, the routing gate, the running server (9router up
+and answering, at least three healthy cloud models, not on the local model),
+and the smoke test against it.
+
+```bash
+.venv\Scripts\python scripts\prod_check.py              # safe: nothing on the machine changes
+.venv\Scripts\python scripts\prod_check.py --tier live  # also opens/closes apps, tabs, music
+.venv\Scripts\python scripts\prod_check.py --no-server  # code checks only
+```
+
+Run it before a push and after each restructure step. Exit code 0 means
+everything that ran passed.
+
 ## Settings
 
 All settings live in `.env` (see `.env.example`). The ones most often changed:

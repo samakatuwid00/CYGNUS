@@ -19,15 +19,43 @@ AUDIT = os.path.join(REPO, "logs", "audit.jsonl")
 CANDIDATES = ("http://127.0.0.1:8001", "http://127.0.0.1:8000")
 
 
+def _configured_port():
+    """JARVIS_PORT from the environment, else from the repo's .env."""
+    port = os.environ.get("JARVIS_PORT")
+    if not port:
+        try:
+            with open(os.path.join(REPO, ".env"), encoding="utf-8") as f:
+                for line in f:
+                    if line.strip().startswith("JARVIS_PORT="):
+                        port = line.split("=", 1)[1].strip().strip("'\"")
+        except OSError:
+            pass
+    return port if port and port.isdigit() else None
+
+
+def candidates():
+    port = _configured_port()
+    first = (f"http://127.0.0.1:{port}",) if port else ()
+    return tuple(dict.fromkeys(first + CANDIDATES))
+
+
+def _is_cygnus(base):
+    """/status answers with Cygnus's own fields. Another dev server on the
+    port (a Laravel app held 8001 on 2026-09-22) may answer 200 too."""
+    try:
+        r = httpx.get(base.rstrip("/") + "/status", timeout=3)
+        return r.status_code == 200 and "brain" in r.json()
+    except (httpx.HTTPError, ValueError):
+        return False
+
+
 def find_server(url=None):
     """Base URL of the running server; exits with a hint when none answers."""
-    for base in ([url] if url else CANDIDATES):
-        try:
-            if httpx.get(base.rstrip("/") + "/status", timeout=3).status_code == 200:
-                return base.rstrip("/")
-        except httpx.HTTPError:
-            continue
-    raise SystemExit(f"No Cygnus server answered on {url or ' or '.join(CANDIDATES)}. Start it first.")
+    tried = [url] if url else list(candidates())
+    for base in tried:
+        if _is_cygnus(base):
+            return base.rstrip("/")
+    raise SystemExit(f"No Cygnus server answered on {' or '.join(tried)}. Start it first.")
 
 
 def connect(base):

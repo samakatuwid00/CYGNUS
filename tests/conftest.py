@@ -52,3 +52,4 @@ def offline_probe(monkeypatch, tmp_path_factory):
     # Tests of a router that is down fake it themselves.
     import router_keeper
     monkeypatch.setattr(router_keeper, "port_open", lambda timeout=0.5: True)
+    monkeypatch.setattr(router_keeper, "responds", lambda timeout=5.0: True)

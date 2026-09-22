@@ -35,7 +35,13 @@ ENABLED = "pytest" not in sys.modules and os.getenv("JARVIS_ROUTER_KEEP", "1") !
 _lock = threading.Lock()
 _last_start = 0.0
 _thread = None
-state = {"up": None, "started": 0, "last_error": ""}   # read by the HUD notice
+state = {"up": None, "started": 0, "restarts_hung": 0, "last_error": ""}   # read by /status
+# A router whose port is open but which answers nothing: on 2026-09-22 its
+# server spun one CPU core at 100% for hours after its tray launcher was gone,
+# and every model call timed out while the port looked fine. After this many
+# silent checks in a row it is stopped and started again.
+HUNG_AFTER = 2
+_misses = 0
 
 
 def _address():
@@ -147,10 +153,75 @@ def ensure_up(wait: float = START_WAIT_S) -> bool:
     return up
 
 
+def responds(timeout: float = 5.0) -> bool:
+    """9router answers /v1/models within `timeout` (it serves it locally)."""
+    try:
+        import httpx
+        from config import ROUTER_BASE_URL, ROUTER_API_KEY
+        r = httpx.get(ROUTER_BASE_URL.rstrip("/") + "/models", timeout=timeout,
+                      headers={"Authorization": f"Bearer {ROUTER_API_KEY or 'x'}"})
+        return r.status_code < 500
+    except Exception:
+        return False
+
+
+def _stop_router() -> int:
+    """Stop every 9router node process (launcher and server). The count."""
+    try:
+        import psutil
+    except ImportError:
+        return 0
+    stopped = 0
+    for p in psutil.process_iter(["name", "cmdline"]):
+        try:
+            cmd = " ".join(p.info.get("cmdline") or [])
+            if "node" in (p.info.get("name") or "").lower() and "9router" in cmd \
+                    and ("cli.js" in cmd or "custom-server.js" in cmd):
+                p.kill()
+                stopped += 1
+        except Exception:
+            continue
+    return stopped
+
+
+def check() -> str:
+    """One watch step: "ok", "slow" (one silent answer), "restarted" (hung,
+    stopped and started again), "started" (was down), or "down"."""
+    global _misses, _last_start
+    if not port_open():
+        _misses = 0
+        before = state["started"]
+        ensure_up(wait=0)
+        return "started" if state["started"] > before else "down"
+    if responds():
+        _misses = 0
+        state.update(up=True, last_error="")
+        return "ok"
+    _misses += 1
+    if _misses < HUNG_AFTER or not ENABLED:
+        return "slow"
+    _misses = 0
+    n = _stop_router()
+    print(f"[ROUTER] 9router answered nothing on {HUNG_AFTER} checks; stopped {n} process(es), "
+          f"starting it again", flush=True)
+    state["restarts_hung"] += 1
+    _last_start = 0.0                   # a hang is not a start that failed: no wait
+    time.sleep(1.0)
+    if ensure_up(wait=START_WAIT_S):
+        # The models "timed out" because the router did: try them again now.
+        try:
+            import router_health
+            router_health.forgive_timeouts()
+            threading.Thread(target=router_health.probe_once, daemon=True, name="router-reprobe").start()
+        except Exception as e:
+            print(f"[ROUTER] re-probe after restart failed: {e}", flush=True)
+    return "restarted"
+
+
 def _loop():
     while True:
         try:
-            ensure_up(wait=0)
+            check()
         except Exception as e:
             print(f"[ROUTER] keeper check failed: {e}", flush=True)
         time.sleep(WATCH_EVERY_S)

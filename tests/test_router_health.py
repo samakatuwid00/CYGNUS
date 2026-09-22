@@ -188,3 +188,22 @@ def test_the_local_model_notice_names_a_router_that_is_down(monkeypatch):
     import router_keeper
     monkeypatch.setattr(router_keeper, "state", {"up": False})
     assert rh.answer_notice(None, "ollama", "Claude Sonnet 4.6").startswith("9router isn't running")
+
+
+def test_timeouts_from_a_hung_router_are_forgiven():
+    # 2026-09-22: 9router hung and 35 models were cooling down for "Request
+    # timed out." at once; after it was restarted none of them was tried.
+    rh.mark_unhealthy("ag/claude-sonnet-4-6", "Request timed out.")
+    rh.mark_unhealthy("gc/gemini-2.5-flash", "[gemini-cli/gemini-2.5-flash] [403]: HTTP 403 (reset after 2m)")
+    assert rh.forgive_timeouts() == 1
+    assert "ag/claude-sonnet-4-6" not in rh.snapshot()
+    assert rh.snapshot()["gc/gemini-2.5-flash"]["ok"] is False    # a real refusal stands
+
+
+def test_the_probe_does_not_blame_models_for_a_silent_router(monkeypatch):
+    import router_keeper
+    monkeypatch.setattr(router_keeper, "port_open", lambda timeout=0.5: True)
+    monkeypatch.setattr(router_keeper, "responds", lambda timeout=5.0: False)
+    rh.mark_healthy("ag/claude-sonnet-4-6", 1.0)
+    rh.probe_once()
+    assert rh.healthy_models() == ["ag/claude-sonnet-4-6"]

@@ -197,7 +197,7 @@ async def run(base, cases):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--url", help="server base URL (default: 127.0.0.1:8001, then :8000)")
+    ap.add_argument("--url", help="server base URL (default: JARVIS_PORT, then 8001, then 8000)")
     ap.add_argument("--tier", choices=TIERS, default="safe")
     ap.add_argument("--only", help="run only cases whose name contains this")
     args = ap.parse_args(argv)

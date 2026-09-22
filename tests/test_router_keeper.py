@@ -62,3 +62,48 @@ def test_off_it_only_reports(keeper, monkeypatch):
     ("Request timed out.", False)])
 def test_what_counts_as_the_router_being_down(err, down):
     assert rk.is_connection_error(err) is down
+
+
+# ---- a router whose port is open but which answers nothing (2026-09-22) ----
+
+@pytest.fixture
+def hung(keeper, monkeypatch):
+    keeper["open"] = True
+    keeper.update(responds=False, stopped=[])
+    monkeypatch.setattr(rk, "_misses", 0)
+    monkeypatch.setattr(rk, "state", {"up": None, "started": 0, "restarts_hung": 0, "last_error": ""})
+    monkeypatch.setattr(rk, "responds", lambda timeout=5.0: keeper["responds"])
+
+    def stop():
+        keeper["stopped"].append(True)
+        keeper["open"] = False
+        keeper["responds"] = True           # the fresh one will answer
+        return 2
+    monkeypatch.setattr(rk, "_stop_router", stop)
+    return keeper
+
+
+def test_one_slow_answer_is_not_a_hang(hung):
+    assert rk.check() == "slow"
+    assert hung["stopped"] == [] and hung["spawned"] == []
+
+
+def test_a_router_that_answers_nothing_twice_is_restarted(hung):
+    rk.check()
+    assert rk.check() == "restarted"
+    assert hung["stopped"] == [True] and len(hung["spawned"]) == 1
+    assert rk.state["restarts_hung"] == 1
+
+
+def test_an_answer_clears_the_count(hung):
+    rk.check()
+    hung["responds"] = True
+    assert rk.check() == "ok"
+    hung["responds"] = False
+    assert rk.check() == "slow"             # counting starts again
+    assert hung["stopped"] == []
+
+
+def test_a_shut_port_is_started_by_check(keeper):
+    assert rk.check() == "started"
+    assert len(keeper["spawned"]) == 1
