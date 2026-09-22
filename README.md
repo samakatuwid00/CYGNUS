@@ -120,7 +120,7 @@ All settings live in `.env` (see `.env.example`). The ones most often changed:
 | `desktop/` | Electron desktop app |
 | `eval/` | The routing gate and evaluations |
 | `tests/` | pytest suite (`.venv\Scripts\python -m pytest`) |
-| `scripts/` | The routine check, smoke tests, dev tools, `checks/` |
+| `scripts/` | The routine check, smoke tests, dev tools, `checks/`, `windows/` (PowerShell helpers) |
 | `docs/plans/`, `docs/reviews/` | Design notes and decisions for each feature; reviews |
 | `scripts/prod_check.py` | The routine check (see above) |
 

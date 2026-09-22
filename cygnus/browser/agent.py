@@ -36,7 +36,7 @@ CHATGPT_URL = "https://chatgpt.com/"
 DEBUG_PORT = int(os.getenv("JARVIS_BROWSER_PORT", "9223"))
 
 # The everyday Chrome profile the "Chrome (JARVIS)" shortcut opens — the one
-# that is already signed in to ChatGPT. Same value as make_shortcut.ps1 writes.
+# that is already signed in to ChatGPT. Same value as scripts/windows/make_shortcut.ps1 writes.
 CHROME_USER_DATA = os.getenv(
     "JARVIS_CHROME_USER_DATA",
     str(Path.home() / "AppData" / "Local" / "Google" / "Chrome" / "User Data"),
