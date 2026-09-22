@@ -12,6 +12,13 @@ can ask healthy_models() on every turn without waiting on the network. A
 model counts as healthy only when it returned real text: an empty 200 is a
 failure. friendly() and the notice functions word "which model is answering"
 for the user.
+
+Since 2026-09-22 a model counts as healthy only when it calls a tool (Cygnus
+cannot work without them, and ag/gemini-3.5-flash-low answered "Gemini 3.5
+Flash is no longer available" as ordinary text); providers that say they will
+never answer (paid credits, unlicensed, OpenCode-only) wait a day, not five
+minutes; a router that is down is not blamed on its models; and models 9router
+offers that nobody listed are found from its /v1/models and tried too.
 """
 
 from __future__ import annotations
@@ -26,8 +33,23 @@ PROBE_EVERY_S = float(os.getenv("JARVIS_ROUTER_PROBE_S", "300"))
 PROBE_TIMEOUT_S = 20.0
 DEFAULT_COOLDOWN_S = 300.0
 EMPTY_COOLDOWN_S = 1800.0          # a provider that answers with nothing is broken, not busy
-# Tried after the configured ROUTER_MODEL + ROUTER_FALLBACK_MODELS, best first.
-# OpenCode Free leads: measured 2026-09-12 with Cygnus's real prompt and all 32
+DEAD_COOLDOWN_S = 86400.0          # paid, unlicensed or OpenCode-only: not coming back soon
+# A healthy model is asked again only this often; live calls keep it fresh.
+HEALTHY_RECHECK_S = float(os.getenv("JARVIS_ROUTER_RECHECK_S", "900"))
+DISCOVER_EVERY_S = 6 * 3600.0
+# The provider's own words for "this will not answer until someone pays or
+# signs in" (2026-09-22 probe: kilocode and cline 402, github "not licensed",
+# qoder's pricing page, OpenCode's free tier outside OpenCode). 9router adds a
+# short "reset after" to these too; it is not believed.
+_DEAD_RE = re.compile(r"\[402\]|\b402\b|not licensed|Credits Required|insufficient_credits|"
+                      r"FreeTierError|can only be used from within|pricingUrl", re.I)
+# Tried after the configured ROUTER_MODEL + ROUTER_FALLBACK_MODELS, fastest
+# measured first (candidates() ranks them). The list below is the 2026-09-22
+# probe with a real tool call: every ag/ model here and qd/qfmodel called the
+# tool in 2-12 s; codex was out of quota for minutes and gemini-cli 403 for a
+# minute, both kept for when they reset. OpenCode's free tier ("can only be
+# used from within OpenCode"), github (unlicensed), cline and kilocode (paid)
+# and cursor (empty replies) are gone from it. History: measured 2026-09-12 with Cygnus's real prompt and all 32
 # tools (7.5k tokens), big-pickle answered in 2.6-6 s and called tools right,
 # ling-3.0-flash in 3-5 s, mimo-v2.5 and nemotron-3.5-lightning in 7-8 s.
 # Left out: nemotron-3-ultra (92 s), deepseek-v4-flash-free (400 errors),
@@ -37,11 +59,15 @@ EMPTY_COOLDOWN_S = 1800.0          # a provider that answers with nothing is bro
 # probe never tried them.
 EXTRA_CANDIDATES = [m.strip() for m in os.getenv(
     "JARVIS_ROUTER_CANDIDATES",
-    "oc/big-pickle,cx/gpt-5.6-luna,cx/gpt-5.5,oc/ling-3.0-flash-fin-free,oc/mimo-v2.5-free,"
-    "oc/nemotron-3.5-lightning-free,"
-    "gc/gemini-2.5-flash,gc/gemini-3-flash-preview,gc/gemini-2.5-pro,gc/gemini-2.5-flash-lite,"
-    "cu/claude-4.5-sonnet,cu/gemini-3-flash-preview,gh/gpt-5.4-mini,cl/anthropic/claude-sonnet-4.6"
+    "ag/claude-sonnet-4-6,ag/claude-opus-4-6-thinking,ag/gemini-pro-agent,ag/gemini-3.1-pro-low,"
+    "ag/gemini-3-flash,qd/qfmodel,ag/gemini-3.7-flash-medium,ag/gemini-3.6-flash-low,"
+    "ag/gemini-3.8-flash,ag/gemini-3.8-flash-low,"
+    "cx/gpt-5.6-luna,cx/gpt-5.5,cx/gpt-5.4-mini,gc/gemini-2.5-flash,gc/gemini-3-flash-preview"
 ).split(",") if m.strip()]
+# Found in 9router's /v1/models and in neither list; probed like the rest.
+_discovered: list[str] = []
+_last_discover = 0.0
+_SKIP_DISCOVER_RE = re.compile(r"-review$|opus-max|high-thinking", re.I)
 
 _lock = threading.Lock()
 _state: dict[str, dict] = {}       # model -> {"ok", "until", "latency", "reason", "ts"}
@@ -53,19 +79,48 @@ CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "r
 CACHE_FRESH_S = 600.0
 
 
-def candidates() -> list[str]:
-    """Every model worth trying, in the owner's order: configured first."""
+def configured() -> list[str]:
     try:
         from config import ROUTER_MODEL, ROUTER_FALLBACK_MODELS
-        configured = [ROUTER_MODEL] + list(ROUTER_FALLBACK_MODELS)
+        return [m for m in [ROUTER_MODEL] + list(ROUTER_FALLBACK_MODELS) if m]
     except Exception:
-        configured = []
-    seen, out = set(), []
-    for m in configured + EXTRA_CANDIDATES:
-        if m and m not in seen:
-            seen.add(m)
-            out.append(m)
-    return out
+        return []
+
+
+def candidates() -> list[str]:
+    """Every model worth trying: the owner's configured models in their order,
+    then the rest fastest measured first (untested ones after the measured)."""
+    own = list(dict.fromkeys(configured()))
+    rest = [m for m in dict.fromkeys(EXTRA_CANDIDATES + _discovered) if m not in own]
+    with _lock:
+        def rank(m):
+            st = _state.get(m) or {}
+            if st.get("ok") and st.get("latency") is not None:
+                return (0, st["latency"])
+            return (1, 0.0) if not st else (2, 0.0)
+        rest.sort(key=rank)
+    return own + rest
+
+
+def discover(force: bool = False) -> list[str]:
+    """Add the models 9router offers that no list names (every six hours)."""
+    global _last_discover
+    if not force and time.time() - _last_discover < DISCOVER_EVERY_S:
+        return list(_discovered)
+    _last_discover = time.time()
+    try:
+        import httpx
+        from config import ROUTER_BASE_URL, ROUTER_API_KEY
+        r = httpx.get(ROUTER_BASE_URL.rstrip("/") + "/models", timeout=10,
+                      headers={"Authorization": f"Bearer {ROUTER_API_KEY or 'x'}"})
+        ids = [m.get("id") for m in r.json().get("data", []) if m.get("id")]
+    except Exception:
+        return list(_discovered)
+    known = set(configured()) | set(EXTRA_CANDIDATES)
+    for m in ids:
+        if m not in known and m not in _discovered and not _SKIP_DISCOVER_RE.search(m):
+            _discovered.append(m)
+    return list(_discovered)
 
 
 def healthy_models(now: float | None = None) -> list[str]:
@@ -73,12 +128,15 @@ def healthy_models(now: float | None = None) -> list[str]:
     cooling down, best first. Instant: no network. [] until the first probe."""
     _ensure_probing()
     now = now or time.time()
+    order = candidates()                # takes _lock itself: not while holding it
     with _lock:
-        return [m for m in candidates()
+        return [m for m in order
                 if _state.get(m, {}).get("ok") and now >= _state[m].get("until", 0)]
 
 
 def _cooldown(reason: str) -> float:
+    if _DEAD_RE.search(reason or ""):
+        return DEAD_COOLDOWN_S
     m = re.search(r"reset after\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?\s*(?:(\d+)\s*s)?", reason or "", re.I)
     if m and any(m.groups()):
         h, mi, s = (int(g or 0) for g in m.groups())
@@ -88,7 +146,15 @@ def _cooldown(reason: str) -> float:
 
 def mark_unhealthy(model: str, reason: str = "") -> None:
     """A live call to `model` failed (the brain calls this on 503 / 429 /
-    errors / empty replies): skip it until its reset time, or five minutes."""
+    errors / empty replies): skip it until its reset time, or five minutes.
+    A call that never reached 9router says nothing about the model: the
+    router is down (router_keeper restarts it), so the table is left alone."""
+    try:
+        import router_keeper
+        if router_keeper.is_connection_error(reason):
+            return
+    except Exception:
+        pass
     now = time.time()
     with _lock:
         _state[model] = {"ok": False, "until": now + _cooldown(reason),
@@ -101,32 +167,65 @@ def mark_healthy(model: str, latency: float | None = None) -> None:
         _state[model] = {"ok": True, "until": 0, "reason": "", "ts": time.time(), "latency": latency}
 
 
+_PROBE_TOOL = [{"type": "function", "function": {
+    "name": "open_application", "description": "Open an installed application.",
+    "parameters": {"type": "object", "properties": {"app": {"type": "string"}}, "required": ["app"]}}}]
+_PROBE_MESSAGES = [{"role": "system", "content": "You are a voice assistant with tools."},
+                   {"role": "user", "content": "open notepad"}]
+
+
+def _due(now: float) -> list[str]:
+    """The models to ask this round: not cooling down, and not a healthy one
+    checked within HEALTHY_RECHECK_S."""
+    out = []
+    order = candidates()
+    with _lock:
+        for m in order:
+            st = _state.get(m) or {}
+            if now < st.get("until", 0):
+                continue
+            if st.get("ok") and now - st.get("ts", 0) < HEALTHY_RECHECK_S:
+                continue
+            out.append(m)
+    return out
+
+
 def probe_once(models: list[str] | None = None) -> dict:
-    """Ask each model not cooling down for one short sentence, in parallel."""
+    """Ask each due model to call a tool, in parallel. A model that answers in
+    words but calls no tool cannot run Cygnus: it counts as a failure."""
     import concurrent.futures as cf
     from openai import OpenAI
     from config import ROUTER_BASE_URL, ROUTER_API_KEY
+    try:
+        import router_keeper
+        if not router_keeper.port_open():
+            # Every call would fail with "Connection error": that is the
+            # router, not the models. Start it; probe next round.
+            router_keeper.ensure_up(wait=0)
+            return snapshot()
+    except ImportError:
+        pass
+    discover()
     client = OpenAI(base_url=ROUTER_BASE_URL, api_key=ROUTER_API_KEY or "x",
                     max_retries=0, timeout=PROBE_TIMEOUT_S)
-    now = time.time()
-    with _lock:
-        todo = [m for m in (models or candidates()) if now >= _state.get(m, {}).get("until", 0)]
+    todo = models or _due(time.time())
 
     def check(model):
         start = time.time()
         try:
-            r = client.chat.completions.create(
-                model=model, max_tokens=40,
-                messages=[{"role": "user", "content": "Reply with one short sentence: are you there?"}])
-            text = (r.choices[0].message.content or "").strip() if r.choices else ""
-            if text:
+            r = client.chat.completions.create(model=model, max_tokens=200, tools=_PROBE_TOOL,
+                                               tool_choice="auto", messages=_PROBE_MESSAGES)
+            msg = r.choices[0].message if r.choices else None
+            if msg and msg.tool_calls:
                 mark_healthy(model, round(time.time() - start, 2))
+            elif msg and (msg.content or "").strip():
+                mark_unhealthy(model, "empty reply: no tool call, said " + (msg.content or "")[:80])
             else:
                 mark_unhealthy(model, "empty reply")
         except Exception as e:
             mark_unhealthy(model, str(e))
 
-    with cf.ThreadPoolExecutor(max_workers=6) as ex:
+    with cf.ThreadPoolExecutor(max_workers=8) as ex:
         list(ex.map(check, todo))
     save()
     return snapshot()
@@ -247,6 +346,13 @@ def answer_notice(model: str | None, backend: str | None, previous: str | None) 
     if not who or who == previous:
         return None
     if backend == "ollama":
+        try:
+            import router_keeper
+            if router_keeper.state.get("up") is False:
+                return ("9router isn't running and I couldn't start it, so the local model is "
+                        "answering; it's slower.")
+        except Exception:
+            pass
         return "The cloud models are unavailable, so the local model is answering; it's slower."
     usual = primary()
     if who == usual:

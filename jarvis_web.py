@@ -116,6 +116,10 @@ semantic_route.warm()
 # models (router_health.py); it re-checks every 5 minutes after that.
 import router_health
 router_health.start()
+# ...and 9router itself: started when it is down, checked every 30 s, since
+# only the login script and the desktop app ever started it (router_keeper.py).
+import router_keeper
+router_keeper.watch()
 import tools  # for the /apps/open endpoint (same dispatcher the brain uses)
 
 # Server-side wake-word fallback. The browser's Web Speech WakeListener is primary,
@@ -2678,6 +2682,11 @@ async def get_status():
         "endpoint": endpoint,
         # Gemini is off; the final real fallback is the local model.
         "fallback": None if getattr(brain, "_local_only", False) else OLLAMA_MODEL,
+        # Whether 9router answers, how often Cygnus had to start it, and the
+        # models it would walk right now (router_keeper, router_health).
+        "router_up": __import__("router_keeper").port_open(),
+        "router_restarts": __import__("router_keeper").state.get("started", 0),
+        "router_models": __import__("router_health").healthy_models()[:8],
         "last_backend": brain.last_backend,
         "voice": f"whisper:{WHISPER_MODEL}",
         "tts": _TTS_ENGINE,

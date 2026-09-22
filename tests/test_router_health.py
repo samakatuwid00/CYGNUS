@@ -106,3 +106,85 @@ def test_a_reconnecting_client_is_not_told_again(monkeypatch):
     assert rh.notice_for("desktop", "oc/big-pickle", "router")         # another device: said once
     assert rh.notice_for("remote", None, "instant") is None            # a tool turn changes nothing
     assert rh.notice_for("remote", "oc/big-pickle", "router") is None
+
+
+# ---- 2026-09-22: tool-call probe, dead providers, router down, ranking ----
+
+@pytest.mark.parametrize("reason", [
+    "[kilocode/deepseek/deepseek-chat] [402]: Paid Model - Credits Required (reset after 1m 22s)",
+    "[github/gpt-5.4] [403]: unauthorized: not licensed to use Copilot",
+    "FreeTierError: OpenCode's free tier can only be used from within OpenCode",
+    "[qoder/qmodel_38max] [403]: pricingUrl https://qoder.com/pricing (reset after 2m)"])
+def test_a_provider_that_will_not_answer_waits_a_day(reason):
+    before = time.time()
+    rh.mark_unhealthy("kc/x", reason)
+    assert rh.snapshot()["kc/x"]["until"] - before >= rh.DEAD_COOLDOWN_S - 2
+
+
+def test_a_router_that_is_down_is_not_blamed_on_its_models():
+    rh.mark_healthy("ag/claude-sonnet-4-6", 1.0)
+    rh.mark_unhealthy("ag/claude-sonnet-4-6", "APIConnectionError: Connection error.")
+    assert rh.healthy_models() == ["ag/claude-sonnet-4-6"]
+
+
+def test_the_owners_models_lead_then_the_fastest(monkeypatch):
+    monkeypatch.undo()                                   # the real candidates()
+    monkeypatch.setattr(rh, "_state", {})
+    monkeypatch.setattr(rh, "configured", lambda: ["ag/claude-sonnet-4-6", "ag/claude-opus-4-6-thinking"])
+    monkeypatch.setattr(rh, "EXTRA_CANDIDATES", ["ag/gemini-3.8-flash-low", "qd/qfmodel", "cx/gpt-5.5"])
+    monkeypatch.setattr(rh, "_discovered", ["ag/new-model"])
+    rh.mark_healthy("ag/gemini-3.8-flash-low", 11.3)
+    rh.mark_healthy("qd/qfmodel", 3.5)
+    rh.mark_unhealthy("cx/gpt-5.5", "[429]: The usage limit has been reached (reset after 7m 32s)")
+    assert rh.candidates() == ["ag/claude-sonnet-4-6", "ag/claude-opus-4-6-thinking",
+                               "qd/qfmodel", "ag/gemini-3.8-flash-low", "ag/new-model", "cx/gpt-5.5"]
+
+
+class _Client:
+    def __init__(self, replies):
+        from types import SimpleNamespace as NS
+        self.replies = replies
+        self.chat = NS(completions=NS(create=self.create))
+
+    def create(self, model, **kw):
+        from types import SimpleNamespace as NS
+        kind = self.replies[model]
+        if isinstance(kind, Exception):
+            raise kind
+        call = [NS(function=NS(name="open_application", arguments='{"app": "notepad"}'))]
+        msg = NS(content="" if kind == "tool" else kind, tool_calls=call if kind == "tool" else None)
+        return NS(choices=[NS(message=msg)])
+
+
+def test_the_probe_counts_only_a_tool_call(monkeypatch, tmp_path):
+    import openai
+    import router_keeper
+    replies = {"ag/claude-sonnet-4-6": "tool",
+               "ag/gemini-3.5-flash-low": "Gemini 3.5 Flash is no longer available.",
+               "cu/claude-4.5-sonnet": ""}
+    monkeypatch.setattr(openai, "OpenAI", lambda **kw: _Client(replies))
+    monkeypatch.setattr(router_keeper, "port_open", lambda timeout=0.5: True)
+    monkeypatch.setattr(rh, "discover", lambda force=False: [])
+    monkeypatch.setattr(rh, "CACHE_PATH", str(tmp_path / "rh.json"))
+    rh.probe_once(list(replies))
+    snap = rh.snapshot()
+    assert snap["ag/claude-sonnet-4-6"]["ok"] is True
+    assert snap["ag/gemini-3.5-flash-low"]["ok"] is False and "no tool call" in snap["ag/gemini-3.5-flash-low"]["reason"]
+    assert snap["cu/claude-4.5-sonnet"]["ok"] is False
+
+
+def test_the_probe_starts_a_router_that_is_down_and_marks_nothing(monkeypatch):
+    import router_keeper
+    started = []
+    monkeypatch.setattr(router_keeper, "port_open", lambda timeout=0.5: False)
+    monkeypatch.setattr(router_keeper, "ensure_up", lambda wait=20: started.append(wait) or False)
+    rh.mark_healthy("ag/claude-sonnet-4-6", 1.0)
+    rh.probe_once()
+    assert started == [0]
+    assert rh.healthy_models() == ["ag/claude-sonnet-4-6"]
+
+
+def test_the_local_model_notice_names_a_router_that_is_down(monkeypatch):
+    import router_keeper
+    monkeypatch.setattr(router_keeper, "state", {"up": False})
+    assert rh.answer_notice(None, "ollama", "Claude Sonnet 4.6").startswith("9router isn't running")

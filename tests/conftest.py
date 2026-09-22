@@ -48,3 +48,7 @@ def offline_probe(monkeypatch, tmp_path_factory):
     import running_apps
     monkeypatch.setattr(running_apps, "inventory", lambda use_cache=True: [])
     monkeypatch.setattr(running_apps, "bring_to_front", lambda row: (False, "test: no real windows"))
+    # 9router counts as up: no test may depend on (or start) the real one.
+    # Tests of a router that is down fake it themselves.
+    import router_keeper
+    monkeypatch.setattr(router_keeper, "port_open", lambda timeout=0.5: True)

@@ -398,9 +398,14 @@ def _make_client():
     return OpenAI(base_url=bg.ROUTER_BASE_URL, api_key=bg.ROUTER_API_KEY or "x", max_retries=0)
 
 
+# How many healthy 9router models a turn may walk. Three were not enough on
+# 2026-09-22: the first hung and the next two were out of quota.
+MAX_MODELS = 6
+
+
 def _models() -> list:
     import brain_gemini as bg
-    return bg._router_models()[:3]
+    return bg._router_models()[:MAX_MODELS]
 
 
 def run(brain, text: str, ctx: dict) -> str | None:
@@ -432,6 +437,13 @@ def run(brain, text: str, ctx: dict) -> str | None:
         _last_stats = {"model": None, "tools": [], "rounds": 0, "seconds": 0.0, "from": "record"}
         brain.conversation.append({"role": "assistant", "content": final})
         return final
+    try:
+        bg._router_ready()                  # starts a 9router that is down, bounded wait
+    except bg._RouterDown as e:
+        print(f"[agent] {e}; old routing", flush=True)
+        bg._progress_local.deadline = saved_deadline
+        _lock.release()
+        return None
     system = _system(ctx)
     tools_arg = TOOLS
     base = [{"role": "system", "content": system}] + _history(brain) + [{"role": "user", "content": text}]
@@ -440,13 +452,16 @@ def run(brain, text: str, ctx: dict) -> str | None:
         for model in _models():
             messages = list(base)
             try:
-                for _ in range(MAX_ROUNDS):
+                for _round in range(MAX_ROUNDS):
                     left = deadline - time.monotonic()
                     if left < 3:
                         break
+                    # The first call gets bg.FIRST_CALL_S: a model that has not
+                    # answered by then hands over to the next one.
+                    cap = bg.FIRST_CALL_S if _round == 0 else CALL_CAP_S
                     r = client.chat.completions.create(model=model, messages=messages, tools=tools_arg,
                                                        tool_choice="auto" if tools_arg else None, max_tokens=700,
-                                                       timeout=min(CALL_CAP_S, left))
+                                                       timeout=min(cap, left))
                     if not r.choices:
                         raise RuntimeError("empty reply")
                     msg = r.choices[0].message
@@ -501,6 +516,9 @@ def run(brain, text: str, ctx: dict) -> str | None:
                 broke = type(e).__name__
                 if ran:                         # work was done: the record says so, not a next model
                     break
+                import router_keeper
+                if router_keeper.is_connection_error(e):
+                    break                       # the router went down: no other model can answer
                 continue
     finally:
         bg._progress_local.deadline = saved_deadline

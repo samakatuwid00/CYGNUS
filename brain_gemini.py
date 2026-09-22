@@ -158,6 +158,13 @@ def _run_bounded(fn, budget, label):
 # retried a timed-out call twice, so one 40 s Ollama wait became two minutes.
 TURN_BUDGET = float(os.getenv("JARVIS_TURN_BUDGET", "45"))
 MIN_CALL_SECONDS = 2.0
+# A model's first call in a turn: the healthy ones answer in 2-12 s (probe,
+# 2026-09-22), so one that has not answered in 20 s gives the next model the
+# rest of the turn. At 45 s a single hung Sonnet call used the whole turn and
+# the answer came from the local model. Later calls in the tool loop keep 45 s.
+FIRST_CALL_S = float(os.getenv("JARVIS_FIRST_CALL_S", "20"))
+# Of the turn, what may go to waiting for a 9router that had to be started.
+ROUTER_START_WAIT_S = 20.0
 _NO_MODEL_REPLY = ("I couldn't get an answer from my AI model in time, sir. The online service "
                    "may be down - please try again in a moment.")
 
@@ -198,6 +205,36 @@ def _router_models():
     except Exception:
         healthy = []
     return healthy or configured
+
+
+class _RouterDown(Exception):
+    """9router is not answering on its port and could not be started."""
+
+
+def _router_ready():
+    """Make sure 9router is up before a turn walks its models. When it is
+    down every model fails with "Connection error" and the turn used to land
+    on the local model; router_keeper starts it and this waits (bounded by
+    the turn). Raises _RouterDown when it stays down."""
+    try:
+        import router_keeper
+    except ImportError:
+        return
+    if router_keeper.port_open():
+        return
+    wait = max(0.0, min(ROUTER_START_WAIT_S, _time_left() - 8.0))
+    print(f"[JARVIS] 9router is not running; starting it (waiting up to {wait:.0f}s)", flush=True)
+    if not router_keeper.ensure_up(wait=wait):
+        raise _RouterDown(router_keeper.state.get("last_error") or "9router is not running")
+
+
+def _report_healthy(model, latency):
+    health = _router_health()
+    if health and hasattr(health, "mark_healthy"):
+        try:
+            health.mark_healthy(model, round(latency, 2))
+        except Exception:
+            pass
 
 
 def _report_unhealthy(model, reason):
@@ -3094,6 +3131,7 @@ class JarvisBrain:
         class _RateLimited(Exception):
             pass
 
+        _router_ready()
         model_list = _router_models()
         last_err, failed = None, None
         for model in model_list:
@@ -3101,7 +3139,8 @@ class JarvisBrain:
                 _announce_model_switch(failed, model)
             try:
                 pending = []
-                for _ in range(10):
+                started = time.monotonic()
+                for _round in range(10):
                     # P3: skip the ~2.7k-token tool schema (and the tool-decision step) for
                     # simple intents that can never need a tool. Tiered max_tokens too.
                     # Bound the replay by TOKENS, not just _cap_conversation's
@@ -3119,10 +3158,15 @@ class JarvisBrain:
                             tools=tools_arg,
                             tool_choice=tool_choice_arg,
                             max_tokens=max_tokens_arg,
-                            timeout=_call_timeout(45),
+                            timeout=_call_timeout(FIRST_CALL_S if _round == 0 else 45),
                         )
                     except Exception as ce:
                         cs = str(ce)
+                        import router_keeper as _rk
+                        if _rk.is_connection_error(ce):
+                            # Every other model goes through the same dead
+                            # router: stop here, the caller says so.
+                            raise _RouterDown(cs)
                         if "429" in cs or "rate" in cs.lower() or "quota" in cs.lower():
                             print(f"[JARVIS] 9router model {model} rate-limited; trying next...")
                             raise _RateLimited(cs)
@@ -3183,6 +3227,7 @@ class JarvisBrain:
                         break
                     pending.append({"role": "assistant", "content": text})
                     self.conversation.extend(pending)
+                    _report_healthy(model, time.monotonic() - started)
                     self.last_stats["model"] = model
                     if failed:
                         self.last_stats["switched_from"] = failed
@@ -3196,7 +3241,7 @@ class JarvisBrain:
                 continue
             except _RateLimited:
                 last_err = "rate-limited"
-            except _OutOfTime:
+            except (_OutOfTime, _RouterDown):
                 raise
             except Exception as e:
                 last_err = str(e)
