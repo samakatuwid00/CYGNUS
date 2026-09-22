@@ -1,6 +1,6 @@
 # Restructure plan: from flat root to a `cygnus/` package
 
-Status: proposed, 2026-09-22. Cutover from jarvis-demo in progress; nothing restructured yet.
+Status: 2026-09-22. Cutover from jarvis-demo done (push and final deletions pending); restructure not started.
 
 ## Where it stands
 
@@ -118,40 +118,38 @@ Done on 2026-09-22:
 - [x] **`opencode.json`.** The model now matches jarvis-demo
   (`ag/claude-sonnet-4-6`), and the app launcher reads CYGNUS's
   `app_registry.json`.
-- [ ] **Runtime data.** Run `bash scripts/cutover_sync.sh`, then add
-  `--apply` to it. It copies jarvis-demo's `.env`, `memory/`, `sessions/`,
-  `logs/`, `app_registry.json` and `web_registry.json` (32 files) into CYGNUS,
-  backing up each CYGNUS file it replaces to
-  `.recovery/cutover-2026-09-22/cygnus-before/` first.
+- [x] **Runtime data.** `scripts/cutover_sync.sh --apply` copied jarvis-demo's
+  `.env`, `memory/`, `sessions/`, `logs/`, `app_registry.json` and
+  `web_registry.json` (32 files) into CYGNUS. The 23 CYGNUS files it replaced
+  are in `.recovery/cutover-2026-09-22/cygnus-before/`. A dry run afterwards
+  showed 0 differences, and the server boots on `ag/claude-sonnet-4-6`.
 
-Archiving jarvis-demo (after about a week of running from CYGNUS without
-problems, so around 2026-09-29):
+Archiving jarvis-demo (done on 2026-09-22, except the deletions in step 6):
 
-1. Check that nothing still points at jarvis-demo: running processes,
-   shortcuts, scheduled tasks, `~/.hermes`, `~/.claude`. On 2026-09-22 the
-   only outside reference was a note in `~/.hermes/plans`.
+1. [x] Nothing still pointed at jarvis-demo: no running processes, the
+   shortcut had been changed, no scheduled tasks, and `~/.hermes` and
+   `~/.claude` held only one old note (in `~/.hermes/plans`).
    `My Documents\jarvis-demo` is the same folder seen through the
    `My Documents` link, not a second copy.
-2. Decide what to do with the loose ends in jarvis-demo:
-   - Branch `vk/c9a3-hi` has a vibe-kanban worktree in
-     `%TEMP%\vibe-kanban\worktrees\c9a3-hi`. Its commits are already in
-     CYGNUS as `jarvis-demo/vk/c9a3-hi`. Keep it as a local branch, or drop it.
-   - The `irms` remote points at the unrelated iRIMS repo. Do not carry it over.
-   - `.preport-backup/` holds pre-port copies of five files. It is already
-     covered by the history, so drop it.
-3. Push CYGNUS: `git push origin master:main master:master`. Both are
-   fast-forwards; check again first with
-   `git fetch origin && git merge-base --is-ancestor origin/main master`.
-4. Rename `Documents\jarvis-demo` to `jarvis-demo.ARCHIVED`. For one week,
-   anything still using the old path fails loudly instead of quietly using
-   stale code.
-5. Zip it without the parts that can be rebuilt (`.venv/`,
-   `desktop/node_modules/`, `models/`, `__pycache__/`) into
-   `Documents\Archive\jarvis-demo-<date>.zip`. Check that the zip lists
-   `memory/semantic.db` and `sessions/index.db`, and that their hashes match.
-6. Delete `jarvis-demo.ARCHIVED`, `.venv.jarvis-copy/`, and the
-   `jarvis-demo/*` and `jarvis-demo-origin/*` refs in CYGNUS.
-7. Phase 0 removes the dozen dev scripts that still use the old path
+2. [x] Loose ends: branch `vk/c9a3-hi` is kept as `archive/vk-c9a3-hi`. Its
+   vibe-kanban worktree in `%TEMP%\vibe-kanban\worktrees\c9a3-hi` stops
+   working after the rename. The `irms` remote was not carried over, and
+   `.preport-backup/` is covered by the history.
+3. [ ] Push CYGNUS: `git push origin master:main master:master`. On
+   2026-09-22 both were fast-forwards. It has to be run by hand, because the
+   agent's permission rules block pushes.
+4. [x] Renamed `Documents\jarvis-demo` to `jarvis-demo.ARCHIVED`.
+5. [x] Zipped it to `Documents\Archive\jarvis-demo-2026-09-22.zip` (51 MB,
+   850 files, every one hash-checked against the original). Left out:
+   `.venv/`, `node_modules/`, `models/`, `__pycache__/`, the 99 MB
+   `chrome_dbg.log` and the file named `nul`. **The zip contains `.env` with
+   API keys. Keep it local; do not upload it anywhere.**
+6. [ ] About 2026-09-29, if nothing has broken: delete `jarvis-demo.ARCHIVED`
+   and `.venv.jarvis-copy/`, then run
+   `git branch -D backup/pre-history-merge` and delete the
+   `jarvis-demo/*` and `jarvis-demo-origin/*` refs with
+   `git update-ref -d`.
+7. [ ] Phase 0 removes the dozen dev scripts that still use the old path
    (`diag_*`, `analyze.py`, `check_files.py`, `debug_stdin.py`,
    `examine_code.py`, `_hud_edit.py`, `benchmark_turbovec_vs_substring.py`).
 
