@@ -7,7 +7,7 @@ browser_agent functions with MCP metadata (name, description, input_schema)
 mirroring Playwright MCP's tool registry.
 
 Usage:
-  from mcp_browser_server import TOOLS, call_tool
+  from cygnus.browser.mcp_server import TOOLS, call_tool
   # or as subprocess MCP server: python mcp_browser_server.py
 
 Stdlib + browser_agent only; no new deps.
@@ -17,7 +17,7 @@ import json
 import sys
 
 try:
-    import browser_agent as _ba
+    from cygnus.browser import agent as _ba
 except Exception as e:
     _ba = None
     _import_error = str(e)
@@ -115,7 +115,7 @@ def call_tool(name: str, arguments: dict) -> str:
         return f"[Error] Unknown MCP browser tool: {name}"
     result = fn(**arguments)
     try:
-        import guard
+        from cygnus.browser import guard
         result = guard.sanitize_web_text(result, label=f"mcp:browser:{name}")
     except Exception:
         pass

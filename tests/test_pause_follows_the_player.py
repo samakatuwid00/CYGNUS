@@ -2,8 +2,8 @@
 play_spotify it said "Nothing is playing - the music window is not open"
 and Spotify kept playing (live smoke, 2026-09-22)."""
 
-import music_agent
-import tools
+from cygnus.agents import music as music_agent
+from cygnus import tools
 
 
 def test_pause_after_spotify_pauses_spotify(monkeypatch):

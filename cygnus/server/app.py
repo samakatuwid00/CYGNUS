@@ -11,7 +11,7 @@ import os
 import io
 import sys
 import json
-import paths
+from cygnus import paths
 
 # The console (and a redirected log) is cp1252 on Windows: a page read or a
 # job note with "↘" or "ロ" crashed the print, and with it the announcement.
@@ -30,17 +30,16 @@ from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
-from voice_engine import VoiceEngine
-from wake_engine import WakeEngine, wake_targets
-from brain_gemini import JarvisBrain
-from session_store import log as sstore_log
-import intake
-from intake import load_corpus, resolve_intent
+from cygnus.voice.engine import VoiceEngine
+from cygnus.voice.wake import WakeEngine, wake_targets
+from cygnus.brain.core import JarvisBrain
+from cygnus.memory.session_store import log as sstore_log
+from cygnus.brain import intake
+from cygnus.brain.intake import load_corpus, resolve_intent
 
 # Layer 1 (Intake) corpus — portable data, reloaded once at boot.
 INTAKE_CORPUS = load_corpus()
-from config import (GEMINI_MODEL, ROUTER_BASE_URL, ROUTER_MODEL, WHISPER_MODEL,
-                   GROQ_MODEL, GROQ_BASE_URL, CEREBRAS_MODEL, CEREBRAS_BASE_URL)
+from cygnus.config import (GEMINI_MODEL, ROUTER_BASE_URL, ROUTER_MODEL, WHISPER_MODEL, GROQ_MODEL, GROQ_BASE_URL, CEREBRAS_MODEL, CEREBRAS_BASE_URL)
 
 app = FastAPI(title="Cygnus Voice Interface")
 
@@ -111,17 +110,17 @@ print(f"[JARVIS Web] Loading Brain ({ROUTER_MODEL})...", flush=True)
 brain = JarvisBrain()
 # The semantic router loads in the background (~5 s); until then it neither
 # logs nor leads, and no reply waits for it.
-import semantic_route
+from cygnus.brain import semantic_route
 semantic_route.warm()
 # 9router health: probe at boot, so the first cloud turn already skips dead
 # models (router_health.py); it re-checks every 5 minutes after that.
-import router_health
+from cygnus.brain import router_health
 router_health.start()
 # ...and 9router itself: started when it is down, checked every 30 s, since
 # only the login script and the desktop app ever started it (router_keeper.py).
-import router_keeper
+from cygnus.brain import router_keeper
 router_keeper.watch()
-import tools  # for the /apps/open endpoint (same dispatcher the brain uses)
+from cygnus import tools  # for the /apps/open endpoint (same dispatcher the brain uses)
 
 # Server-side wake-word fallback. The browser's Web Speech WakeListener is primary,
 # but it degrades when music/ambient noise bleeds into the mic — this catches the
@@ -136,9 +135,9 @@ except ValueError:
     _WAKE_SUSPEND_MS = 1500
 _wake_spotter = None
 try:
-    from config import JARVIS_WAKE_ENGINE
+    from cygnus.config import JARVIS_WAKE_ENGINE
     if JARVIS_WAKE_ENGINE == "sherpa":
-        import wake_kws
+        from cygnus.voice import wake_kws
         _wake_spotter = wake_kws.load()
 except Exception as _e:
     print(f"[WakeEngine] spotter setup failed ({_e}); using Whisper", flush=True)
@@ -223,7 +222,7 @@ wake_engine.start()
 # server startup. The session is persisted on disk and survives JARVIS restarts.
 def _prewarm_hermes():
     try:
-        from warm_harness import warm_session
+        from cygnus.jobs.warm_harness import warm_session
         sid = warm_session(timeout=120)
         if sid:
             print(f"[JARVIS Web] Hermes warm session ready: {sid}", flush=True)
@@ -238,7 +237,7 @@ threading.Thread(target=_prewarm_hermes, daemon=True).start()
 # days (policy C). One stat call when fresh; voice resolution uses the current
 # registry immediately either way.
 try:
-    import web_registry as _wr
+    from cygnus.apps import web_registry as _wr
     if _wr.maybe_refresh_async():
         print("[JARVIS Web] Web registry stale — background rescan started.", flush=True)
 except Exception as _e:
@@ -251,8 +250,8 @@ print("[JARVIS Web] Ready.", flush=True)
 # through voice_feedback.announce() so the user gets friendly feedback without
 # overlapping/duplicate speech. The synthesizer is registered after tts_to_b64
 # is defined below.
-import voice_feedback as _vf
-import voice_ducking
+from cygnus.voice import feedback as _vf
+from cygnus.voice import ducking as voice_ducking
 
 # Phase B: per-job milestone timers ("Still on it, sir.") for long background
 # tasks — keyed by job id, cancelled when the job reaches a terminal state.
@@ -308,7 +307,7 @@ def _start_confirm_reminder(ws, vf) -> None:
         except asyncio.CancelledError:
             return
         try:
-            from tools import _PENDING_HERMES_CALL, _PENDING_DESTRUCTIVE
+            from cygnus.tools import _PENDING_HERMES_CALL, _PENDING_DESTRUCTIVE
             pending = _PENDING_HERMES_CALL or _PENDING_DESTRUCTIVE.get("autonomous")
         except Exception:
             return
@@ -328,7 +327,7 @@ def _start_task_milestones(ws, vf, jid: str) -> None:
         try:
             for line in lines:
                 await asyncio.sleep(45)
-                import jobs as _jobs
+                from cygnus.jobs import registry as _jobs
                 j = _jobs.get(jid)
                 if not j or j.get("state") not in ("running", "queued"):
                     return
@@ -441,7 +440,7 @@ def strip_ai_artifacts(text: str) -> str:
     # Internal markers, job ids, Markdown and machine tics out (plain_reply.py).
     # Only here, where replies leave the server: brain.think's own return value
     # keeps its markers for the command chain.
-    import plain_reply
+    from cygnus.brain import plain_reply
     return plain_reply.tidy(text)
 
 
@@ -576,7 +575,7 @@ async def tts_to_b64(text: str) -> str:
             except Exception as e:
                 print(f"[TTS] piper synth failed ({e}); falling back to edge-tts.")
     import edge_tts
-    from config import TTS_VOICE, TTS_RATE, TTS_VOLUME
+    from cygnus.config import TTS_VOICE, TTS_RATE, TTS_VOLUME
 
     # rate/volume were previously dropped here, so the web UI always spoke at
     # +0% no matter what config said — only the CLI path honoured TTS_RATE.
@@ -621,7 +620,7 @@ def _load_model_meta():
     """Size/params/quant of the local model, straight from Ollama."""
     try:
         import urllib.request
-        from config import OLLAMA_MODEL
+        from cygnus.config import OLLAMA_MODEL
         req = urllib.request.Request(
             "http://localhost:11434/api/show",
             data=json.dumps({"name": OLLAMA_MODEL}).encode(),
@@ -708,8 +707,8 @@ def _known_names():
     the transcript picker: the transcript that names one is the one meant."""
     names = set()
     try:
-        import app_abilities
-        import curate
+        from cygnus.apps import abilities as app_abilities
+        from cygnus.apps import curate
         apps = app_abilities.load_apps()["apps"]
         for key in curate.registered_apps():
             entry = apps.get(key) or {}
@@ -720,7 +719,7 @@ def _known_names():
     except Exception:
         pass
     try:
-        import web_registry
+        from cygnus.apps import web_registry
         for key, site in (web_registry.load_registry().get("sites") or {}).items():
             names.add(key.lower())
             names.update(a.lower() for a in site.get("aliases") or [])
@@ -732,8 +731,8 @@ def _known_names():
 def _job_cards(recent_s: float = 900) -> list[dict]:
     """Active jobs and jobs that ended in the last `recent_s` seconds, shaped
     like job events plus their plain card fields (plain_reply.card)."""
-    import jobs
-    import plain_reply
+    from cygnus.jobs import registry as jobs
+    from cygnus.brain import plain_reply
     now = time.time()
     rows, seen = [], set()
     for j in jobs.active() + jobs.recent(8):
@@ -896,7 +895,7 @@ def _website_items():
     global _WEBSITE_KEYS
     items, hidden = [], 0
     try:
-        import web_registry as wr
+        from cygnus.apps import web_registry as wr
         sites = (wr.load_registry() or {}).get("sites", {})
     except Exception:
         return [], 0
@@ -982,10 +981,10 @@ async def get_apps():
     everything JARVIS can act on.
     """
     import os as _os
-    from machine_capabilities import load_registry
+    from cygnus.apps.capabilities import load_registry
     # Phase 8: opt-in flags (registered/enabled) come from curate.py
     try:
-        from curate import is_registered, is_hidden
+        from cygnus.apps.curate import is_registered, is_hidden
     except Exception:
         is_registered = lambda k: False
         is_hidden = lambda k: False
@@ -1092,7 +1091,7 @@ async def post_apps_toggle(message: Request):
     enable = bool(body.get("enabled", True))
     if not key:
         return JSONResponse({"error": "missing key"}, status_code=400)
-    from machine_capabilities import REGISTRY_PATH
+    from cygnus.apps.capabilities import REGISTRY_PATH
     reg_path = REGISTRY_PATH
     if not os.path.exists(reg_path):
         return JSONResponse({"error": "no registry"}, status_code=400)
@@ -1123,7 +1122,7 @@ async def post_apps_rules(message: Request):
     # Key presence, not truthiness: an explicit `compiled_rules: []` commits an
     # empty set (wipes the rules); omitting it only stores drafts.
     compiled = body.get("compiled_rules")
-    from machine_capabilities import REGISTRY_PATH
+    from cygnus.apps.capabilities import REGISTRY_PATH
     reg_path = REGISTRY_PATH
     if not os.path.exists(reg_path):
         return JSONResponse({"error": "no registry"}, status_code=400)
@@ -1133,7 +1132,7 @@ async def post_apps_rules(message: Request):
     if key not in apps:
         return JSONResponse({"error": "unknown app"}, status_code=400)
     if isinstance(compiled, list):
-        import rules_compiler
+        from cygnus.rules import compiler as rules_compiler
         rules_compiler.commit_rules(key, compiled, reg_path, accept=True)
     else:
         apps[key]["rule_drafts"] = drafts
@@ -1160,8 +1159,8 @@ async def post_apps_rules_clear(message: Request):
         return JSONResponse({"error": "missing key"}, status_code=400)
     if not _known_app(key):
         return JSONResponse({"error": "unknown app"}, status_code=400)
-    from machine_capabilities import REGISTRY_PATH
-    import rules_compiler
+    from cygnus.apps.capabilities import REGISTRY_PATH
+    from cygnus.rules import compiler as rules_compiler
     try:
         removed, remaining = rules_compiler.remove_rule(key, rule_id, REGISTRY_PATH)
     except KeyError:
@@ -1184,7 +1183,7 @@ async def post_apps_register(message: Request):
     enabled = bool(body.get("enabled", True))
     if not key:
         return JSONResponse({"error": "missing key"}, status_code=400)
-    import curate
+    from cygnus.apps import curate
     ok = curate.mark_registered(key, registered=registered, enabled=enabled)
     if not ok:
         return JSONResponse({"error": "unknown app"}, status_code=400)
@@ -1213,15 +1212,15 @@ async def post_apps_compile(message: Request):
     if not key or not drafts:
         return JSONResponse({"error": "missing key or drafts"}, status_code=400)
 
-    import rules_ai
-    from machine_capabilities import REGISTRY_PATH
+    from cygnus.rules import ai as rules_ai
+    from cygnus.apps.capabilities import REGISTRY_PATH
     entry = {}
     try:
         with open(REGISTRY_PATH, "r", encoding="utf-8") as f:
             entry = (json.load(f).get("apps") or {}).get(key) or {}
     except Exception:
         pass
-    import rules_sim
+    from cygnus.rules import sim as rules_sim
 
     def _compile():
         say = rules_sim.reporter(key)
@@ -1252,7 +1251,7 @@ async def post_apps_compile(message: Request):
 
 def _known_app(key):
     """True when `key` names an app in the on-disk registry."""
-    from machine_capabilities import REGISTRY_PATH
+    from cygnus.apps.capabilities import REGISTRY_PATH
     if not os.path.exists(REGISTRY_PATH):
         return False
     with open(REGISTRY_PATH, "r", encoding="utf-8") as f:
@@ -1281,7 +1280,7 @@ async def post_apps_rules_begin(message: Request):
     if not _known_app(key):
         return JSONResponse({"error": "unknown app"}, status_code=400)
 
-    import rules_voice
+    from cygnus.rules import voice as rules_voice
     step = await asyncio.to_thread(rules_voice.begin_rule_setup, key, phrase)
     if step.get("status") == "error":
         return JSONResponse(step, status_code=400)
@@ -1308,7 +1307,7 @@ async def post_apps_rules_clarify(message: Request):
     if not answer:
         return JSONResponse({"error": "missing answer"}, status_code=400)
 
-    import rules_voice
+    from cygnus.rules import voice as rules_voice
     step = await asyncio.to_thread(rules_voice.handle_clarification, key, rule_id, answer)
     if step.get("status") == "error":
         return JSONResponse(step, status_code=400)
@@ -1332,8 +1331,8 @@ async def post_apps_rules_test(message: Request):
     sample = (body.get("sample") or "").strip()
     if not key:
         return JSONResponse({"error": "missing app_key"}, status_code=400)
-    import rules_engine
-    import rules_voice
+    from cygnus.rules import engine as rules_engine
+    from cygnus.rules import voice as rules_voice
     rule = None
     pend = rules_voice.pending_setup(key)
     if not rid and pend:
@@ -1348,10 +1347,10 @@ async def post_apps_rules_test(message: Request):
         return JSONResponse({"error": "this rule doesn't open anything to test"},
                             status_code=400)
     if action.get("type") in ("search_site", "steps") and not sample:
-        import rules_sim
+        from cygnus.rules import sim as rules_sim
         sample = rules_sim.sample_for(rule)
     result = await asyncio.to_thread(tools.run_rule_action, rule, key, action, sample)
-    import rules_steps
+    from cygnus.rules import steps as rules_steps
     return JSONResponse({"ok": not result.startswith("[Error]"), "result": result,
                          "url": rules_engine.build_action_url(action, sample),
                          # A steps rule may stop on a question ("Restart Brave?",
@@ -1373,7 +1372,7 @@ async def post_apps_rules_test_answer(message: Request):
     answer = (body.get("answer") or "").strip()
     if not answer:
         return JSONResponse({"error": "missing answer"}, status_code=400)
-    import rules_steps
+    from cygnus.rules import steps as rules_steps
     if not rules_steps.active():
         return JSONResponse({"error": "nothing is waiting for an answer"}, status_code=409)
     result = await asyncio.to_thread(rules_steps.resume, answer)
@@ -1386,7 +1385,7 @@ async def post_apps_rules_test_answer(message: Request):
 def _apps_job(progress_key, work):
     """Run a slow Apps job (scan, AI sorting, launching an app) with progress
     published under progress_key for the panel's progress bar."""
-    import rules_sim
+    from cygnus.rules import sim as rules_sim
     try:
         return work(rules_sim.reporter(progress_key))
     finally:
@@ -1408,7 +1407,7 @@ async def post_apps_add(message: Request):
     query = ((body or {}).get("query") or "").strip()
     if not query:
         return JSONResponse({"error": "Type an app name or its program path."}, status_code=400)
-    import app_abilities
+    from cygnus.apps import abilities as app_abilities
     out = await asyncio.to_thread(
         _apps_job, "apps", lambda say: app_abilities.add_app(query, progress=say))
     return JSONResponse(dict(out, ok="error" not in out), status_code=400 if "error" in out else 200)
@@ -1418,7 +1417,7 @@ async def post_apps_add(message: Request):
 async def post_apps_fullscan(message: Request):
     """Find every launchable app on this computer, hide noise, register the rest.
     Keeps every rule and choice the user already made."""
-    import app_abilities
+    from cygnus.apps import abilities as app_abilities
     out = await asyncio.to_thread(
         _apps_job, "apps", lambda say: app_abilities.full_scan(progress=say))
     return JSONResponse(dict(out, ok=True))
@@ -1430,7 +1429,7 @@ async def post_apps_abilities_generate(message: Request):
     launching anything."""
     body = await _json_body(message) or {}
     keys = body.get("keys") if isinstance(body.get("keys"), list) else None
-    import app_abilities
+    from cygnus.apps import abilities as app_abilities
     out = await asyncio.to_thread(
         _apps_job, "apps", lambda say: app_abilities.generate(keys=keys, progress=say))
     return JSONResponse(dict(out, ok=True))
@@ -1444,7 +1443,7 @@ async def post_apps_abilities_scan(message: Request):
     key = (body.get("key") or "").strip()
     if not key:
         return JSONResponse({"error": "missing key"}, status_code=400)
-    import app_abilities
+    from cygnus.apps import abilities as app_abilities
     launch = bool(body.get("launch", True))
     out = await asyncio.to_thread(
         _apps_job, key, lambda say: app_abilities.scan_app(key, launch=launch, progress=say))
@@ -1455,7 +1454,7 @@ async def post_apps_abilities_scan(message: Request):
 async def post_apps_abilities_update(message: Request):
     """The user's on/off switch and consent level for one ability."""
     body = await _json_body(message) or {}
-    import app_abilities
+    from cygnus.apps import abilities as app_abilities
     ability = app_abilities.set_choice((body.get("key") or "").strip(),
                                        (body.get("id") or "").strip(),
                                        enabled=body.get("enabled"), level=body.get("level"))
@@ -1470,7 +1469,7 @@ async def post_apps_abilities_test(message: Request):
     one needed detail (a website, a folder, a search), when it has one."""
     body = await _json_body(message) or {}
     key, aid = (body.get("key") or "").strip(), (body.get("id") or "").strip()
-    import app_abilities
+    from cygnus.apps import abilities as app_abilities
     entry = app_abilities.load_apps()["apps"].get(key) or {}
     ability = next((a for a in entry.get("abilities") or [] if a.get("id") == aid), None)
     if ability is None:
@@ -1490,7 +1489,7 @@ async def post_apps_scan_all(message: Request):
     registered app not scanned yet, one at a time. Returns at once; progress
     is under key "apps-scan-all"."""
     import threading
-    import app_abilities
+    from cygnus.apps import abilities as app_abilities
     if not app_abilities.claim_scan_all():
         return JSONResponse({"error": "A deep scan of all apps is already running."}, status_code=409)
     total = len(app_abilities._scan_all_targets())
@@ -1503,14 +1502,14 @@ async def post_apps_scan_all(message: Request):
 @app.post("/apps/abilities/scan-all/cancel")
 async def post_apps_scan_all_cancel(message: Request):
     """Stop after the app being scanned now; the next run resumes from there."""
-    import app_abilities
+    from cygnus.apps import abilities as app_abilities
     app_abilities.cancel_scan_all()
     return JSONResponse({"ok": True})
 
 
 @app.get("/apps/abilities/scan-all")
 async def get_apps_scan_all():
-    import app_abilities
+    from cygnus.apps import abilities as app_abilities
     return JSONResponse(dict(app_abilities.scan_all_status(), ok=True))
 
 
@@ -1518,7 +1517,7 @@ async def get_apps_scan_all():
 async def get_shadow_review(all: int = 0):
     """Shadow mode: where the understand-first router would have acted
     differently from JARVIS, newest first, with readiness stats."""
-    import intent_router
+    from cygnus.brain import intent_router
     return JSONResponse({"ok": True, "items": intent_router.review(disagreements_only=not all),
                          "stats": intent_router.stats()})
 
@@ -1527,7 +1526,7 @@ async def get_shadow_review(all: int = 0):
 async def post_shadow_label(message: Request):
     """The user's verdict on one shadow turn: "old", "new" or "neither"."""
     body = await _json_body(message) or {}
-    import intent_router
+    from cygnus.brain import intent_router
     try:
         intent_router.label(str(body.get("id") or ""), str(body.get("verdict") or ""))
     except ValueError:
@@ -1538,14 +1537,14 @@ async def post_shadow_label(message: Request):
 @app.get("/prefs")
 async def get_prefs():
     """Defaults JARVIS learned from use and you agreed to."""
-    import preferences
+    from cygnus.memory import preferences
     return JSONResponse({"ok": True, "defaults": preferences.all_defaults()})
 
 
 @app.post("/prefs/forget")
 async def post_prefs_forget(message: Request):
     body = await _json_body(message) or {}
-    import preferences
+    from cygnus.memory import preferences
     if not preferences.forget(str(body.get("topic") or "")):
         return JSONResponse({"error": "unknown default"}, status_code=404)
     return JSONResponse({"ok": True})
@@ -1555,7 +1554,7 @@ async def post_prefs_forget(message: Request):
 async def get_apps_rules_progress(key: str = ""):
     """What rule setup is doing right now, for the panel's progress bar:
     {"stage": "Checking https://...", "pct": 70, "done": false}."""
-    import rules_sim
+    from cygnus.rules import sim as rules_sim
     return JSONResponse(dict(rules_sim.get_progress((key or "").strip()), ok=True))
 
 
@@ -1575,11 +1574,11 @@ async def post_apps_rules_recheck(message: Request):
     rid = (body.get("rule_id") or "").strip()
     if not key or not rid:
         return JSONResponse({"error": "missing key or rule_id"}, status_code=400)
-    import rules_compiler
-    import rules_engine
-    import rules_sim
-    import rules_voice
-    from machine_capabilities import REGISTRY_PATH
+    from cygnus.rules import compiler as rules_compiler
+    from cygnus.rules import engine as rules_engine
+    from cygnus.rules import sim as rules_sim
+    from cygnus.rules import voice as rules_voice
+    from cygnus.apps.capabilities import REGISTRY_PATH
     entry = rules_voice._app_entry(key)
     rule = next((r for r in entry.get("compiled_rules") or [] if r.get("rule_id") == rid), None)
     if not rule:
@@ -1615,7 +1614,7 @@ async def get_apps_rules_list(key: str = ""):
     key = (key or "").strip()
     if not key:
         return JSONResponse({"error": "missing key"}, status_code=400)
-    import rules_voice
+    from cygnus.rules import voice as rules_voice
     out = rules_voice.list_rules(key)
     if out.get("status") == "error":
         return JSONResponse(out, status_code=400)
@@ -1630,8 +1629,8 @@ async def get_apps_registry():
     - available (detected, not registered)
     - hidden (explicitly hidden by user)
     """
-    from machine_capabilities import load_registry
-    from curate import registered_apps, detected_but_unregistered, is_registered, is_enabled
+    from cygnus.apps.capabilities import load_registry
+    from cygnus.apps.curate import registered_apps, detected_but_unregistered, is_registered, is_enabled
     reg = load_registry()
     if not reg:
         return JSONResponse({"error": "no registry", "installed": [], "available": [], "hidden": [], "count": 0})
@@ -1689,7 +1688,7 @@ async def post_apps_hide(message: Request):
     hide = bool(body.get("hidden", body.get("hide", True)))
     if not key:
         return JSONResponse({"error": "missing key"}, status_code=400)
-    from machine_capabilities import REGISTRY_PATH
+    from cygnus.apps.capabilities import REGISTRY_PATH
     if not os.path.exists(REGISTRY_PATH):
         return JSONResponse({"error": "no registry"}, status_code=400)
     with open(REGISTRY_PATH, "r", encoding="utf-8") as f:
@@ -1787,7 +1786,7 @@ async def websocket_endpoint(websocket: WebSocket):
     _progress_q = _queue.Queue()
 
     # Job registry -> HUD bridge + Phase 8 proactive voice (speak completions unprompted).
-    import jobs as _jobs
+    from cygnus.jobs import registry as _jobs
     def _on_job_event(event):
         try:
             loop = _ws_loop
@@ -1796,7 +1795,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     _broadcast_job(event), loop)
                 # Phase 8: proactive voice for terminal states
                 try:
-                    import memory_hygiene as _mh
+                    from cygnus.memory import hygiene as _mh
                     line = _mh.proactive_job_announcement(event)
                     if line:
                         # Route through the policy engine (high priority, but
@@ -1828,7 +1827,7 @@ async def websocket_endpoint(websocket: WebSocket):
         try:
             # Plain title / label / tone / detail for the Active Tasks card;
             # the raw fields stay for anything that reads them.
-            import plain_reply
+            from cygnus.brain import plain_reply
             await websocket.send_text(json.dumps({**event, **plain_reply.card(event)}))
         except Exception:
             pass
@@ -1837,7 +1836,7 @@ async def websocket_endpoint(websocket: WebSocket):
     # client in router_health (notice_for), so a phone that reconnects does not
     # hear "Big Pickle ... is answering" again (the owner's ask, 2026-09-12).
     try:
-        import router_health as _rh
+        from cygnus.brain import router_health as _rh
     except Exception:
         _rh = None
 
@@ -1875,7 +1874,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
     # Phase 8: start hygiene loop once per process (6h interval, daemon)
     try:
-        import memory_hygiene as _mh2
+        from cygnus.memory import hygiene as _mh2
         if not getattr(_mh2, "_started", False):
             _mh2.start_hygiene_loop(interval_hours=6)
             _mh2._started = True
@@ -1945,7 +1944,7 @@ async def websocket_endpoint(websocket: WebSocket):
     async def _send_error(err, retry=None, speak=False):
         """A failed turn in plain words (plain_reply.for_error), spoken when the
         turn was. `retry` is what the user asked, so the HUD can send it again."""
-        import plain_reply
+        from cygnus.brain import plain_reply
         line = plain_reply.for_error(err)
         audio = None
         if speak:
@@ -2101,7 +2100,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     # than the tiny corpus, and asking 'did you mean open,
                     # the beatles?' for a clipped command is worse than trying.
                     intent = resolve_intent(text.strip(), INTAKE_CORPUS)
-                    import action_gate    # in lead the gate asks this, for every input path
+                    from cygnus.brain import action_gate    # in lead the gate asks this, for every input path
                     if (intent.needs_confirmation() and intent.candidates
                             and intent.entity is not None and action_gate.MODE != "lead"):
                         await websocket.send_text(json.dumps({
@@ -2237,7 +2236,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         }))
                         continue
                     try:
-                        from warm_harness import warm_redirect
+                        from cygnus.jobs.warm_harness import warm_redirect
                         await websocket.send_text(json.dumps({
                             "type": "status", "state": "thinking"
                         }))
@@ -2414,7 +2413,7 @@ _LAST_ANSWERED = {"model": None}
 
 
 def _note_answering_model(stats: dict, backend: str | None) -> None:
-    from config import OLLAMA_MODEL
+    from cygnus.config import OLLAMA_MODEL
     if (stats or {}).get("model"):
         _LAST_ANSWERED["model"] = stats["model"]
     elif backend == "ollama":
@@ -2425,7 +2424,7 @@ def _warm_running():
     """The first scan reads every process's command line (seconds); later
     ones reuse them (~0.1 s). Take the slow one at startup, off any request."""
     try:
-        import running_apps
+        from cygnus.apps import running as running_apps
         running_apps.inventory()
     except Exception as e:
         print(f"[running] warm-up failed: {e!r}", flush=True)
@@ -2438,7 +2437,7 @@ threading.Thread(target=_warm_running, daemon=True, name="running-warm").start()
 async def get_running():
     """What is running on this machine and what it is doing (running_apps).
     Read-only; the HUD polls it while its Running Now section is visible."""
-    import running_apps
+    from cygnus.apps import running as running_apps
     rows = await asyncio.to_thread(running_apps.inventory)
     return _no_cache(JSONResponse({"rows": rows, "ts": time.time()}))
 
@@ -2457,7 +2456,7 @@ def _laptop_only():
 
 
 def _running_row(row_id):
-    import running_apps
+    from cygnus.apps import running as running_apps
     return next((r for r in running_apps.inventory() if r["id"] == str(row_id)), None)
 
 
@@ -2467,7 +2466,7 @@ _STOP_TOKEN_S = 120
 
 @app.get("/running/text")
 async def running_text(request: Request, id: str):
-    import running_apps
+    from cygnus.apps import running as running_apps
     row = await asyncio.to_thread(_running_row, id)
     text = await asyncio.to_thread(running_apps.window_text, row) if row else ""
     return _no_cache(JSONResponse({"text": text}))
@@ -2478,7 +2477,7 @@ async def running_thumb(request: Request, id: str, full: int = 0):
     """A picture of a row's window (JPEG) for a HUD without Electron's
     thumbnails: the phone, a browser tab. full=1 is the large one."""
     from fastapi.responses import Response
-    import running_apps
+    from cygnus.apps import running as running_apps
     row = await asyncio.to_thread(_running_row, id)
     wins = (row or {}).get("windows") or []
     img = await asyncio.to_thread(running_apps.capture_window, wins[0]["hwnd"],
@@ -2491,7 +2490,7 @@ async def running_thumb(request: Request, id: str, full: int = 0):
 @app.post("/running/front")
 async def running_front(request: Request, id: str):
     # Allowed from the phone too: it only raises a window (owner, 2026-09-14).
-    import running_apps
+    from cygnus.apps import running as running_apps
     row = await asyncio.to_thread(_running_row, id)
     ok, text = await asyncio.to_thread(running_apps.bring_to_front, row)
     return JSONResponse({"ok": ok, "text": text})
@@ -2499,7 +2498,7 @@ async def running_front(request: Request, id: str):
 
 @app.get("/running/describe")
 async def running_describe(request: Request, id: str):
-    import running_apps
+    from cygnus.apps import running as running_apps
     row = await asyncio.to_thread(_running_row, id)
     answer, model = await asyncio.to_thread(running_apps.describe_window, row)
     return _no_cache(JSONResponse({"text": answer or f"I couldn't see it: {model}.",
@@ -2514,7 +2513,7 @@ _APP_PLAN_S = 300
 
 @app.get("/app/targets")
 async def app_targets():
-    import app_commands
+    from cygnus.apps import commands as app_commands
     return _no_cache(JSONResponse({"targets": await asyncio.to_thread(app_commands.targets)}))
 
 
@@ -2534,7 +2533,7 @@ async def _say(client_key: str, text: str, speak: bool, kind: str = "response") 
 async def _run_app_command(client_key: str, slug: str, steps: list, speak: bool):
     """Carry out an app command off the event loop; the reply joins the
     client's conversation like any other answer."""
-    import app_commands
+    from cygnus.apps import commands as app_commands
     print(f"[apps] /{slug} run: {[app_commands.describe(s) for s in steps]}", flush=True)
     await _deliver(client_key, {"type": "status", "state": "thinking"})
     try:
@@ -2548,7 +2547,7 @@ async def _run_app_command(client_key: str, slug: str, steps: list, speak: bool)
         return
     print(f"[apps] /{slug} -> {result[:160]!r}", flush=True)
     try:
-        import agent_loop
+        from cygnus.brain import agent_loop
         agent_loop.remember_slash(client_key, slug, " / ".join(app_commands.describe(s) for s in steps), result)
     except Exception:
         pass
@@ -2561,10 +2560,10 @@ async def _app_command(client_key: str, slug: str, said: str, speak: bool):
     was cancelled with it (2026-09-15). The model reads the instruction
     against the app's own actions; what it has no action for is said, never
     guessed. One step runs; more come back as a plan for Run / Cancel."""
-    import app_commands
+    from cygnus.apps import commands as app_commands
     import secrets
     try:
-        import agent_loop
+        from cygnus.brain import agent_loop
         agent_loop._current_app[client_key] = slug   # follow-ups without the slash stay with it
     except Exception:
         pass
@@ -2607,7 +2606,7 @@ async def running_stop(request: Request):
     if _http_is_remote(request):
         return _laptop_only()
     import secrets
-    import running_apps
+    from cygnus.apps import running as running_apps
     body = await request.json()
     for t in [t for t, (_, at) in _STOP_TOKENS.items() if time.time() - at > _STOP_TOKEN_S]:
         del _STOP_TOKENS[t]
@@ -2630,7 +2629,7 @@ async def running_stop(request: Request):
 @app.get("/status")
 async def get_status():
     """Report the backend actually in use, not a hardcoded guess."""
-    from config import OLLAMA_MODEL, OLLAMA_BASE_URL
+    from cygnus.config import OLLAMA_MODEL, OLLAMA_BASE_URL
     # Ollama was missing from this chain entirely, so with local-only on (every
     # cloud flag False) it fell through to the Gemini branch and reported
     # brain=gemini-2.5-flash / endpoint=google-genai while actually running the
@@ -2676,7 +2675,7 @@ async def get_status():
         "status": "running",
         "brain": actual or model,
         # The same model as the user would name it, for the top bar.
-        "brain_label": __import__("router_health").friendly(actual or model),
+        "brain_label": __import__("cygnus.brain.router_health", fromlist=["_"]).friendly(actual or model),
         "configured": model,
         "local_only": bool(getattr(brain, "_local_only", False)),
         "route": route,
@@ -2685,18 +2684,18 @@ async def get_status():
         "fallback": None if getattr(brain, "_local_only", False) else OLLAMA_MODEL,
         # Whether 9router answers, how often Cygnus had to start it, and the
         # models it would walk right now (router_keeper, router_health).
-        "router_up": __import__("router_keeper").port_open(),
-        "router_restarts": __import__("router_keeper").state.get("started", 0),
-        "router_restarts_hung": __import__("router_keeper").state.get("restarts_hung", 0),
-        "router_models": __import__("router_health").healthy_models()[:8],
+        "router_up": __import__("cygnus.brain.router_keeper", fromlist=["_"]).port_open(),
+        "router_restarts": __import__("cygnus.brain.router_keeper", fromlist=["_"]).state.get("started", 0),
+        "router_restarts_hung": __import__("cygnus.brain.router_keeper", fromlist=["_"]).state.get("restarts_hung", 0),
+        "router_models": __import__("cygnus.brain.router_health", fromlist=["_"]).healthy_models()[:8],
         "last_backend": brain.last_backend,
         "voice": f"whisper:{WHISPER_MODEL}",
         "tts": _TTS_ENGINE,
         "feedback_mode": _vf.current_mode(),
         # Background job table (all tiers) for HUD/programmatic polling.
-        "jobs_active": __import__("jobs").active(),
-        "jobs_recent": __import__("jobs").recent(8),
-        "jobs_status_line": __import__("jobs").status_line(),
+        "jobs_active": __import__("cygnus.jobs.registry", fromlist=["_"]).active(),
+        "jobs_recent": __import__("cygnus.jobs.registry", fromlist=["_"]).recent(8),
+        "jobs_status_line": __import__("cygnus.jobs.registry", fromlist=["_"]).status_line(),
         # The same cards the job events carry, so a page that just opened
         # shows what is running and what ended in the last 15 minutes.
         "job_cards": _job_cards(),
@@ -2728,7 +2727,7 @@ async def post_voice_feedback(message: Request):
 @app.get("/music/now")
 async def get_music_now():
     """Now-playing metadata for the HUD card. Idle when no music window is open."""
-    import music_agent
+    from cygnus.agents import music as music_agent
     try:
         info = await asyncio.to_thread(music_agent.now_playing)
     except Exception as e:
@@ -2747,11 +2746,11 @@ async def post_music(message: Request):
         return JSONResponse({"error": "bad json"}, status_code=400)
     action = (body.get("action") or "").strip().lower()
     if action == "stop_yt":
-        import music_agent
+        from cygnus.agents import music as music_agent
         out = await asyncio.to_thread(music_agent.stop_music)
         return {"ok": True, "action": action, "result": out[:200]}
     if action == "spotify_toggle":
-        from tools import stop_spotify
+        from cygnus.tools import stop_spotify
         out = await asyncio.to_thread(stop_spotify)
         return {"ok": True, "action": action, "result": out[:200]}
     return JSONResponse({"error": f"unknown action: {action}"}, status_code=400)
@@ -2760,7 +2759,7 @@ async def post_music(message: Request):
 def main():
     """Start the server (python -m cygnus)."""
     import uvicorn
-    import jobs as _jobs_owner
+    from cygnus.jobs import registry as _jobs_owner
     _jobs_owner.claim_ownership()
     port = int(os.environ.get("JARVIS_PORT", "8000"))
     # This computer only: the tools open apps and drive the browser with no

@@ -7,7 +7,7 @@ import time
 import numpy as np
 import pytest
 
-from wake_engine import WakeEngine, wake_targets, wake_word_in
+from cygnus.voice.wake import WakeEngine, wake_targets, wake_word_in
 
 
 @pytest.fixture(autouse=True)
@@ -53,7 +53,7 @@ class _FakeStream:
 
 
 def _silent_engine(monkeypatch, open_stream):
-    import wake_engine
+    from cygnus.voice import wake as wake_engine
     _FakeStream.opened = 0
     monkeypatch.setattr(wake_engine.sd, "InputStream", open_stream)
     engine = WakeEngine(voice_engine=None)
@@ -125,7 +125,7 @@ def test_the_sherpa_spotter_hears_the_recorded_wake_clips_and_not_the_talk():
     import os
     import wave
     pytest.importorskip("sherpa_onnx")
-    import wake_kws
+    from cygnus.voice import wake_kws
     data = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "eval", "voice_testset")
     if not os.path.isdir(wake_kws.DEFAULT_DIR) or not os.path.exists(os.path.join(data, "01_wake.wav")):
         pytest.skip("no keyword model or recorded clips here")

@@ -453,7 +453,7 @@ def ask_chatgpt(prompt: str, submit: bool = False, wait_seconds: int = 120) -> s
             answer += " ... (still writing when I stopped listening)"
         raw = answer or "[Error] ChatGPT replied but the text came back empty."
         try:
-            import guard
+            from cygnus.browser import guard
             raw = guard.sanitize_web_text(raw, label="chatgpt reply")
         except Exception:
             pass
@@ -618,7 +618,7 @@ def ask_web_ai(prompt: str, site: str = "chatgpt", submit: bool = False,
                 answer += " ... (still writing when I stopped listening)"
             # Phase 11b: quarantine instruction-shaped content in AI replies.
             try:
-                import guard
+                from cygnus.browser import guard
                 answer = guard.sanitize_web_text(answer, label=f"{site} reply")
             except Exception:
                 pass
@@ -771,7 +771,7 @@ def search_chatgpt_history(query: str, limit: int = 10) -> str:
         best_line = f"BEST MATCH: {best}. " if best else ""
         listed = "; ".join(f"{i}. {t[:110]}" for i, t in enumerate(hits, 1))
         try:
-            import guard
+            from cygnus.browser import guard
             listed = guard.sanitize_web_text(listed, label="chatgpt history")
             best_line = guard.sanitize_web_text(best_line, label="chatgpt history")
         except Exception:
@@ -853,7 +853,7 @@ def open_chatgpt_conversation(title_contains: str, max_chars: int = 3000) -> str
             total += len(chunk)
         raw = f"Conversation at {page.url} has {count} messages. " + " | ".join(parts)
         try:
-            import guard
+            from cygnus.browser import guard
             raw = guard.sanitize_web_text(raw, label="chatgpt conversation")
         except Exception:
             pass
@@ -908,7 +908,7 @@ def open_site(url: str, name: str = "") -> str:
         else:
             raw = f"Opened {label} in a new tab — {title}"
         try:
-            import guard
+            from cygnus.browser import guard
             raw = guard.sanitize_web_text(raw, label="open_site")
         except Exception:
             pass

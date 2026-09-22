@@ -6,9 +6,9 @@ import time
 
 import pytest
 
-import app_abilities as aa
-import dialogue_state as ds
-import preferences as prefs
+from cygnus.apps import abilities as aa
+from cygnus.brain import dialogue_state as ds
+from cygnus.memory import preferences as prefs
 
 
 @pytest.fixture(autouse=True)
@@ -73,7 +73,7 @@ def test_a_different_choice_breaks_the_streak_and_decline_stops_asking():
 
 @pytest.fixture
 def registry(tmp_path, monkeypatch):
-    import machine_capabilities as mc
+    from cygnus.apps import capabilities as mc
     path = tmp_path / "app_registry.json"
     monkeypatch.setattr(mc, "REGISTRY_PATH", str(path))
     path.write_text(json.dumps({"apps": {

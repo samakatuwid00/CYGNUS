@@ -12,8 +12,8 @@ import pytest
 # ------------------------------------------------------- registry reads --
 
 def test_registry_is_read_once_per_change(tmp_path, monkeypatch):
-    import curate
-    import machine_capabilities as mc
+    from cygnus.apps import curate
+    from cygnus.apps import capabilities as mc
     path = tmp_path / "app_registry.json"
     apps = {f"tool{i}": {"name": f"tool{i}", "registered": False} for i in range(300)}
     apps["spotify"] = {"name": "spotify", "registered": True}
@@ -38,7 +38,7 @@ def test_registry_is_read_once_per_change(tmp_path, monkeypatch):
     ("no, I meant open spotify", False), ("stop the music", False),
     ("No Time to Die", False), ("stop", False), ("hindi", True), ("huwag", True)])
 def test_what_counts_as_a_no(text, declines):
-    import brain_gemini
+    from cygnus.brain import core as brain_gemini
     assert bool(brain_gemini._BARE_DECLINE_RE.match(text)) is declines
 
 
@@ -47,13 +47,13 @@ def test_what_counts_as_a_no(text, declines):
     ("sure, go ahead", True), ("sige", True), ("oo", True), ("go for it", True),
     ("ok", False), ("okay", False), ("yes, open spotify", False), ("sure thing", False)])
 def test_what_counts_as_a_yes_to_a_confirm(text, confirms):
-    import brain_gemini
+    from cygnus.brain import core as brain_gemini
     assert bool(brain_gemini._BARE_CONFIRM_RE.match(text)) is confirms
 
 
 def test_no_cancels_the_waiting_hermes_task(monkeypatch):
-    import jobs
-    import tools
+    from cygnus.jobs import registry as jobs
+    from cygnus import tools
     updates = []
     monkeypatch.setattr(jobs, "update", lambda jid, **k: updates.append((jid, k)))
     monkeypatch.setattr(tools, "_audit_log", lambda *a, **k: None)
@@ -69,7 +69,7 @@ def test_no_cancels_the_waiting_hermes_task(monkeypatch):
 
 
 def test_no_cancels_the_newest_of_two_latches(monkeypatch):
-    import tools
+    from cygnus import tools
     monkeypatch.setattr(tools, "_audit_log", lambda *a, **k: None)
     monkeypatch.setattr(tools, "_PENDING_HERMES_CALL", {"raw_task": "old task", "ts": time.time() - 20})
     monkeypatch.setitem(tools._PENDING_DESTRUCTIVE, "autonomous", "clean my downloads")
@@ -80,8 +80,8 @@ def test_no_cancels_the_newest_of_two_latches(monkeypatch):
 
 
 def test_a_confirm_long_after_the_question_runs_nothing_and_says_why(monkeypatch):
-    import jobs
-    import tools
+    from cygnus.jobs import registry as jobs
+    from cygnus import tools
     stale = time.time() - jobs.STALE_TTL_SECONDS - 5
     monkeypatch.setattr(tools, "_audit_log", lambda *a, **k: None)
     monkeypatch.setattr(tools, "_LAST_EXPIRED", {"task": None, "at": 0.0})
@@ -104,7 +104,7 @@ def test_a_confirm_long_after_the_question_runs_nothing_and_says_why(monkeypatch
 # ---------------------------------------------------------- honest reply --
 
 def test_a_model_claiming_an_action_that_never_ran_is_corrected():
-    from brain_gemini import honest_reply
+    from cygnus.brain.core import honest_reply
     claim = "Opened notes app. Let me know if that's the one you meant."
     assert honest_reply(claim, [], "router").startswith("I didn't actually do that, sir")
     assert honest_reply(claim, [{"tool": "open_application"}], "router") == claim
@@ -116,8 +116,8 @@ def test_a_model_claiming_an_action_that_never_ran_is_corrected():
 # -------------------------------------------------------- search there --
 
 def _last_site(monkeypatch, url):
-    import conversation_window as cw
-    import tools
+    from cygnus.brain import conversation_window as cw
+    from cygnus import tools
     opened = []
     monkeypatch.setattr(cw, "last_site",
                         lambda: {"key": "youtube", "url": url, "browser": "chrome"})
@@ -128,7 +128,7 @@ def _last_site(monkeypatch, url):
 
 
 def test_search_there_uses_the_sites_own_search(monkeypatch):
-    import tools
+    from cygnus import tools
     opened = _last_site(monkeypatch, "https://www.youtube.com/")
     out = tools.execute_search({"query": "lo-fi study music"})
     assert opened == ["https://www.youtube.com/results?search_query=lo-fi+study+music"]
@@ -136,8 +136,8 @@ def test_search_there_uses_the_sites_own_search(monkeypatch):
 
 
 def test_search_there_uses_a_verified_rule_search_address(monkeypatch):
-    import site_probe
-    import tools
+    from cygnus.browser import site_probe
+    from cygnus import tools
     monkeypatch.setattr(site_probe, "_read_cache",
                         lambda: {"hollymoviehd.cc": "https://hollymoviehd.cc?s={query}"})
     opened = _last_site(monkeypatch, "https://hollymoviehd.cc/")
@@ -146,8 +146,8 @@ def test_search_there_uses_a_verified_rule_search_address(monkeypatch):
 
 
 def test_search_there_on_an_unknown_site_keeps_the_google_site_search(monkeypatch):
-    import site_probe
-    import tools
+    from cygnus.browser import site_probe
+    from cygnus import tools
     monkeypatch.setattr(site_probe, "_read_cache", lambda: {})
     opened = _last_site(monkeypatch, "https://example.org/")
     out = tools.execute_search({"query": "cats"})
@@ -156,7 +156,7 @@ def test_search_there_on_an_unknown_site_keeps_the_google_site_search(monkeypatc
 
 
 def test_there_is_not_part_of_the_search_words():
-    import tools
+    from cygnus import tools
     assert tools.parse_search_command("now search for lo-fi study music there")["query"] == \
         "lo-fi study music"
     assert tools.parse_search_command("search cat videos on this site")["query"] == "cat videos"
@@ -173,7 +173,7 @@ def test_there_is_not_part_of_the_search_words():
     "could you wipe the temp folder?", "rename my projects folder", "restart the computer",
     "move my photos to the trash", "I need you to shred these files"])
 def test_state_changing_tasks_always_need_a_confirm(task):
-    import tools
+    from cygnus import tools
     assert tools._is_safe_task(task) is False
 
 
@@ -182,7 +182,7 @@ def test_state_changing_tasks_always_need_a_confirm(task):
     "show me my downloads folder", "list my projects", "search the web for lo-fi music",
     "open spotify", "please tell me a joke", "good morning", "what is a factory pattern?"])
 def test_chat_and_reads_stay_unconfirmed(task):
-    import tools
+    from cygnus import tools
     assert tools._is_safe_task(task) is True
 
 
@@ -193,12 +193,12 @@ def test_chat_and_reads_stay_unconfirmed(task):
     ("accounts.google.com.ph", "google accounts"), ("m.facebook.com", "facebook"),
     ("irimsv-library.net", "irimsv-library"), ("chat.deepseek.com", "deepseek chat")])
 def test_site_names_keep_their_subdomain(host, name):
-    import web_registry
+    from cygnus.apps import web_registry
     assert web_registry._domain_name(host) == name
 
 
 def test_normalize_renames_subdomains_and_keeps_bare_names_as_aliases():
-    import web_registry
+    from cygnus.apps import web_registry
     h = lambda host, visits: {"url": f"https://{host}", "host": host, "aliases": [],
                               "source": "history", "visits": visits, "top_urls": []}
     sites = {"youtube": h("music.youtube.com", 251), "google": h("gemini.google.com", 16),
@@ -216,7 +216,7 @@ def test_normalize_renames_subdomains_and_keeps_bare_names_as_aliases():
 
 
 def test_a_manual_name_beats_another_sites_alias():
-    import web_registry
+    from cygnus.apps import web_registry
     reg = {"generated": "t", "sites": {
         "youtube music": {"url": "https://music.youtube.com", "host": "music.youtube.com",
                           "aliases": ["youtube"], "source": "history"},
@@ -230,7 +230,7 @@ def test_a_manual_name_beats_another_sites_alias():
 # --------------------------------------------------------- ollama preload --
 
 def _brain_with(monkeypatch, **flags):
-    import brain_gemini as bg
+    from cygnus.brain import core as bg
     for k, v in flags.items():
         monkeypatch.setattr(bg, k, v)
     monkeypatch.setattr(bg, "GEMINI_API_KEY", "")
@@ -257,8 +257,8 @@ def test_ollama_is_preloaded_when_local_is_the_brain_or_kept_warm(monkeypatch):
 # ------------------------------------------------------------ never rule --
 
 def test_never_close_is_a_clear_hard_close_block():
-    import rules_compiler as rc
-    import rules_engine
+    from cygnus.rules import compiler as rc
+    from cygnus.rules import engine as rules_engine
     rule = rc.parse_scaffold("notepad", "never close notepad")["candidate_rules"][0]
     assert rule["needs_clarification"] is False and rule["enforcement"] == "hard"
     assert rule["adapter_check"] == "pre_close: block"
@@ -271,6 +271,6 @@ def test_never_close_is_a_clear_hard_close_block():
 
 
 def test_vague_rules_still_ask():
-    import rules_compiler as rc
+    from cygnus.rules import compiler as rc
     rule = rc.parse_scaffold("spotify", "keep it quiet")["candidate_rules"][0]
     assert rule["needs_clarification"] is True

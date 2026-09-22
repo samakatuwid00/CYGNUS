@@ -1,16 +1,20 @@
-"""Watch jarvis-demo .py files and auto-restart jarvis_web.py on changes.
-Usage: python watch_and_restart.py
-Polls every 2s. Kills old process, starts new one. Ctrl+C to stop."""
-import os, sys, time, subprocess, signal, glob
-import paths
+"""Watch Cygnus's Python files and restart the server (python -m cygnus) when
+one changes. Usage: python scripts/watch_and_restart.py
+Polls every 2s. Kills old process, starts new one. Ctrl+C to stop.
+Do not run it while the desktop app owns the backend: both would start a
+server on the same port."""
+import glob
+import os
+import signal
+import subprocess
+import sys
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # the repository
+from cygnus import paths  # noqa: E402
 
 ROOT = str(paths.ROOT)
-WATCH = [os.path.join(ROOT, f) for f in ("brain_gemini.py", "tools.py", "autonomous.py",
-                                           "music_agent.py", "voice_engine.py", "wake_engine.py",
-                                           "config.py", "session_store.py", "browser_agent.py",
-                                           "project_agent.py", "report_agent.py",
-                                           "warm_harness.py")]
-WEB = os.path.join(ROOT, "jarvis_web.py")
+WATCH = sorted(glob.glob(os.path.join(ROOT, "cygnus", "**", "*.py"), recursive=True))
 POLL = 2  # seconds
 
 mtimes = {f: os.path.getmtime(f) for f in WATCH if os.path.exists(f)}
@@ -18,8 +22,8 @@ proc = None
 
 def start():
     global proc
-    print(f"[watcher] Starting jarvis_web.py ...", flush=True)
-    proc = subprocess.Popen([sys.executable, WEB], cwd=ROOT)
+    print("[watcher] Starting python -m cygnus ...", flush=True)
+    proc = subprocess.Popen([sys.executable, "-m", "cygnus"], cwd=ROOT)
     print(f"[watcher] PID {proc.pid}", flush=True)
 
 def stop():
@@ -62,7 +66,7 @@ while True:
         # Don't kill a live autonomous job — Hermes is mid-run in a subprocess
         # we can't hand off. Wait until it finishes (or is cancelled) instead.
         try:
-            import autonomous
+            from cygnus.jobs import autonomous
             if autonomous.any_running():
                 print("[watcher] Deferring restart — autonomous job running. "
                       "Will restart after it finishes.", flush=True)

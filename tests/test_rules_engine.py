@@ -5,7 +5,7 @@ try:
 except ImportError:
     pytest = None
 
-from rules_engine import evaluate_app_rules
+from cygnus.rules.engine import evaluate_app_rules
 
 
 def _hard_entry():

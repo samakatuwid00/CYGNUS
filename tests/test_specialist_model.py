@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-import router_health
-import tools
+from cygnus.brain import router_health
+from cygnus import tools
 
 CFG = {"model": "ninerouter/cx/gpt-5.4-mini",
        "agent": {"browser-session": {"model": "ninerouter/ag/gemini-3-flash"},

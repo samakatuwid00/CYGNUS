@@ -7,12 +7,12 @@ import json
 
 import pytest
 
-import app_abilities as aa
+from cygnus.apps import abilities as aa
 
 
 @pytest.fixture
 def registry(tmp_path, monkeypatch):
-    import machine_capabilities as mc
+    from cygnus.apps import capabilities as mc
     path = tmp_path / "app_registry.json"
     monkeypatch.setattr(mc, "REGISTRY_PATH", str(path))
 
@@ -102,7 +102,7 @@ def _pe(path, subsystem):
 
 
 def test_exe_subsystem_reads_the_pe_header(tmp_path):
-    import machine_capabilities as mc
+    from cygnus.apps import capabilities as mc
     assert mc.exe_subsystem(_pe(tmp_path / "app.exe", 2)) == "gui"
     assert mc.exe_subsystem(_pe(tmp_path / "wc.exe", 3)) == "console"
     (tmp_path / "alias.exe").write_bytes(b"")          # WindowsApps alias: 0 bytes
@@ -113,7 +113,7 @@ def test_exe_subsystem_reads_the_pe_header(tmp_path):
 def _machine(tmp_path, monkeypatch, registry, old, scanned, start_menu):
     """A fake computer: `scanned` {key: (file, subsystem)} are written as real
     PE files; `start_menu` names the files that have a Start Menu shortcut."""
-    import machine_capabilities as mc
+    from cygnus.apps import capabilities as mc
     write, read = registry
     write(old)
     found = {}
@@ -224,7 +224,7 @@ def test_add_app_by_program_path(registry, tmp_path):
 
 
 def test_add_app_explains_an_unknown_name(registry, monkeypatch):
-    import machine_capabilities as mc
+    from cygnus.apps import capabilities as mc
     monkeypatch.setattr(mc, "resolve_candidates", lambda q: (None, []))
     assert "couldn't find" in aa.add_app("nothing-here", scan=False)["error"]
 
@@ -285,7 +285,7 @@ def test_runner_respects_never_off_and_missing_values(registry):
 
 def test_runner_refuses_unsafe_links_paths_and_addresses(registry, monkeypatch):
     import os
-    import tools
+    from cygnus import tools
     started = []
     monkeypatch.setattr(os, "startfile", lambda p: started.append(p), raising=False)
     monkeypatch.setattr(tools, "_open_url_in_browser",
@@ -303,7 +303,7 @@ def test_open_folder_never_runs_a_program(registry, monkeypatch, tmp_path):
     import os
     started = []
     monkeypatch.setattr(os, "startfile", lambda p: started.append(p), raising=False)
-    monkeypatch.setattr("audit.log_call", lambda *a, **k: None)
+    monkeypatch.setattr("cygnus.audit.log_call", lambda *a, **k: None)
     program = tmp_path / "evil.bat"
     program.write_text("echo hi")
     _app_with(registry, {"id": "spotify.f", "name": "Open a folder", "needs": {"path": "folder"},
@@ -317,7 +317,7 @@ def test_runner_encodes_names_into_allowed_links(registry, monkeypatch):
     import os
     started = []
     monkeypatch.setattr(os, "startfile", lambda p: started.append(p), raising=False)
-    monkeypatch.setattr("audit.log_call", lambda *a, **k: None)
+    monkeypatch.setattr("cygnus.audit.log_call", lambda *a, **k: None)
     _app_with(registry, {"id": "spotify.search", "name": "Search Spotify",
                          "needs": {"query": "text"}, "level": "safe",
                          "how": [{"op": "uri", "uri": "spotify:search:{query}"}]})
@@ -374,7 +374,7 @@ def test_click_and_type_abilities_find_controls_in_a_desktop_window(registry, mo
     win = _LiveWindow([_Control("Search", "Button"), liked, search])
     monkeypatch.setattr(aa, "_window_or_open", lambda key, entry: win)
     monkeypatch.setattr(aa, "FIND_WAIT", 0)
-    monkeypatch.setattr("audit.log_call", lambda *a, **k: None)
+    monkeypatch.setattr("cygnus.audit.log_call", lambda *a, **k: None)
     _app_with(registry, {"id": "spotify.click_liked_songs", "name": "Click Liked Songs",
                          "level": "safe", "how": [{"op": "click", "target": "Liked Songs"}]})
     assert aa.run_ability("spotify", "spotify.click_liked_songs") == "Done: Click Liked Songs."
@@ -398,7 +398,7 @@ class _ClosableWindow(_Window):
 
 
 def test_scan_closes_only_the_window_it_opened(registry, monkeypatch):
-    import tools
+    from cygnus import tools
     write, read = registry
     write({"figma": {"name": "figma", "bin": "C:/Figma.exe", "abilities": []}})
     windows = iter([None, _ClosableWindow([("Share", "Button")])])
@@ -413,13 +413,13 @@ def test_scan_closes_only_the_window_it_opened(registry, monkeypatch):
 
 
 def test_closing_file_explorer_never_ends_explorer_exe(registry, monkeypatch):
-    import tools
+    from cygnus import tools
     write, _ = registry
     write({"explorer": {"name": "explorer", "abilities": aa.build_abilities("explorer", {}, "files")}})
     monkeypatch.setattr(aa, "find_app_window", lambda entry, timeout=1.0: _ClosableWindow([]))
     monkeypatch.setattr(tools, "close_application",
                         lambda key: (_ for _ in ()).throw(AssertionError("killed the shell")))
-    monkeypatch.setattr("audit.log_call", lambda *a, **k: None)
+    monkeypatch.setattr("cygnus.audit.log_call", lambda *a, **k: None)
     _ClosableWindow.closed = 0
     assert aa.run_ability("explorer", "explorer.close") == "Done: Close File Explorer."
     assert _ClosableWindow.closed == 1

@@ -3,8 +3,8 @@ after "confirm" (the brief took 37-60 s before the question, 2026-09-12)."""
 
 import pytest
 
-import jobs
-import tools
+from cygnus.jobs import registry as jobs
+from cygnus import tools
 
 
 @pytest.fixture
@@ -17,7 +17,7 @@ def hermes(monkeypatch, tmp_path):
     monkeypatch.setattr(tools, "_PENDING_HERMES_CALL", None)
     monkeypatch.setitem(tools._PENDING_DESTRUCTIVE, "task", None)
     monkeypatch.setitem(tools._PENDING_DESTRUCTIVE, "autonomous", None)
-    import context_assembler
+    from cygnus.brain import context_assembler
     calls = {"brief": [], "ran": []}
     monkeypatch.setattr(context_assembler, "assemble_brief",
                         lambda task, delegate=None: calls["brief"].append(task) or "BRIEF\n")
@@ -47,7 +47,7 @@ def test_confirm_builds_the_brief_then_runs_the_same_task(hermes):
 def test_a_background_confirm_answers_at_once(hermes):
     import threading, time
     gate = threading.Event()
-    import context_assembler
+    from cygnus.brain import context_assembler
     slow = context_assembler.assemble_brief
     context_assembler.assemble_brief = lambda task, delegate=None: (gate.wait(5), slow(task))[1]
     try:

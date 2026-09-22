@@ -3,7 +3,7 @@ poison is tool-result blocks eating context + model degradation. Also test timeo
 import json, sys, os, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from openai import OpenAI
-import brain_gemini as b
+from cygnus.brain import core as b
 
 client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
 tools = b._openai_tools()

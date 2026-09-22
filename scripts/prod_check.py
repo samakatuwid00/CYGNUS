@@ -81,7 +81,7 @@ def check_server(url):
                 "detail": f"no Cygnus server on {' or '.join(tried)}; start it (desktop app or jarvis_web.py)"}, None
     st = httpx.get(base.rstrip("/") + "/status", timeout=5).json()
     problems = []
-    import router_keeper
+    from cygnus.brain import router_keeper
     if st.get("router_up") is False:
         problems.append("9router is not running")
     elif not router_keeper.responds(timeout=10):

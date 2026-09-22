@@ -1,6 +1,6 @@
 """transcript_pick: Whisper's transcript vs the browser's live one."""
 
-import transcript_pick as tp
+from cygnus.voice import transcript_pick as tp
 
 HEARD = "Search, and that's all shit left for me."
 LIVE = "search The Social Network for me"

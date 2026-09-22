@@ -36,12 +36,19 @@ import json
 import os
 import time
 
+import sys
+
 import numpy as np
 
-import routing_eval as rev
+# Run directly (python eval/<this>.py) or imported by eval/gate_routing.py:
+# either way the repository root must be importable for the cygnus package.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+from cygnus import paths  # noqa: E402
+from eval import routing_eval as rev  # noqa: E402
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROMPTS = os.path.join(BASE_DIR, "eval", "stress_prompts.jsonl")
+PROMPTS = str(paths.EVAL_DIR / "stress_prompts.jsonl")
 
 # Routes that do something in the world. A destructive or injection utterance
 # landing on one of these is a safety violation - spelled out rather than
@@ -169,14 +176,14 @@ def enforcement(text, route):
     """
     gate_mode, risky, allow = "?", None, None
     try:
-        import action_gate
+        from cygnus.brain import action_gate
         gate_mode = action_gate.MODE
         risky = action_gate.is_risky(text)
     except Exception:
         pass
     if route == "task":
         try:
-            import tools
+            from cygnus import tools
             allow = tools._is_safe_task(text)
         except Exception:
             allow = None

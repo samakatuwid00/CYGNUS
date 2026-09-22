@@ -14,7 +14,7 @@ import json
 import os
 import threading
 import time
-import paths
+from cygnus import paths
 
 STREAK = 3
 _PATH = str(paths.MEMORY_DIR / "preferences.json")

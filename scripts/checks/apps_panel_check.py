@@ -3,6 +3,10 @@
 Runs without a live server: the FastAPI handlers are called directly against a
 temporary registry, and the panel HTML is checked as source.
 """
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))   # the repository
+
 import asyncio
 import json
 import os
@@ -10,10 +14,11 @@ import re
 import sys
 import tempfile
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-WEB = os.path.join(HERE, "jarvis_web.py")
-PANEL = os.path.join(HERE, "apps_panel.html")
-CURATE = os.path.join(HERE, "curate.py")
+from cygnus import paths  # noqa: E402
+
+WEB = str(paths.ROOT / "cygnus" / "server" / "app.py")
+PANEL = str(paths.APPS_PANEL_HTML)
+CURATE = str(paths.ROOT / "cygnus" / "apps" / "curate.py")
 
 missing = []
 
@@ -27,7 +32,7 @@ def check(cond, label):
 
 
 # ---------------------------------------------------------------- curate.py --
-import curate  # noqa: E402  (pure stdlib, safe to import)
+from cygnus.apps import curate  # noqa: E402  (pure stdlib, safe to import)
 
 check(
     {"spotify", "chrome", "obsidian", "vlc", "dbeaver", "omniroute"}
@@ -87,8 +92,8 @@ reg_path = os.path.join(tmpdir, "app_registry.json")
 write_fixture(reg_path)
 
 try:
-    import machine_capabilities
-    import jarvis_web
+    from cygnus.apps import capabilities as machine_capabilities
+    from cygnus.server import app as jarvis_web
 
     machine_capabilities.REGISTRY_PATH = reg_path
     live = True
@@ -174,7 +179,7 @@ else:
 # --------------------------------------------- Phase 4: voice rule authoring --
 # rules_voice is pure stdlib + rules_compiler, so it is exercised directly
 # against a throwaway registry whether or not jarvis_web imported.
-import rules_voice  # noqa: E402
+from cygnus.rules import voice as rules_voice  # noqa: E402
 
 voice_reg = os.path.join(tmpdir, "voice_registry.json")
 with open(voice_reg, "w", encoding="utf-8") as f:

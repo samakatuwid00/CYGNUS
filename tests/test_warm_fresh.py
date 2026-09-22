@@ -3,7 +3,7 @@ alone; /redirect reaches the job that just ran (2026-09-13)."""
 
 import pytest
 
-import warm_harness as wh
+from cygnus.jobs import warm_harness as wh
 
 
 @pytest.fixture

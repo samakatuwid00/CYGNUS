@@ -8,15 +8,15 @@ for the other.
 
 import pytest
 
-import brain_gemini as b
-import routing_eval as re_
-import tools
+from cygnus.brain import core as b
+from eval import routing_eval as re_
+from cygnus import tools
 
 
 @pytest.fixture
 def empty_registries(monkeypatch):
     """No app and no site resolves, so only the referent rule can answer."""
-    import web_registry
+    from cygnus.apps import web_registry
     monkeypatch.setattr(tools, "_load_app_registry", lambda: {})
     monkeypatch.setattr(tools, "_rule_site_url", lambda name: None)
     monkeypatch.setattr(web_registry, "resolve_site", lambda name: None)
@@ -126,7 +126,7 @@ def test_a_named_app_still_closes():
 def test_the_name_collision_clarify_still_asks(monkeypatch):
     """"open cursor" is both an installed app and a registered site: that
     question is a different one and still carries the name."""
-    import web_registry
+    from cygnus.apps import web_registry
     monkeypatch.setattr(tools, "_load_app_registry", lambda: {"cursor": {}})
     monkeypatch.setattr(tools, "_rule_site_url", lambda name: None)
     monkeypatch.setattr(web_registry, "resolve_site", lambda name: "cursor" if name == "cursor" else None)
@@ -142,5 +142,5 @@ def test_a_referent_is_not_a_link_in_an_open_chain(empty_registries):
 
 
 def test_action_gate_does_not_read_a_referent_as_a_collision(empty_registries):
-    import action_gate
+    from cygnus.brain import action_gate
     assert action_gate._app_and_site("it") is None

@@ -6,9 +6,9 @@ import time
 
 import pytest
 
-import browser_cdp
-import rules_steps
-import rules_voice
+from cygnus.browser import cdp as browser_cdp
+from cygnus.rules import steps as rules_steps
+from cygnus.rules import voice as rules_voice
 
 RESULTS = """<a href="https://hollymoviehd.cc/the-social-network-2010/" title="The Social Network (2010)">x</a>
 <a href="https://hollymoviehd.cc/social-network-doc/" title="Social Network: The Documentary">y</a>"""
@@ -24,10 +24,10 @@ OPEN_RULE = {"rule_id": "open_my_facebook", "source_phrase": "open my facebook",
 
 @pytest.fixture
 def world(tmp_path, monkeypatch):
-    import audit
-    import rules_engine
-    import site_probe
-    import tools
+    from cygnus import audit
+    from cygnus.rules import engine as rules_engine
+    from cygnus.browser import site_probe
+    from cygnus import tools
     calls = []
     path = tmp_path / "app_registry.json"
     path.write_text(json.dumps({"apps": {"brave": {"category": "browser",
@@ -94,22 +94,22 @@ def test_follow_ups_expire_and_need_a_reference(world, monkeypatch):
 # ------------------------------------------------------------ Chrome opens --
 
 def test_chrome_open_uses_the_control_port_first(monkeypatch):
-    import tools
+    from cygnus import tools
     monkeypatch.setattr(browser_cdp, "is_attached", lambda b: True)
     monkeypatch.setattr(browser_cdp, "open_tab", lambda b, url: {"id": "t"})
-    monkeypatch.setattr("browser_agent.open_site",
+    monkeypatch.setattr("cygnus.browser.agent.open_site",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("Playwright used")))
     assert tools._open_in_chrome("https://facebook.com", "facebook") == "Opened facebook in Chrome."
 
 
 def test_chrome_open_uses_the_users_own_chrome_not_the_driver(monkeypatch, tmp_path):
-    import tools
+    from cygnus import tools
     launched = []
     exe = tmp_path / "chrome.exe"
     exe.write_text("")
     monkeypatch.setattr(browser_cdp, "is_attached", lambda b: False)
     # the driver could land in a signed-out JARVIS profile: never used when Chrome exists
-    monkeypatch.setattr("browser_agent.open_site",
+    monkeypatch.setattr("cygnus.browser.agent.open_site",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("driver used")))
     monkeypatch.setattr(tools, "_load_app_registry", lambda: {"chrome": {"bin": str(exe)}})
     monkeypatch.setattr(tools.subprocess, "Popen", lambda cmd, **k: launched.append(cmd))

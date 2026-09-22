@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-import router_health as rh
+from cygnus.brain import router_health as rh
 
 
 @pytest.fixture(autouse=True)
@@ -158,7 +158,7 @@ class _Client:
 
 def test_the_probe_counts_only_a_tool_call(monkeypatch, tmp_path):
     import openai
-    import router_keeper
+    from cygnus.brain import router_keeper
     replies = {"ag/claude-sonnet-4-6": "tool",
                "ag/gemini-3.5-flash-low": "Gemini 3.5 Flash is no longer available.",
                "cu/claude-4.5-sonnet": ""}
@@ -174,7 +174,7 @@ def test_the_probe_counts_only_a_tool_call(monkeypatch, tmp_path):
 
 
 def test_the_probe_starts_a_router_that_is_down_and_marks_nothing(monkeypatch):
-    import router_keeper
+    from cygnus.brain import router_keeper
     started = []
     monkeypatch.setattr(router_keeper, "port_open", lambda timeout=0.5: False)
     monkeypatch.setattr(router_keeper, "ensure_up", lambda wait=20: started.append(wait) or False)
@@ -185,7 +185,7 @@ def test_the_probe_starts_a_router_that_is_down_and_marks_nothing(monkeypatch):
 
 
 def test_the_local_model_notice_names_a_router_that_is_down(monkeypatch):
-    import router_keeper
+    from cygnus.brain import router_keeper
     monkeypatch.setattr(router_keeper, "state", {"up": False})
     assert rh.answer_notice(None, "ollama", "Claude Sonnet 4.6").startswith("9router isn't running")
 
@@ -201,7 +201,7 @@ def test_timeouts_from_a_hung_router_are_forgiven():
 
 
 def test_the_probe_does_not_blame_models_for_a_silent_router(monkeypatch):
-    import router_keeper
+    from cygnus.brain import router_keeper
     monkeypatch.setattr(router_keeper, "port_open", lambda timeout=0.5: True)
     monkeypatch.setattr(router_keeper, "responds", lambda timeout=5.0: False)
     rh.mark_healthy("ag/claude-sonnet-4-6", 1.0)

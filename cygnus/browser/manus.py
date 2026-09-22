@@ -18,7 +18,7 @@ import os
 import time
 import traceback
 from pathlib import Path
-import paths
+from cygnus import paths
 
 COOKIE_FILE = Path(os.getenv("JARVIS_MANUS_COOKIES",
                              paths.MANUS_COOKIES))

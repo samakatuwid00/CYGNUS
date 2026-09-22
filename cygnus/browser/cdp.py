@@ -17,8 +17,8 @@ import time
 import urllib.parse
 import urllib.request
 
-import rules_engine
-import paths
+from cygnus.rules import engine as rules_engine
+from cygnus import paths
 
 # One fixed port per browser. Chrome shares 9223 with browser_agent and the
 # "Chrome (JARVIS)" shortcut: one Chrome profile can only serve one port.

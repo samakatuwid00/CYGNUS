@@ -14,13 +14,7 @@ from faster_whisper import WhisperModel
 from faster_whisper.vad import VadOptions
 import edge_tts
 
-from config import (
-    WHISPER_MODEL, WHISPER_DEVICE, WHISPER_COMPUTE_TYPE,
-    WHISPER_CPU_THREADS, WHISPER_INITIAL_PROMPT, WHISPER_BEAM_SIZE,
-    WAKE_WHISPER_MODEL, WAKE_WHISPER_CPU_THREADS,
-    WAKE_WORD, WAKE_WORD_TIMEOUT,
-    TTS_VOICE, TTS_RATE, TTS_VOLUME
-)
+from cygnus.config import (WHISPER_MODEL, WHISPER_DEVICE, WHISPER_COMPUTE_TYPE, WHISPER_CPU_THREADS, WHISPER_INITIAL_PROMPT, WHISPER_BEAM_SIZE, WAKE_WHISPER_MODEL, WAKE_WHISPER_CPU_THREADS, WAKE_WORD, WAKE_WORD_TIMEOUT, TTS_VOICE, TTS_RATE, TTS_VOLUME)
 
 # Cleaner utterance boundaries than the VAD defaults.
 VAD_PARAMETERS = VadOptions(
@@ -93,7 +87,7 @@ class VoiceEngine:
             print(f"[YOU] {text}")
 
         # Check for wake word (fuzzy match)
-        from wake_engine import wake_word_in
+        from cygnus.voice.wake import wake_word_in
         return wake_word_in(text)
 
     def listen_for_command(self, timeout=8.0):
@@ -265,7 +259,7 @@ class VoiceEngine:
         see transcript_pick for how the two are compared. `known`: the
         user's app and site names, so the transcript that names one wins.
         """
-        import transcript_pick
+        from cygnus.voice import transcript_pick
         audio = self._load_audio(file_path)
         heard, conf = self._decode(audio, WHISPER_INITIAL_PROMPT)
         # Whisper keeps only the prompt's last ~223 tokens: cap the hint so the

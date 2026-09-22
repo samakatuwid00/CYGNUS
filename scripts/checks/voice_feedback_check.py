@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """Unit tests for voice_feedback policy engine (dedup / cooldown / modes)."""
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))   # the repository
+
 import os
 import sys
 import time
@@ -9,7 +13,7 @@ os.environ["JARVIS_VOICE_FEEDBACK"] = "essential"
 os.environ["JARVIS_VOICE_CUE_COOLDOWN_S"] = "8"
 os.environ["JARVIS_VOICE_THINKING_CUE_S"] = "4"
 
-import voice_feedback as vf  # noqa: E402
+from cygnus.voice import feedback as vf  # noqa: E402
 
 P = vf._default
 

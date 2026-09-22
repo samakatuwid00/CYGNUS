@@ -16,7 +16,7 @@ import os
 import threading
 
 import numpy as np
-import paths
+from cygnus import paths
 
 GOLD = str(paths.EVAL_DIR / "routing_gold.jsonl")
 MODEL = os.getenv("JARVIS_SEMANTIC_MODEL", "minishlab/potion-multilingual-128M")

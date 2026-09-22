@@ -31,8 +31,8 @@ def check(name, cond, detail=""):
 
 
 print("=== 1. Wiring across all touchpoints ===")
-import tools
-import brain_gemini
+from cygnus import tools
+from cygnus.brain import core as brain_gemini
 
 # Aug 2026: the tool surface was unified — the ONE delegation primitive exposed
 # to the brain is `delegate` (auto-routes music/desktop/web/specialist/hermes).

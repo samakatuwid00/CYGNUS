@@ -19,7 +19,7 @@ import copy
 import threading
 import time
 
-import rules_engine
+from cygnus.rules import engine as rules_engine
 
 _PROGRESS = {}
 _PLOCK = threading.Lock()
@@ -88,7 +88,7 @@ def spoken_example(trigger, sample):
 
 
 def _default_llm():
-    import rules_ai
+    from cygnus.rules import ai as rules_ai
     return rules_ai._ask_llm
 
 
@@ -200,7 +200,7 @@ def app_shell(dom):
     """A page that renders itself in the browser: the DOM dump has almost no
     text and no buttons or links, so a missing click target is unknown, not
     absent."""
-    import site_probe
+    from cygnus.browser import site_probe
     low = (dom or "").lower()
     has_controls = "<button" in low or "<a " in low
     return not has_controls or len(site_probe.visible_text(dom or "").strip()) < 200
@@ -227,7 +227,7 @@ def _simulate_steps(app_key, rule, entry, steps, say, probe, llm):
     """Dry-run a multi-step rule: the matcher, the real search page, the top
     picks, and whether each click target is on the first pick's page. Desktop
     steps would open the app, so they are listed, not run. Returns (status, url)."""
-    import rules_steps
+    from cygnus.rules import steps as rules_steps
     action = rule["action"]
     ops = [s.get("op") for s in action["steps"]]
     sample = sample_for(rule) if ops[0] == "search" else ""
@@ -303,7 +303,7 @@ def simulate(app_key, rule, entry=None, progress=None, llm=None, probe=None,
     if probe is None:
         probe = PROBE
     if probe is None:
-        import site_probe as probe
+        from cygnus.browser import site_probe as probe
     if llm is None:
         llm = _default_llm()
     steps = []

@@ -13,7 +13,7 @@ import webbrowser
 import urllib.parse
 import urllib.request
 from pathlib import Path
-import paths
+from cygnus import paths
 
 # Phase 1: Structured audit trail (load-bearing before concurrency).
 # Every delegation + every file read/write lands here as JSONL: timestamp,
@@ -93,7 +93,7 @@ def _quarantine_external(text: str, label: str = "external") -> str:
     if not text:
         return text
     try:
-        import guard
+        from cygnus.browser import guard
         cleaned = guard.sanitize_web_text(text, label=label)
         if cleaned != text and guard.is_suspicious(text):
             _audit_log("guard", f"quarantine:{label}", "quarantined", f"hits in {label}", extra={"label": label})
@@ -295,7 +295,7 @@ def write_file(path: str, content: str, overwrite: bool = False) -> str:
         existed = p.exists()
         # quarantine content that looks like embedded instruction? No — this is outbound, but log if suspicious
         try:
-            import guard
+            from cygnus.browser import guard
             if guard.is_suspicious(content):
                 _audit_log("write_file", str(p), "suspicious_content_quarantined", result=content[:200])
         except Exception:
@@ -1081,7 +1081,7 @@ def _remember_site(result: str, name: str, url: str, browser: str) -> str:
     """Record a successful site open so a follow-up 'search X' can reuse it."""
     if not str(result).startswith("[Error]"):
         try:
-            import conversation_window as cw
+            from cygnus.brain import conversation_window as cw
             cw.record_site(name or url, url, browser)
         except Exception:
             pass
@@ -1095,8 +1095,8 @@ def _open_in_chrome(url: str, name: str) -> str:
     driver (browser_agent) is the last resort only: when Chrome is already
     open without the port it falls back to a separate, signed-out profile —
     wrong for "open my facebook"."""
-    import browser_cdp
-    import rules_engine as _rules
+    from cygnus.browser import cdp as browser_cdp
+    from cygnus.rules import engine as _rules
     label = name or url
     if not _rules.is_web_url(url):
         return f"[Error] {url!r} is not a web address."
@@ -1108,7 +1108,7 @@ def _open_in_chrome(url: str, name: str) -> str:
                          creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
         return f"Opened {label} in Chrome."
     try:
-        return __import__("browser_agent").open_site(url, name=name)
+        return __import__("cygnus.browser.agent", fromlist=["_"]).open_site(url, name=name)
     except Exception as e:
         return f"[Error] Opening {label} in Chrome failed: {type(e).__name__}"
 
@@ -1184,7 +1184,7 @@ def open_site(name: str, url: str = None, _rule_hops: int = 0,
     browser: app_registry key the user asked for ('visit X on Brave').
     Precedence: that > the browser entry owning a matching site rule > Chrome.
     """
-    import web_registry as wr
+    from cygnus.apps import web_registry as wr
     # A spoken sentence ends in a period; it is not part of the name, and
     # neither are "for me" or a trailing "site" ("open GitHub site" failed
     # as the unknown site "GitHub site", 2026-09-12).
@@ -1203,7 +1203,7 @@ def open_site(name: str, url: str = None, _rule_hops: int = 0,
         # Phase 3 runtime enforcement: a site's compiled_rules can deny the
         # open outright or redirect it to another registered site.
         try:
-            import rules_engine as _rules
+            from cygnus.rules import engine as _rules
             gate = _rules.check(key, {"action": "open", "entry": site})
         except Exception:
             gate = {"action": "allow"}
@@ -1230,7 +1230,7 @@ def open_site(name: str, url: str = None, _rule_hops: int = 0,
 
 def rescan_sites() -> str:
     """Full incremental rescan of browser history into web_registry.json."""
-    import web_registry as wr
+    from cygnus.apps import web_registry as wr
     reg = wr.scan_sites()
     wr.build_index()
     n = len(reg.get("sites", {}))
@@ -1241,7 +1241,7 @@ def rescan_sites() -> str:
 
 def search_sessions(query: str, limit: int = 10) -> str:
     """Full-text search over past JARVIS conversations."""
-    import session_index as si
+    from cygnus.memory import session_index as si
     si.rebuild()  # cheap incremental; picks up any lines written by other processes
     hits = si.search_sessions(query, int(limit or 10))
     if not hits:
@@ -1360,7 +1360,7 @@ _LEAD_HISTORY = re.compile(
 def _exact_site_key(cand: str):
     """Exact-only registry lookup (name or alias). NEVER fuzzy here: a search
     tail like 'manila' must stay part of the query, not become a website."""
-    import web_registry as wr
+    from cygnus.apps import web_registry as wr
     wr.ensure_index()
     q = cand.strip().lower().rstrip(".!?")
     return wr._index["exact"].get(q)
@@ -1497,7 +1497,7 @@ def _site_search_url(host: str) -> str | None:
     template = _SITE_SEARCH.get(host)
     if not template:
         try:
-            import site_probe
+            from cygnus.browser import site_probe
             template = site_probe._read_cache().get(host)
         except Exception:
             template = None
@@ -1506,22 +1506,22 @@ def _site_search_url(host: str) -> str | None:
 
 def execute_search(parsed: dict) -> str:
     """Run a parsed search command against the right backend."""
-    import web_registry as wr
+    from cygnus.apps import web_registry as wr
     if parsed.get("clarify"):
         return parsed["clarify"]
     q, target = parsed["query"], parsed.get("target")
 
     if parsed.get("is_history_search"):
         # ChatGPT has real conversation-history search via browser_agent
-        return __import__("browser_agent").search_chatgpt_history(q)
+        return __import__("cygnus.browser.agent", fromlist=["_"]).search_chatgpt_history(q)
 
     if target:
         site = wr.get_site(target)
         url = site["url"] if site else f"https://{target}.com"
         # AI web chats get the query typed into the composer; plain sites just open
         if target in _AI_TYPED_SITES.values():
-            return __import__("browser_agent").ask_web_ai(prompt=q, site=target)
-        result = __import__("browser_agent").open_site(url, name=target)
+            return __import__("cygnus.browser.agent", fromlist=["_"]).ask_web_ai(prompt=q, site=target)
+        result = __import__("cygnus.browser.agent", fromlist=["_"]).open_site(url, name=target)
         return f"{result} — search for '{q}' manually there; I can't search inside that site yet."
 
     # No site named: reuse the last site opened this session, if any, as a
@@ -1529,7 +1529,7 @@ def execute_search(parsed: dict) -> str:
     # remembered and no browser spoken -> the unchanged default search.
     browser = parsed.get("browser")
     try:
-        import conversation_window as cw
+        from cygnus.brain import conversation_window as cw
         site = None if parsed.get("web") else cw.last_site()
     except Exception:
         site = None
@@ -1584,9 +1584,9 @@ def run_rule_action(rule: dict, owner: str, action: dict, slot: str = "",
                     entry: dict | None = None) -> str:
     """Carry out one runnable rule (search_site / open_site)."""
     import time as _time
-    import rules_engine as _rules
+    from cygnus.rules import engine as _rules
     if action.get("type") == "steps":
-        import rules_steps
+        from cygnus.rules import steps as rules_steps
         return rules_steps.start(rule, owner, action, slot)
     t0 = _time.time()
     slot = (slot or "").strip().strip(".,!?")
@@ -1598,7 +1598,7 @@ def run_rule_action(rule: dict, owner: str, action: dict, slot: str = "",
         # slot "movie name" -> "Which movie, sir?"
         label = re.sub(r"\s+name$", "", action.get("slot") or "") or "one"
         question = f"Which {label}, sir?"
-        import dialogue_state
+        from cygnus.brain import dialogue_state
         dialogue_state.ask("slot", question, {"rule": rule.get("rule_id")}, owner="tools")
         return question
     url = _rules.build_action_url(action, slot)
@@ -1615,7 +1615,7 @@ def run_rule_action(rule: dict, owner: str, action: dict, slot: str = "",
         used = "Chrome" if note else _browser_label(browser or "chrome")
         if searching:
             msg = f"Searching {site} for {slot} in {used}."
-            import rules_steps
+            from cygnus.rules import steps as rules_steps
             rules_steps.remember("results", {"rule": rule, "owner": owner, "action": action,
                                              "slot": slot, "entry": entry}, url=url)
             msg += _learn_preference(action, site, browser)
@@ -1626,7 +1626,7 @@ def run_rule_action(rule: dict, owner: str, action: dict, slot: str = "",
             msg = f"Opened {site} in {used}."
         out = f"{msg}\n{note}" if note else msg
     try:
-        import audit
+        from cygnus import audit
         audit.log_call("rules.action", {"rule": rule.get("rule_id"), "owner": owner,
                                         "slot": slot, "url": url},
                        _time.time() - t0, out)
@@ -1639,8 +1639,8 @@ def _learn_preference(action: dict, site: str, browser: str | None) -> str:
     """Count this search toward a learned default; after a streak, ask once
     ("Make that the default?") and hold the question for the next reply."""
     try:
-        import dialogue_state
-        import preferences
+        from cygnus.brain import dialogue_state
+        from cygnus.memory import preferences
         topic = re.sub(r"\s+name$", "", action.get("slot") or "site") + " search"
         question = preferences.observe(topic, {"site": site, "browser": browser})
         if question:
@@ -1662,12 +1662,12 @@ _LEAD_ACK_RE = re.compile(r"^(?:yes|yeah|yep|ok(?:ay)?|sure)[,.!]?\s+(?=\S)", re
 
 def _answer_preference(text: str):
     """Yes/no to our "Make that the default?" question, else None."""
-    import dialogue_state
-    import preferences
+    from cygnus.brain import dialogue_state
+    from cygnus.memory import preferences
     asked = dialogue_state.pending("preference")
     if not asked:
         return None
-    import consent
+    from cygnus.brain import consent
     topic = asked["payload"].get("topic")
     reply = consent.read(text, soft=True, extra_yes=_MAKE_DEFAULT_RE)
     if reply.kind == "yes":
@@ -1707,8 +1707,8 @@ def try_rule_action(text: str, semantic: bool = True):
     pend = dict(_PENDING_RULE_SLOT)
     _PENDING_RULE_SLOT.clear()
     try:
-        import rules_engine as _rules
-        import rules_steps
+        from cygnus.rules import engine as _rules
+        from cygnus.rules import steps as rules_steps
         # Our own open questions first: "Did you mean your gym time rule?"
         # and "Change the rule to ...?" take a yes/no before anything else.
         answer = _answer_rule_guess(t)
@@ -1746,13 +1746,13 @@ def try_rule_action(text: str, semantic: bool = True):
         # "gym time" rule; "sum up this column" is "total it".
         if not semantic:
             return None
-        import rules_match
+        from cygnus.rules import match as rules_match
         sm = rules_match.semantic(t)
         if sm and sm["confidence"] >= rules_match.SURE:
             rules_match.learn_trigger(sm["owner"], sm["rule"].get("rule_id"), t)
             return _run_matched_rule(sm, t)
         if sm and sm["confidence"] >= rules_match.ASK:
-            import dialogue_state
+            from cygnus.brain import dialogue_state
             question = f"Did you mean {rules_match.describe(sm)}?"
             _RULE_GUESS.clear()
             _RULE_GUESS.update(match=sm, said=t, ts=_time.time())
@@ -1781,11 +1781,11 @@ def _run_matched_rule(m, said):
     """Run a matched rule (fast or semantic tier): its time condition first,
     then the run, then a first-time hint on what the user should see."""
     import time as _time
-    import rules_engine as _rules
-    import rules_steps
+    from cygnus.rules import engine as _rules
+    from cygnus.rules import steps as rules_steps
     rule = m["rule"]
     if not _rules.condition_holds(rule):
-        import rules_ai
+        from cygnus.rules import ai as rules_ai
         when = rules_ai.describe_condition(rule.get("condition"))
         return (f'Your rule "{rule.get("source_phrase") or rule.get("rule_id")}" only '
                 f"applies {when}, sir, so I left it.")
@@ -1809,17 +1809,17 @@ def _run_matched_rule(m, said):
 def _answer_rule_guess(text):
     """Yes/no to "Did you mean your <rule> rule?", else None."""
     import time as _time
-    import dialogue_state
+    from cygnus.brain import dialogue_state
     asked = dialogue_state.pending("rule_guess")
     guess = dict(_RULE_GUESS)
     if not asked or not guess or _time.time() - guess.get("ts", 0) > _RULE_GUESS_TTL:
         return None
-    import consent
+    from cygnus.brain import consent
     reply = consent.read(text, soft=True)
     if reply.kind == "yes":
         _RULE_GUESS.clear()
         dialogue_state.answered()
-        import rules_match
+        from cygnus.rules import match as rules_match
         sm = guess["match"]
         rules_match.learn_trigger(sm["owner"], sm["rule"].get("rule_id"), guess["said"])
         return _run_matched_rule(sm, guess["said"])
@@ -1843,7 +1843,7 @@ def _start_rule_fix(text):
     rest = (text or "")[m.end():].strip(" .,;:!?-")
     rest = re.sub(r"^(?:it\s+should|i\s+wanted\s+it\s+to|i\s+meant|instead)\s*", "", rest, flags=re.I).strip()
     rule = last["rule"]
-    import dialogue_state
+    from cygnus.brain import dialogue_state
     if not rest:
         _RULE_FIX.clear()
         _RULE_FIX.update(owner=last["owner"], rule=rule, ts=_time.time(), stage="ask")
@@ -1861,8 +1861,8 @@ def _propose_rule_fix(owner, rule, feedback):
     """Recompile the rule with the user's correction and hold the proposal
     for a yes (save) or another correction."""
     import time as _time
-    import dialogue_state
-    import rules_voice
+    from cygnus.brain import dialogue_state
+    from cygnus.rules import voice as rules_voice
     step = rules_voice.begin_fix(owner, rule, feedback)
     if step.get("status") != "proposal":
         _RULE_FIX.clear()
@@ -1878,21 +1878,21 @@ def _propose_rule_fix(owner, rule, feedback):
 def _answer_rule_fix(text):
     """The reply to "what should have happened?" or to the reworked proposal."""
     import time as _time
-    import dialogue_state
+    from cygnus.brain import dialogue_state
     asked = dialogue_state.pending("rule_fix")
     fix = dict(_RULE_FIX)
     if not asked or not fix or _time.time() - fix.get("ts", 0) > _RULE_GUESS_TTL:
         return None
-    import consent
+    from cygnus.brain import consent
     reply = consent.read(text, soft=True)
     if reply.kind == "no" or _RULE_CANCEL_RE.match(text or ""):
         _RULE_FIX.clear()
         dialogue_state.answered()
-        import rules_voice
+        from cygnus.rules import voice as rules_voice
         rules_voice.cancel_setup(fix["owner"])
         return "Okay, the rule stays as it is."
     if fix.get("stage") == "proposal" and reply.kind == "yes":
-        import rules_voice
+        from cygnus.rules import voice as rules_voice
         step = rules_voice.handle_clarification(fix["owner"], "", "yes")
         _RULE_FIX.clear()
         dialogue_state.answered()
@@ -2077,7 +2077,7 @@ def resolve_open_target(text: str, force: str | None = None,
     if force != "app" and _rule_site_url(t):
         return ("site", t)
 
-    import web_registry as wr
+    from cygnus.apps import web_registry as wr
     site_key = wr.resolve_site(t)
     if browser and force != "app":
         return ("site", site_key) if site_key else (None, text)
@@ -2389,7 +2389,7 @@ def _expire_confirms() -> None:
     """Drop the Hermes-family and autonomous latches once their confirm
     window has passed, remembering what was dropped for the next "confirm"."""
     global _PENDING_HERMES_CALL
-    import jobs as _jobs
+    from cygnus.jobs import registry as _jobs
     now = time.time()
     hermes = _PENDING_HERMES_CALL
     if hermes and hermes.get("ts") and now - hermes["ts"] > _jobs.STALE_TTL_SECONDS:
@@ -2657,7 +2657,7 @@ def _run_hermes_sync(task: str, timeout: int, max_turns: int,
     and an unrelated CLAUDE_TASK.md read on 2026-09-13).
     Phase 4: progress_cb streams milestone status to the caller (WS/voice).
     """
-    from warm_harness import warm_send
+    from cygnus.jobs.warm_harness import warm_send
     return warm_send(task, timeout=timeout, max_turns=max_turns,
                      progress_cb=progress_cb, fresh=True)
 
@@ -2704,7 +2704,7 @@ DESCRIBED_ONLY_NOTE = "only described the work; no files in Cygnus's folder chan
 def _finish_hermes_job(jid, result: str, before: dict, look_only: bool) -> None:
     """Mark a finished Hermes job done, or unverified when a changing task
     came back as a description of the work and nothing changed."""
-    import jobs as _jobs
+    from cygnus.jobs import registry as _jobs
     if not look_only and _DESCRIBES_ONLY_RE.match(result) and not _changed_files(before):
         _jobs.update(jid, state="unverified", note=DESCRIBED_ONLY_NOTE, result=result, summary=result[:200])
     else:
@@ -2719,7 +2719,7 @@ def _look_only_report(before: dict, result: str, jid) -> str:
     note = "Files in Cygnus's folder changed while this look-only job ran: " + ", ".join(changed[:8])
     _audit_log("delegate_to_hermes", note, "look_only_changed_files", extra={"jid": jid})
     try:
-        import jobs as _jobs
+        from cygnus.jobs import registry as _jobs
         _jobs.update(jid, note=note)
     except Exception:
         pass
@@ -2782,7 +2782,7 @@ def delegate_to_hermes(task: str, timeout: int = 300, max_turns: int = 15,
     needs_confirm = not is_safe
     _audit_log("delegate_to_hermes", gate_target, "safe" if is_safe else "needs_confirm", confirm=confirm, extra={"is_safe": is_safe, "needs_confirm": needs_confirm, "timeout": timeout, "max_turns": max_turns})
     # Phase 2: session registry — every delegation gets a job ID, non-blocking, proactive.
-    import jobs as _jobs
+    from cygnus.jobs import registry as _jobs
     # create job early so waiting-on-confirm is also tracked (queryable, not hidden in latch)
     # `jid`: the card that waited for this confirm carries on (no new card).
     jid = jid or _jobs.create(gate_target[:200], tier="hermes", background=background)
@@ -2889,7 +2889,7 @@ def decline_pending() -> str | None:
         _PENDING_HERMES_CALL = None
         _PENDING_DESTRUCTIVE["task"] = None
         if hermes.get("jid"):
-            import jobs as _jobs
+            from cygnus.jobs import registry as _jobs
             _jobs.update(hermes["jid"], state="cancelled", note="declined by the user")
     _audit_log("delegate_to_hermes", what, "declined", confirm=False)
     return f"Cancelled, sir. I won't run “{what[:80]}”."
@@ -2930,7 +2930,7 @@ def confirm_pending(on_done=None, progress_cb=None, background: bool | None = No
         _audit_log(f"delegate:{kw['spec']}", (kw.get("raw_task") or "")[:200], "confirmed",
                    confirm=True, extra={"jid": kw.get("jid")})
         if kw.get("jid"):
-            import jobs as _jobs
+            from cygnus.jobs import registry as _jobs
             _jobs.update(kw["jid"], state="timeout",
                          note="superseded — confirmed, running as a new job")
         agent = None if kw["spec"] == "opencode" else kw["spec"]
@@ -2948,7 +2948,7 @@ def confirm_pending(on_done=None, progress_cb=None, background: bool | None = No
     if kw.pop("grounded", False):         # asked before its brief was built: build it now
         return _confirm_grounded(kw, superseded_jid)
     if superseded_jid:
-        import jobs as _jobs
+        from cygnus.jobs import registry as _jobs
         _jobs.update(superseded_jid, state="timeout",
                      note="superseded — re-confirmed, running as a new job")
     return delegate_to_hermes(confirm=True, **kw)
@@ -2958,7 +2958,7 @@ def _confirm_grounded(kw: dict, jid: str | None) -> str:
     """Run a confirmed task whose brief was not built for the question: build
     it now, on the card that waited, in the background when the turn allows,
     so "confirm" is answered at once instead of after the ~37 s brief."""
-    import jobs as _jobs
+    from cygnus.jobs import registry as _jobs
     if jid:
         _jobs.update(jid, state="running", note="getting ready")
     raw = kw.get("raw_task") or kw["task"]
@@ -3010,10 +3010,10 @@ def _app_context(task: str) -> str:
     instead of guessing. computer_use is a skill, not a loaded tool in the harness,
     so deterministic path/URI guidance is what makes app control actually work."""
     try:
-        from machine_capabilities import resolve as _resolve
+        from cygnus.apps.capabilities import resolve as _resolve
     except Exception:
         try:
-            from machine_capabilities import resolve as _resolve
+            from cygnus.apps.capabilities import resolve as _resolve
         except Exception:
             return ""
     # Known app keywords to probe (broad; resolve() does fuzzy match).
@@ -3057,11 +3057,11 @@ def delegate_to_hermes_grounded(task: str, timeout: int = 300, max_turns: int = 
                                   raw_task=task, background=background, on_done=on_done,
                                   progress_cb=progress_cb, grounded=True)
     try:
-        import context_assembler as ca
+        from cygnus.brain import context_assembler as ca
         prefix = ca.assemble_brief(task, delegate="hermes")
     except Exception:
         # fallback to legacy assembly if assembler missing
-        from session_store import recent_summary
+        from cygnus.memory.session_store import recent_summary
         profile = _load_profile()
         recent = recent_summary(6)
         appctx = _app_context(task)
@@ -3116,7 +3116,7 @@ def _detect_backend(task: str) -> str:
     backend = _detect_backend_by_task(task)
     if backend == "manus":
         try:
-            import manus_agent
+            from cygnus.browser import manus as manus_agent
             if not manus_agent._cookies_present():
                 return "hermes"
         except Exception:
@@ -3160,7 +3160,7 @@ def _detect_backend_by_task(task: str) -> str:
         verb_map = reg.get("verb_map", {})
         # Use intake to resolve verb
         try:
-            from intake import resolve_intent, load_corpus
+            from cygnus.brain.intake import resolve_intent, load_corpus
             intent = resolve_intent(task, load_corpus())
             verb = (intent.verb or "").lower()
             handle = verb_map.get(verb)
@@ -3184,7 +3184,7 @@ def _detect_backend_by_task(task: str) -> str:
             pass
     # Fallback: legacy intake verb_backend (hardcoded list kept for compat)
     try:
-        from intake import verb_backend, resolve_intent, load_corpus
+        from cygnus.brain.intake import verb_backend, resolve_intent, load_corpus
         intent = resolve_intent(task, load_corpus())
         be = verb_backend(intent.verb)
         if be and be in ("music", "desktop", "web", "manus", "chatgpt", "native"):
@@ -3344,7 +3344,7 @@ def _run_cli_agent(task: str, name: str, timeout: int = 300) -> str:
         return f"[cli:{name}] not in cli_agents.json."
     # Phase 4: brief for ideation delegates
     try:
-        import context_assembler as ca
+        from cygnus.brain import context_assembler as ca
         brief = ca.assemble_brief(task, delegate=name)
         task = brief + task
     except Exception:
@@ -3456,7 +3456,7 @@ def open_after_job(asked: str, result: str) -> str:
     exe = None
     if which == "chrome":
         try:
-            import browser_agent
+            from cygnus.browser import agent as browser_agent
             exe = browser_agent._chrome_exe()
         except Exception:
             exe = None
@@ -3481,11 +3481,11 @@ def _start_cli_job(task: str, name: str, raw_task: str = None, on_done=None,
                    jid: str = None, timeout: int = CLI_JOB_TIMEOUT) -> str:
     """Run `task` through CLI agent `name` in the background; returns the ack.
     `jid`: the job that waited for the confirm, so the same card carries on."""
-    import jobs as jobreg
+    from cygnus.jobs import registry as jobreg
     label = _cli_label(name)
     asked = f"{raw_task or ''}\n{task}"          # "... and open it in Chrome" is read at the end
     try:
-        import context_assembler as ca
+        from cygnus.brain import context_assembler as ca
         prompt = ca.assemble_brief(task, delegate=name) + task
     except Exception:
         prompt = task
@@ -3540,7 +3540,7 @@ def _cli_delegate(task: str, name: str, raw_task: str = None, confirm: bool = Fa
     user's confirm when it may change files. The confirm uses the Hermes latch,
     so "confirm" / "no" and the brain's confirm handling work unchanged."""
     global _PENDING_HERMES_CALL
-    import jobs as jobreg
+    from cygnus.jobs import registry as jobreg
     raw = (raw_task or task).strip()
     if _is_not_a_task(task):
         return _not_a_task_reply(raw)
@@ -3571,7 +3571,7 @@ def _specialist_delegate(task: str, agent: str | None, raw_task: str = None, con
     user's confirm when it may change things. Before 2026-09-13 these ran with
     no confirm at all."""
     global _PENDING_HERMES_CALL
-    import jobs as jobreg
+    from cygnus.jobs import registry as jobreg
     raw = (raw_task or task).strip()
     pending = _PENDING_HERMES_CALL or {}
     if confirm and pending.get("spec") and pending.get("task") == task:
@@ -3601,13 +3601,13 @@ def _run_specialist_now(task, agent, pi, timeout, background, on_done) -> str:
 
 def _run_specialist(task: str, agent: str | None = None, timeout: int = 300) -> str:
     """Run a task through the OpenCode specialist tier with per-delegate brief (Phase 4)."""
-    import shutil, jobs as jobreg
+    import shutil; from cygnus.jobs import registry as jobreg
     import subprocess
     oc = _direct_launcher("opencode")
     if oc is None:
         return "[specialist] OpenCode not installed; route to hermes."
     try:
-        import context_assembler as ca
+        from cygnus.brain import context_assembler as ca
         brief = ca.assemble_brief(task, delegate=agent or "opencode")
         task = brief + task
     except Exception:
@@ -3634,7 +3634,7 @@ def _run_specialist(task: str, agent: str | None = None, timeout: int = 300) -> 
     body = "\n".join(lines).strip() or "(empty response)"
     # Phase 6: check if delegate needs clarification (missing context)
     try:
-        import context_assembler as ca
+        from cygnus.brain import context_assembler as ca
         if ca.delegate_needs_clarification(body):
             jobreg.update(jid, state="waiting-on-confirm", note="delegate needs clarification", summary=body[:120])
             return body
@@ -3686,13 +3686,13 @@ def _run_specialist_bg(task: str, agent: str | None, timeout: int,
     """Spawn a specialist as a non-blocking process; returns (ack, jid). Phase 4 brief via context_assembler."""
     import shutil
     import subprocess
-    import jobs as jobreg
+    from cygnus.jobs import registry as jobreg
     oc = _direct_launcher("opencode")
     if oc is None:
         return ("[specialist] OpenCode not installed; route to hermes.", "")
     # Phase 4: per-delegate brief (opencode gets code-focused vault slice)
     try:
-        import context_assembler as ca
+        from cygnus.brain import context_assembler as ca
         brief = ca.assemble_brief(task, delegate=agent or "opencode")
         full_task = brief + task
     except Exception:
@@ -3782,7 +3782,7 @@ def _run_pi_specialist(task: str, agent: str | None = None, timeout: int = 300) 
     Mirrors _run_specialist but invokes scripts/pi_sandbox.sh, which runs Pi
     inside Docker. OpenCode path is untouched.
     """
-    import shutil, jobs as jobreg, subprocess
+    import shutil, subprocess; from cygnus.jobs import registry as jobreg
     bash = shutil.which("bash")
     if bash is None:
         return "[pi] bash unavailable; cannot launch sandbox."
@@ -3790,7 +3790,7 @@ def _run_pi_specialist(task: str, agent: str | None = None, timeout: int = 300) 
     if not os.path.exists(script):
         return "[pi] sandbox wrapper missing; route to opencode."
     try:
-        import context_assembler as ca
+        from cygnus.brain import context_assembler as ca
         brief = ca.assemble_brief(task, delegate="pi")
         task = brief + task
     except Exception:
@@ -3811,7 +3811,7 @@ def _run_pi_specialist(task: str, agent: str | None = None, timeout: int = 300) 
         return f"[pi] failed: {err}"
     body = out or "(empty response)"
     try:
-        import context_assembler as ca
+        from cygnus.brain import context_assembler as ca
         if ca.delegate_needs_clarification(body):
             jobreg.update(jid, state="waiting-on-confirm", note="pi needs clarification")
             return body
@@ -3829,12 +3829,12 @@ _PI_LOCK = threading.Lock()
 def _run_pi_specialist_bg(task: str, agent: str | None, timeout: int,
                            on_done=None) -> tuple[str, str]:
     """Spawn a Pi specialist as a non-blocking process; returns (ack, jid)."""
-    import shutil, subprocess, jobs as jobreg
+    import shutil, subprocess; from cygnus.jobs import registry as jobreg
     script = str(paths.SCRIPTS_DIR / "pi_sandbox.sh")
     if not os.path.exists(script):
         return ("[pi] sandbox wrapper missing; route to opencode.", "")
     try:
-        import context_assembler as ca
+        from cygnus.brain import context_assembler as ca
         brief = ca.assemble_brief(task, delegate="pi")
         full_task = brief + task
     except Exception:
@@ -3892,7 +3892,7 @@ def _run_pi_specialist_bg(task: str, agent: str | None, timeout: int,
 
 def run_autonomous(goal: str, timeout: int = 1800, confirm: bool = False) -> str:
     """Phase 15: launch a supervised autonomous Hermes job — allowlist-gated (Phase 1)."""
-    import autonomous
+    from cygnus.jobs import autonomous
     goal = str(goal or "").strip()
     if not goal:
         return "[Error] No goal given for autonomous run."
@@ -3932,7 +3932,7 @@ def confirm_autonomous() -> str | None:
 
 
 def _start_autonomous(goal: str, timeout: int) -> str:
-    import autonomous
+    from cygnus.jobs import autonomous
     ack, jid = autonomous.start_goal(goal, timeout=timeout,
                                      progress_cb=getattr(_tools_tls, "cb", None))
     _audit_log("run_autonomous", goal, "queued", extra={"jid": jid})
@@ -3941,7 +3941,7 @@ def _start_autonomous(goal: str, timeout: int) -> str:
 
 def job_control(action: str, jid: str | None = None) -> str:
     """Phase 15/16: status query / stop for autonomous jobs."""
-    import autonomous
+    from cygnus.jobs import autonomous
     action = str(action or "").strip().lower()
     if action == "stop":
         # Voice path ("stop the task") arrives WITHOUT an id — resolve the
@@ -3955,7 +3955,7 @@ def job_control(action: str, jid: str | None = None) -> str:
         # No id: every kind of task (Hermes hand-offs too, which the autonomous
         # status file never saw), in plain words.
         if jid is None:
-            import plain_reply
+            from cygnus.brain import plain_reply
             return plain_reply.job_status()
         return autonomous.latest_status(jid)
     return f"[Error] Unknown job_control action '{action}' (use status|stop)."
@@ -4013,7 +4013,7 @@ def remember_fact(text: str) -> str:
     # validity, provenance. Best-effort — the profile bullet above is the
     # durable fallback if the store fails for any reason.
     try:
-        import semantic_memory as _sm
+        from cygnus.memory import semantic as _sm
         _sm.set_embedder(_get_embedding_model_wrapper)
         _sm.set_classifier(_router_audn_classifier)
         res = _sm.add(fact, source="remember")
@@ -4041,7 +4041,7 @@ def _router_audn_classifier(new_text: str, old_text: str):
     (the caller falls back to the deterministic threshold)."""
     try:
         from openai import OpenAI
-        from config import ROUTER_BASE_URL, ROUTER_API_KEY, ROUTER_MODEL
+        from cygnus.config import ROUTER_BASE_URL, ROUTER_API_KEY, ROUTER_MODEL
         client = OpenAI(base_url=ROUTER_BASE_URL, api_key=ROUTER_API_KEY or "dummy",
                         timeout=25, max_retries=0)
         prompt = (
@@ -4149,7 +4149,8 @@ def _specialist_model_args(agent: str | None) -> list:
     to cx/gpt-5.4-mini (no key) and antigravity models (out of quota), so on
     2026-09-12 every hand-off failed with "Missing API key"."""
     try:
-        import router_health
+        import importlib as _il
+        router_health = _il.import_module("cygnus.brain.router_health")   # honours sys.modules (tests swap in a stand-in)
         healthy = router_health.healthy_models()
         if not healthy:
             return []
@@ -4296,7 +4297,7 @@ _LOCAL_DISPATCH = {
     "web": lambda task: execute_tool("search_web", {"query": task}),
     "chatgpt": lambda task: execute_tool("ask_chatgpt",
                                          {"prompt": task, "submit": True}),
-    "manus": lambda task: __import__("manus_agent").delegate_to_manus(task),
+    "manus": lambda task: __import__("cygnus.browser.manus", fromlist=["_"]).delegate_to_manus(task),
     "opencli": lambda task: _dispatch_opencli(task, confirm),
 }
 
@@ -4339,7 +4340,7 @@ def delegate(
 
     # ---- Phase 9: conversation window (local fast path context) ----------
     try:
-        import conversation_window as cw
+        from cygnus.brain import conversation_window as cw
     except Exception:
         cw = None
 
@@ -4352,7 +4353,7 @@ def delegate(
             choice = cw.answer_clarify(_rtask)
             if pend and choice:
                 try:
-                    import dialogue_state
+                    from cygnus.brain import dialogue_state
                     if dialogue_state.pending("app_or_site"):
                         dialogue_state.answered()
                 except Exception:
@@ -4456,7 +4457,7 @@ def delegate(
             if cw is not None:
                 cw.append(task, "clarify", payload=dict(target8))
             try:
-                import dialogue_state
+                from cygnus.brain import dialogue_state
                 dialogue_state.ask("open_choice", question, dict(target8), owner="tools")
             except Exception:
                 pass
@@ -4467,7 +4468,7 @@ def delegate(
             question = (f"Found '{target8['name']}' both as an installed app and a "
                         f"website — which one, the app or the site?")
             try:                             # one place knows every open question
-                import dialogue_state
+                from cygnus.brain import dialogue_state
                 dialogue_state.ask("app_or_site", question, {"name": target8["name"]}, owner="tools")
             except Exception:
                 pass
@@ -4684,7 +4685,7 @@ def _note_opened(name, entry=None):
     """Remember the app just opened or shown: "close it" a moment later
     means this one (the bare pronoun used to be refused)."""
     try:
-        import dialogue_state
+        from cygnus.brain import dialogue_state
         dialogue_state.remember_result("app", app=(entry or {}).get("label") or name,
                                        title=name)
     except Exception:
@@ -4695,7 +4696,7 @@ def _focus_running(names, binp) -> str | None:
     """Bring the app's open window forward rather than launch it again:
     "show PowerPoint" from the phone opened a second PowerPoint (2026-09-14)."""
     try:
-        import running_apps
+        from cygnus.apps import running as running_apps
         row = running_apps.app_window(names, exe=binp)
         if row:
             _note_opened(row["name"])
@@ -4751,13 +4752,13 @@ def open_application(app: str, action: str = None, query: str = None,
     # fall through to the legacy matcher below (old+new run in parallel; the
     # opt-in set is the new router's candidate pool, the scan is the fallback).
     try:
-        from curate import registered_match, is_enabled
+        from cygnus.apps.curate import registered_match, is_enabled
         _reg_key = registered_match(requested)
         # ponytail: skip re-entry when _reg_key == requested (infinite loop).
         # Fix: only re-enter when the key DIFFERS (alias resolution).
         if _reg_key and _reg_key != requested and is_enabled(_reg_key):
             try:
-                from machine_capabilities import load_registry
+                from cygnus.apps.capabilities import load_registry
                 _apps = (load_registry() or {}).get("apps", {})
                 _entry = _apps.get(_reg_key)
                 if _entry and _entry.get("bin"):
@@ -4773,7 +4774,7 @@ def open_application(app: str, action: str = None, query: str = None,
     # 1) Try app_registry.json first (fresh scan), then capabilities.json.
     entry = None
     try:
-        from machine_capabilities import load_registry, resolve_normalized
+        from cygnus.apps.capabilities import load_registry, resolve_normalized
         reg = load_registry()
         if reg:
             n = requested.lower().strip()
@@ -4817,8 +4818,7 @@ def open_application(app: str, action: str = None, query: str = None,
             # stem as a PATH component (...\bin\code.cmd) among launchable
             # entries, preferring the shortest key.
             if not entry:
-                from machine_capabilities import (
-                    _is_launchable as _stem_launchable)
+                from cygnus.apps.capabilities import _is_launchable as _stem_launchable
                 _PRODUCT_EXE = _product_exe_map()
                 for phrase, exe_stem in _PRODUCT_EXE.items():
                     if phrase in n:
@@ -4885,10 +4885,10 @@ def open_application(app: str, action: str = None, query: str = None,
         pass
     if not entry:
         try:
-            from machine_capabilities import resolve as _resolve
+            from cygnus.apps.capabilities import resolve as _resolve
         except Exception:
             try:
-                from machine_capabilities import resolve as _resolve
+                from cygnus.apps.capabilities import resolve as _resolve
             except Exception:
                 _resolve = None
         # Resolve-before-act. resolve() returns the FIRST substring match and
@@ -4899,11 +4899,11 @@ def open_application(app: str, action: str = None, query: str = None,
         # already match on word boundaries and longest-key-wins.
         if _resolve:
             try:
-                from machine_capabilities import resolve_candidates as _rc
+                from cygnus.apps.capabilities import resolve_candidates as _rc
                 _tier, _cands = _rc(requested)
                 _launchable_cands = []
                 try:
-                    from machine_capabilities import _is_launchable as _lc
+                    from cygnus.apps.capabilities import _is_launchable as _lc
                     _launchable_cands = [(k, v) for k, v in _cands
                                          if _lc(v.get("bin"))]
                 except Exception:
@@ -4913,7 +4913,7 @@ def open_application(app: str, action: str = None, query: str = None,
                     _audit_log("open_application", requested, "AMBIGUOUS",
                                result=f"{len(_launchable_cands)} candidates")
                     try:                     # "the second one" / "codium" answers it
-                        import dialogue_state
+                        from cygnus.brain import dialogue_state
                         dialogue_state.ask("pick", "Which one should I open?",
                                            {"verb": "open",
                                             "options": [k for k, _ in _launchable_cands[:5]]},
@@ -4934,7 +4934,7 @@ def open_application(app: str, action: str = None, query: str = None,
     # 2026-08-25: this ALSO drops component exes (installer/updater/helper) —
     # capabilities.json fallback can still surface them ('updater' ->
     # LibreOffice updater.exe), so re-check here, never trust the source.
-    from machine_capabilities import _is_launchable as _launchable
+    from cygnus.apps.capabilities import _is_launchable as _launchable
     if entry and not _launchable(entry.get("bin")):
         entry = None
     binp = entry.get("bin") if entry else None
@@ -4945,7 +4945,7 @@ def open_application(app: str, action: str = None, query: str = None,
     # until now. A hard rule blocks the launch outright; a soft rule surfaces
     # as a reminder the caller can render to the user.
     try:
-        from rules_engine import evaluate_app_rules, format_rule_notices
+        from cygnus.rules.engine import evaluate_app_rules, format_rule_notices
         _verdict = evaluate_app_rules(entry, action)
         if not _verdict["allowed"]:
             _blocks = "\n".join(_verdict["blocks"])
@@ -4959,7 +4959,7 @@ def open_application(app: str, action: str = None, query: str = None,
     # hard/soft verdict above. A deny stops the launch; a redirect opens the
     # rule's target app instead (one hop only — a rule chain must not loop).
     try:
-        import rules_engine as _rules
+        from cygnus.rules import engine as _rules
         _gate = _rules.check(requested,
                              {"action": action, "entry": entry})
     except Exception:
@@ -5009,7 +5009,7 @@ def open_application(app: str, action: str = None, query: str = None,
             except Exception as e:
                 return f"[Error] Could not open {name}: {e}"
         try:
-            import web_registry as _wr
+            from cygnus.apps import web_registry as _wr
             _sites = (_wr.load_registry() or {}).get("sites", {})
             if requested.lower() in _sites:
                 return open_site(requested)
@@ -5043,11 +5043,11 @@ def open_application(app: str, action: str = None, query: str = None,
             pass
         # 6) Broken shortcut? Try to find a replacement by re-scanning.
         try:
-            from machine_capabilities import find_replacement, REGISTRY_PATH
+            from cygnus.apps.capabilities import find_replacement, REGISTRY_PATH
             repair = find_replacement(requested)
             if repair:
                 # Update the registry with the fix
-                from machine_capabilities import load_registry
+                from cygnus.apps.capabilities import load_registry
                 reg = load_registry() or {"apps": {}}
                 reg["apps"][repair["name"]] = {
                     "bin": repair["bin"], "kind": "gui",
@@ -5069,7 +5069,7 @@ def open_application(app: str, action: str = None, query: str = None,
 def rescan_applications() -> str:
     """Rescan all installed software and update the app registry.
     Reports broken shortcuts found during the scan."""
-    from machine_capabilities import write_registry, load_registry
+    from cygnus.apps.capabilities import write_registry, load_registry
     result = write_registry()
     reg = load_registry()
     if reg:
@@ -5089,8 +5089,8 @@ def _find_app_by_name(name: str) -> str | None:
     """Resolve a spoken app name to a registry key. Mirrors the lookup parts
     of open_application: exact -> normalized -> substring (longest wins) ->
     alias -> product_exe -> token scoring."""
-    from machine_capabilities import load_registry, resolve_normalized
-    from curate import is_registered
+    from cygnus.apps.capabilities import load_registry, resolve_normalized
+    from cygnus.apps.curate import is_registered
     if not name:
         return None
     reg = load_registry()
@@ -5142,8 +5142,8 @@ def install_app(app: str, enable: bool = True) -> str:
     """Install an app into JARVIS: opt it into the registered+enabled set so
     voice commands can resolve to it. 'Installing' = curating the local registry;
     it does NOT touch the actual Windows program."""
-    from machine_capabilities import REGISTRY_PATH
-    from curate import is_registered, mark_registered
+    from cygnus.apps.capabilities import REGISTRY_PATH
+    from cygnus.apps.curate import is_registered, mark_registered
     key = _find_app_by_name(app)
     if not key:
         return (f'[Error] I scanned the registry but did not find "{app}". '
@@ -5158,7 +5158,7 @@ def install_app(app: str, enable: bool = True) -> str:
 def uninstall_app(app: str) -> str:
     """Remove an app from Cygnus's voice registry (opt it out). The program
     stays installed on Windows; JARVIS just stops routing voice commands to it."""
-    from curate import is_registered, mark_registered
+    from cygnus.apps.curate import is_registered, mark_registered
     key = _find_app_by_name(app)
     if not key:
         return f'I could not find "{app}" in the registry. It may not be installed on this machine.'
@@ -5172,7 +5172,7 @@ def uninstall_app(app: str) -> str:
 
 def list_installed_apps() -> str:
     """List all apps currently installed in JARVIS (registered + enabled)."""
-    from curate import registered_apps
+    from cygnus.apps.curate import registered_apps
     apps = registered_apps()
     if not apps:
         return "Your Cygnus app catalog is empty, sir. Say \"install <app name>\" to add one."
@@ -5185,7 +5185,7 @@ def list_installed_apps() -> str:
 def _running_row_for(said):
     """The Running-panel row whose name the user said, or None."""
     try:
-        import running_apps
+        from cygnus.apps import running as running_apps
         return running_apps.app_window([said], rows=running_apps.inventory())
     except Exception:
         return None
@@ -5244,7 +5244,7 @@ def close_application(app: str, force: bool = False) -> str:
                              "the", "a", "my", "", "that app", "this app", "the app"}:
         # "Open Calculator" ... "close it": the app just opened or shown.
         try:
-            import dialogue_state
+            from cygnus.brain import dialogue_state
             last = dialogue_state.last_result("app")
         except Exception:
             last = None
@@ -5259,7 +5259,7 @@ def close_application(app: str, force: bool = False) -> str:
     # Resolve through the same chain as open_application.
     entry = None
     try:
-        from machine_capabilities import load_registry, resolve as _resolve
+        from cygnus.apps.capabilities import load_registry, resolve as _resolve
         reg = load_registry()
         if reg:
             n = requested.lower().strip()
@@ -5296,7 +5296,7 @@ def close_application(app: str, force: bool = False) -> str:
     # a HARD rule blocks outright; soft rules are reminders (not applicable to
     # closing, which is a single irreversible action, so only hard guards act).
     try:
-        from rules_engine import evaluate_app_rules, format_rule_notices
+        from cygnus.rules.engine import evaluate_app_rules, format_rule_notices
         _close_verdict = evaluate_app_rules(entry, "close")
         if not _close_verdict["allowed"]:
             return " ".join(_close_verdict["blocks"])
@@ -5483,10 +5483,10 @@ def play_spotify(query: str) -> str:
     # web playback; this is the desktop-app path.
     try:
         try:
-            import music_rules as _music_rules
+            from cygnus.agents import music_rules as _music_rules
         except ImportError:
             import sys as _sys
-            import music_rules as _music_rules
+            from cygnus.agents import music_rules as _music_rules
         cap = _music_rules.resolve_music_rules(app_key="spotify").get("cap_volume")
     except Exception:
         cap = None
@@ -5495,10 +5495,10 @@ def play_spotify(query: str) -> str:
         return "Say what you'd like to play, sir."
     # Ensure Spotify is running (the desktop app must be open to receive the URI).
     try:
-        from machine_capabilities import resolve as _resolve
+        from cygnus.apps.capabilities import resolve as _resolve
     except Exception:
         try:
-            from machine_capabilities import resolve as _resolve
+            from cygnus.apps.capabilities import resolve as _resolve
         except Exception:
             _resolve = None
     spot = _resolve("spotify") if _resolve else None
@@ -5545,7 +5545,7 @@ def _played(player: str, result):
 
 
 def _stop_last_player() -> str:
-    import music_agent
+    from cygnus.agents import music as music_agent
     music_agent.set_progress_cb(getattr(_tools_tls, "cb", None))
     out = music_agent.stop_music()
     if str(out).startswith("Nothing is playing") and _LAST_PLAYER["name"] == "spotify":
@@ -6075,7 +6075,7 @@ def _truthy(v) -> bool:
 
 
 def _ask_chatgpt(**kw) -> str:
-    import browser_agent
+    from cygnus.browser import agent as browser_agent
     submit = _truthy(kw.get("submit", False))
     # Audit line: every send decision the model made is recoverable from the log.
     print(f"[TOOL] ask_chatgpt submit={submit} (raw={kw.get('submit')!r}) "
@@ -6086,7 +6086,7 @@ def _ask_chatgpt(**kw) -> str:
 def _ask_ai(**kw) -> str:
     """Write a prompt into a web AI (chatgpt/gemini/claude/copilot) or the
     Copilot desktop app. Sends ONLY on explicit consent."""
-    import browser_agent
+    from cygnus.browser import agent as browser_agent
     submit = _truthy(kw.get("submit", False))
     site = (kw.get("site") or "chatgpt").strip()
     prompt = kw.get("prompt") or ""
@@ -6126,15 +6126,15 @@ TOOL_MAP = {
                                           _truthy(kw.get("overwrite", False))),
     "write_to_notepad": lambda **kw: write_to_notepad(kw["content"], kw.get("filename", "")),
     "list_directory": lambda **kw: list_directory(kw.get("path", ".")),
-    "search_chatgpt_history": lambda **kw: __import__("browser_agent").search_chatgpt_history(
+    "search_chatgpt_history": lambda **kw: __import__("cygnus.browser.agent", fromlist=["_"]).search_chatgpt_history(
         kw["query"], int(kw.get("limit", 10) or 10)),
-    "open_chatgpt_conversation": lambda **kw: __import__("browser_agent").open_chatgpt_conversation(
+    "open_chatgpt_conversation": lambda **kw: __import__("cygnus.browser.agent", fromlist=["_"]).open_chatgpt_conversation(
         kw["title_contains"]),
     "search_web": lambda **kw: search_web(kw["query"]),
     "open_site": lambda **kw: open_site(kw["name"], kw.get("url"), browser=kw.get("browser")),
     "rescan_sites": lambda **kw: rescan_sites(),
-    "list_sites": lambda **kw: __import__("web_registry").list_sites(),
-    "add_site": lambda **kw: __import__("web_registry").add_manual_site(
+    "list_sites": lambda **kw: __import__("cygnus.apps.web_registry", fromlist=["_"]).list_sites(),
+    "add_site": lambda **kw: __import__("cygnus.apps.web_registry", fromlist=["_"]).add_manual_site(
         kw["name"], kw["url"], kw.get("aliases")),
     "search_sessions": lambda **kw: search_sessions(
         kw["query"], int(kw.get("limit", 10) or 10)),
@@ -6143,7 +6143,7 @@ TOOL_MAP = {
     "search_vault_semantic": lambda **kw: search_vault_semantic(
         kw["query"], int(kw.get("limit", 10) or 10)),
     "read_vault_note": lambda **kw: read_vault_note(kw["name"]),
-    "recall_facts": lambda **kw: __import__("semantic_memory").recall(
+    "recall_facts": lambda **kw: __import__("cygnus.memory.semantic", fromlist=["_"]).recall(
         kw["query"], int(kw.get("limit", 5) or 5)),
     "desktop_control": _desktop_control_tool,
     "run_opencli": _run_opencli_tool,
@@ -6151,18 +6151,18 @@ TOOL_MAP = {
         kw["app"], kw.get("action"), kw.get("query"), new_window=bool(kw.get("new_window"))),
     "ask_chatgpt": _ask_chatgpt,
     "ask_ai": _ask_ai,
-    "manus_status": lambda **kw: __import__("manus_agent").manus_status(),
-    "browser_status": lambda **kw: __import__("browser_agent").browser_status(),
+    "manus_status": lambda **kw: __import__("cygnus.browser.manus", fromlist=["_"]).manus_status(),
+    "browser_status": lambda **kw: __import__("cygnus.browser.agent", fromlist=["_"]).browser_status(),
     "play_music": lambda **kw: _played("browser", (
-        __import__("music_agent").set_progress_cb(getattr(_tools_tls, "cb", None)),
-        __import__("music_agent").play_music(kw["query"])
+        __import__("cygnus.agents.music", fromlist=["_"]).set_progress_cb(getattr(_tools_tls, "cb", None)),
+        __import__("cygnus.agents.music", fromlist=["_"]).play_music(kw["query"])
     )[-1]),
     "stop_music": lambda **kw: _stop_last_player(),
     "play_spotify": lambda **kw: _played("spotify", play_spotify(kw["query"])),
     "stop_spotify": lambda **kw: stop_spotify(),
     "get_credentials": _get_credentials_tool,
-    "launch_project": lambda **kw: __import__("project_agent").launch_project(kw["name"]),
-    "compose_report": lambda **kw: __import__("report_agent").compose_report(
+    "launch_project": lambda **kw: __import__("cygnus.agents.project", fromlist=["_"]).launch_project(kw["name"]),
+    "compose_report": lambda **kw: __import__("cygnus.agents.report", fromlist=["_"]).compose_report(
         kw["topic"], kw.get("output_path"), _truthy(kw.get("verbatim", False))),
     "rescan_applications": lambda **kw: rescan_applications(),
     "install_app": lambda **kw: install_app(kw["app"], _truthy(kw.get("enable", True))),
@@ -6201,7 +6201,7 @@ def execute_tool(name: str, arguments: dict) -> str:
     # when the tool asked in an earlier turn, and an action that needs a
     # confirm is held until the user says yes. _safety_ok marks the held call
     # being run after that yes.
-    import safety
+    from cygnus import safety
     arguments = dict(arguments or {})
     approved = bool(arguments.pop("_safety_ok", False))
     if name in safety.SELF_LATCHED and _truthy(arguments.get("confirm", False))             and not safety.confirm_flag_allowed(name):
@@ -6218,7 +6218,7 @@ def execute_tool(name: str, arguments: dict) -> str:
     # Phase 1b: quarantine instruction-like content in arguments that came from external sources
     # (e.g., pasted browser text). This is data, not directions.
     try:
-        import guard
+        from cygnus.browser import guard
         for k, v in list(arguments.items()):
             if isinstance(v, str) and len(v) > 20 and guard.is_suspicious(v):
                 arguments[k] = guard.sanitize_web_text(v, label=f"tool:{name}:{k}")
@@ -6232,7 +6232,7 @@ def execute_tool(name: str, arguments: dict) -> str:
         # Also quarantine any result that looks like injection regardless of tool
         else:
             try:
-                import guard
+                from cygnus.browser import guard
                 if guard.is_suspicious(result):
                     result = guard.sanitize_web_text(result, label=f"tool:{name}")
             except Exception:
@@ -6249,7 +6249,7 @@ def execute_tool(name: str, arguments: dict) -> str:
     # buttons in the background (at most once a day per app).
     if name == "open_application" and not str(result).startswith("[Error]"):
         try:
-            import app_abilities
+            from cygnus.apps import abilities as app_abilities
             app_abilities.scan_soon(arguments.get("app"))
         except Exception:
             pass

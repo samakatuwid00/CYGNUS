@@ -32,8 +32,8 @@ sys.path.insert(0, BASE)
 
 import numpy as np                      # noqa: E402
 
-import routing_eval as rev              # noqa: E402
-import stress_eval as sev               # noqa: E402
+from eval import routing_eval as rev              # noqa: E402
+from eval import stress_eval as sev               # noqa: E402
 
 # Baselines measured at 994e70f. A check that is already passing is pinned at
 # its measured value so it cannot silently rot while something else is fixed.

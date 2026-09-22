@@ -17,7 +17,7 @@ import json
 import time
 import datetime
 from pathlib import Path
-import paths
+from cygnus import paths
 
 PROFILE_PATH = paths.PROFILE
 SESSIONS_DIR = paths.SESSIONS_DIR
@@ -28,7 +28,7 @@ SESSION_SUMMARY_AGE_DAYS = 7
 
 def _audit(msg: str, extra: dict = None):
     try:
-        from tools import _audit_log
+        from cygnus.tools import _audit_log
         _audit_log("memory_hygiene", msg[:200], "executed", extra=extra or {})
     except Exception:
         pass
@@ -101,7 +101,7 @@ def run_hygiene() -> str:
     # Semantic fact store: decay unreinforced facts below the recall floor.
     c = ""
     try:
-        import semantic_memory
+        from cygnus.memory import semantic as semantic_memory
         c = semantic_memory.consolidate()
     except Exception as e:
         c = f"[semantic decay skipped: {e}]"
@@ -142,7 +142,7 @@ def _llm_extract(turns_text: str) -> list:
     """Ask the router model for durable facts. Raises on failure (caller must
     treat failure as 'chunk not processed' — the state marker must not move)."""
     from openai import OpenAI
-    from config import ROUTER_BASE_URL, ROUTER_API_KEY, ROUTER_MODEL
+    from cygnus.config import ROUTER_BASE_URL, ROUTER_API_KEY, ROUTER_MODEL
     client = OpenAI(base_url=ROUTER_BASE_URL, api_key=ROUTER_API_KEY or "dummy",
                     timeout=60, max_retries=1)
     prompt = _DISTILL_PROMPT.replace("{max}", str(DISTILL_MAX_FACTS)).replace(
@@ -162,7 +162,7 @@ def _llm_extract(turns_text: str) -> list:
 
 def distill_episodes() -> str:
     """Extract durable facts from new episode lines into semantic memory."""
-    import semantic_memory
+    from cygnus.memory import semantic as semantic_memory
 
     state = {}
     if DISTILL_STATE.exists():
@@ -229,7 +229,7 @@ def proactive_job_announcement(event: dict) -> str | None:
     Plain words (plain_reply.announce_job): a short title, no Markdown, the
     job's closing question if it has one, and nothing for a job that was only
     replaced by its re-confirmed run."""
-    import plain_reply
+    from cygnus.brain import plain_reply
     return plain_reply.announce_job(event)
 
 # Background hygiene loop (for jarvis_web to start as daemon thread)

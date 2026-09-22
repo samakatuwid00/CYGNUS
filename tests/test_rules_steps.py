@@ -7,11 +7,11 @@ import json
 
 import pytest
 
-import browser_cdp
-import rules_ai
-import rules_engine
-import rules_sim
-import rules_steps
+from cygnus.browser import cdp as browser_cdp
+from cygnus.rules import ai as rules_ai
+from cygnus.rules import engine as rules_engine
+from cygnus.rules import sim as rules_sim
+from cygnus.rules import steps as rules_steps
 
 RESULTS = """<html><head><title>You searched for Dune</title></head><body>
 <nav><a href="https://hollymoviehd.cc/">Home</a><a href="https://hollymoviehd.cc/genre/">Genre</a></nav>
@@ -77,9 +77,9 @@ def test_closest_titles_beat_partial_matches():
 
 @pytest.fixture
 def web(monkeypatch):
-    import audit
-    import site_probe
-    import tools
+    from cygnus import audit
+    from cygnus.browser import site_probe
+    from cygnus import tools
     calls = []
     monkeypatch.setattr(audit, "log_call", lambda *a, **k: None)
     monkeypatch.setattr(site_probe, "load", lambda url: {"dom": RESULTS, "blocked": False})
@@ -123,7 +123,7 @@ def test_unclear_choice_asks_again_and_no_stops(web):
 
 
 def test_a_failing_step_says_so_instead_of_falling_through(web, monkeypatch):
-    import site_probe
+    from cygnus.browser import site_probe
     monkeypatch.setattr(site_probe, "load", lambda url: (_ for _ in ()).throw(OSError("down")))
     out = rules_steps.start(STEPS_RULE, "brave", STEPS_ACTION, "Dune")
     assert out == '[Error] The "pick" step failed (OSError).'
@@ -165,8 +165,8 @@ def test_restart_question_lets_an_unrelated_command_through(web, monkeypatch):
 
 
 def test_typed_names_are_literal_and_unsafe_keys_are_refused(monkeypatch):
-    import audit
-    import desktop_driver
+    from cygnus import audit
+    from cygnus.apps import desktop_driver
     typed = []
     monkeypatch.setattr(audit, "log_call", lambda *a, **k: None)
     monkeypatch.setattr(desktop_driver, "type_into_control",
@@ -191,9 +191,9 @@ def test_compile_drops_unsafe_key_steps():
 
 
 def test_desktop_steps_use_the_app_window(monkeypatch):
-    import audit
-    import desktop_driver
-    import tools
+    from cygnus import audit
+    from cygnus.apps import desktop_driver
+    from cygnus import tools
     calls = []
     monkeypatch.setattr(audit, "log_call", lambda *a, **k: None)
     monkeypatch.setattr(tools, "open_application", lambda app: calls.append(("launch", app)) or "")
@@ -248,7 +248,7 @@ def test_steps_action_validation():
 
 
 def test_rule_command_starts_the_run(web, tmp_path, monkeypatch):
-    import tools
+    from cygnus import tools
     path = tmp_path / "app_registry.json"
     path.write_text(json.dumps({"apps": {"brave": {"category": "browser",
                                                    "compiled_rules": [STEPS_RULE]}}}))
@@ -259,7 +259,7 @@ def test_rule_command_starts_the_run(web, tmp_path, monkeypatch):
 
 
 def test_a_title_beyond_the_top_list_can_still_be_chosen(web, monkeypatch):
-    import site_probe
+    from cygnus.browser import site_probe
     many = "".join(f'<a href="https://hollymoviehd.cc/d{i}/" title="Dune Story {i}">x</a>'
                    for i in range(6)) + \
         '<a href="https://hollymoviehd.cc/woman-in-the-dunes-1964/" title="Woman in the Dunes (1964)">w</a>'
@@ -285,7 +285,7 @@ class StepsProbe:
         return {"dom": RESULTS if "?s=" in url else MOVIE_PAGE, "blocked": False}
 
     def click_target_in_dom(self, dom, target):
-        import site_probe
+        from cygnus.browser import site_probe
         return site_probe.click_target_in_dom(dom, target)
 
 
@@ -300,7 +300,7 @@ def test_simulate_steps_reports_picks_and_player():
 
 
 def test_trailer_alone_is_not_a_player():
-    import site_probe
+    from cygnus.browser import site_probe
     only_trailer = '<iframe id="iframe-trailer" src="https://youtube.com/embed/x"></iframe>'
     assert not site_probe.click_target_in_dom(only_trailer, "play")
     assert site_probe.click_target_in_dom(MOVIE_PAGE, "play")
@@ -321,8 +321,8 @@ def test_click_after_open_targets_the_opened_tab(web):
 
 
 def test_plain_open_also_records_the_url(monkeypatch):
-    import audit
-    import tools
+    from cygnus import audit
+    from cygnus import tools
     monkeypatch.setattr(audit, "log_call", lambda *a, **k: None)
     monkeypatch.setattr(tools, "_open_url_in_browser",
                         lambda url, name, browser=None, remember=True: f"Opened {name}.")

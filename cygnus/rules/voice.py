@@ -25,9 +25,9 @@ import json
 import os
 import re
 
-import rules_ai
-import rules_compiler as rc
-import rules_sim
+from cygnus.rules import ai as rules_ai
+from cygnus.rules import compiler as rc
+from cygnus.rules import sim as rules_sim
 
 CONFIG_TIME_ONLY = True  # setup-time only, never per spoken command.
 
@@ -49,7 +49,7 @@ def _registry_path(registry_path=None):
     """Resolve the registry lazily so tests can repoint machine_capabilities."""
     if registry_path:
         return registry_path
-    import machine_capabilities
+    from cygnus.apps import capabilities as machine_capabilities
     return machine_capabilities.REGISTRY_PATH
 
 

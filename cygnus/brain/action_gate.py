@@ -20,7 +20,7 @@ import json
 import os
 import time
 from dataclasses import dataclass, field
-import paths
+from cygnus import paths
 
 MODE = os.getenv("JARVIS_GATE", "shadow").strip().lower()
 SHADOW_LOG = paths.log("gate_shadow.jsonl")
@@ -46,7 +46,7 @@ class Decision:
 
 def is_risky(text):
     """The request changes the machine, by the lists the confirm gates use."""
-    import tools
+    from cygnus import tools
     t = text or ""
     return bool(tools._MUTATING_RE.search(t) or tools._DESTRUCTIVE_RE.search(t)
                 or tools._CHANGE_RE.search(t))
@@ -54,7 +54,7 @@ def is_risky(text):
 
 def _app_and_site(target):
     """The name both an installed app and a website answer to, or None."""
-    import tools
+    from cygnus import tools
     kind, found = tools.resolve_open_target(target)
     if kind != "clarify":
         return None
@@ -71,7 +71,7 @@ _corpus = None
 def _intake(text):
     """intake's reading of the request (a fuzzy match against known names)."""
     global _corpus
-    import intake
+    from cygnus.brain import intake
     if _corpus is None:
         _corpus = intake.load_corpus()
     return intake.resolve_intent(text, _corpus)
@@ -118,7 +118,7 @@ def decide(text, open_target=None, semantic_score=None, router_confidence=None):
 
 def ask(decision):
     """Put the clarify question to the owner; brain.answer_choice reads the reply."""
-    import dialogue_state
+    from cygnus.brain import dialogue_state
     dialogue_state.ask("clarify", decision.question,
                        {"labels": decision.labels, "options": decision.options}, owner="gate")
     return decision.question

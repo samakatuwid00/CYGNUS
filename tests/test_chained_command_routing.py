@@ -9,8 +9,8 @@ branch its own detector had already said yes to.
 
 import pytest
 
-import brain_gemini as b
-import routing_eval as re_
+from cygnus.brain import core as b
+from eval import routing_eval as re_
 
 
 @pytest.mark.parametrize("text", [
@@ -93,6 +93,6 @@ def test_a_chain_is_not_read_as_a_question_and_keeps_its_guards():
     """The branch is only reached when the conversational / question guards
     say no, and they still do for a chain."""
     text = "open chrome then play some lofi and close spotify"
-    import tools
+    from cygnus import tools
     assert not b._is_question_not_request(text)
     assert not tools.is_conversational(text)

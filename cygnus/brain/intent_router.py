@@ -24,7 +24,7 @@ import re
 import threading
 import time
 import uuid
-import paths
+from cygnus import paths
 
 SHADOW_LOG = paths.log("shadow.jsonl")
 LABELS_LOG = paths.log("shadow_labels.jsonl")
@@ -86,7 +86,7 @@ def _words(text):
 
 
 def _names(key, entry):
-    import app_abilities
+    from cygnus.apps import abilities as app_abilities
     return {n.lower() for n in (key, entry.get("name"), entry.get("display_name"),
                                 app_abilities.DISPLAY_NAMES.get(key)) if n}
 
@@ -171,7 +171,7 @@ def decide(text, snapshot, apps, llm=None):
               .replace("{state}", json.dumps(snapshot or {}, ensure_ascii=False)[:1200])
               .replace("{catalog}", catalog(keys, apps)))
     if llm is None:
-        import rules_ai
+        from cygnus.rules import ai as rules_ai
         llm = rules_ai._ask_llm
     raw, model = llm(prompt)
     raw = raw or {}
@@ -195,14 +195,14 @@ def worth_asking(text, snapshot, apps):
 
 
 def _display(app, apps):
-    import app_abilities
+    from cygnus.apps import abilities as app_abilities
     return app_abilities._display(app, apps.get(app) or {})
 
 
 def _run_ability(app, ability_id, args, apps):
     """Run one ability; (reply, ok). A missing detail or a failed step is
     reported, never silently swallowed."""
-    import app_abilities
+    from cygnus.apps import abilities as app_abilities
     out = app_abilities.run_ability(app, ability_id, args or {})
     if out.startswith("[Error]"):
         return out, False
@@ -216,8 +216,8 @@ def _run_ability(app, ability_id, args, apps):
 
 
 def _run_rule(app, rule_id, args, apps):
-    import rules_engine
-    import tools
+    from cygnus.rules import engine as rules_engine
+    from cygnus import tools
     entry = apps.get(app) or {}
     rule = next((r for r in entry.get("compiled_rules") or [] if r.get("rule_id") == rule_id), None)
     action = rules_engine.action_of(rule, app, entry) if rule else None
@@ -245,7 +245,7 @@ def route(text, snapshot, apps, llm=None):
     if kind == "ability":
         item = next((a for a in (apps.get(app) or {}).get("abilities") or [] if a.get("id") == aid), None)
         if item and item.get("level") == "ask":
-            import dialogue_state
+            from cygnus.brain import dialogue_state
             question = f"Should I {item['name'].lower()} in {_display(app, apps)}, sir?"
             dialogue_state.ask("ability", question,
                                payload={"app": app, "id": aid, "args": decision.get("args") or {}})
@@ -259,7 +259,7 @@ def route(text, snapshot, apps, llm=None):
     elif kind == "rule":
         reply, ok = _run_rule(app, aid, decision.get("args"), apps)
     elif kind == "ask" and decision.get("question"):
-        import dialogue_state
+        from cygnus.brain import dialogue_state
         dialogue_state.ask("router", decision["question"])
         reply, ok = decision["question"], True
     if not ok:
@@ -272,14 +272,14 @@ def route(text, snapshot, apps, llm=None):
 def answer_pending_ability(text):
     """The reply to "Should I ...?" for an ability marked ask: yes runs it, no
     drops it. None when no such question is open or the reply is neither."""
-    import dialogue_state
+    from cygnus.brain import dialogue_state
     p = dialogue_state.pending("ability")
     if not p:
         return None
-    import consent
+    from cygnus.brain import consent
     reply = consent.read(text, soft=True)
     if reply.kind == "yes":
-        import app_abilities
+        from cygnus.apps import abilities as app_abilities
         dialogue_state.answered()
         pl = p.get("payload") or {}
         apps = app_abilities.load_apps()["apps"]
@@ -377,7 +377,7 @@ def agree(decision, actual):
 
 def turn_started(text):
     """Called before the old router runs: the state the new one should see."""
-    import dialogue_state
+    from cygnus.brain import dialogue_state
     try:
         pos = os.path.getsize(AUDIT_LOG)
     except OSError:
@@ -388,7 +388,7 @@ def turn_started(text):
 def _semantic(text):
     """The meaning-based router's pick for this turn - logged, never acted on."""
     try:
-        import semantic_route
+        from cygnus.brain import semantic_route
         return semantic_route.shadow(text)
     except Exception as e:
         print(f"[shadow] semantic route failed: {type(e).__name__}: {e}", flush=True)
@@ -400,7 +400,7 @@ def turn_finished(started, reply, backend=None, stats=None, llm=None, background
     """After the reply: record the turn, then log the router's decision next
     to what ran. `decided` is route()'s record when the router already
     decided this turn (it is not asked twice); otherwise decide in shadow."""
-    import dialogue_state
+    from cygnus.brain import dialogue_state
     entries = _audit_since(started["audit_pos"])
     actual = actual_route(entries, backend, stats)
     dialogue_state.record_turn(started["text"], reply, actual)
@@ -412,7 +412,7 @@ def turn_finished(started, reply, backend=None, stats=None, llm=None, background
             if decided is not None:
                 rec = dict(decided)
             else:
-                import app_abilities
+                from cygnus.apps import abilities as app_abilities
                 apps = app_abilities.load_apps()["apps"]
                 t0 = time.time()
                 decision, intent, confidence, reason, model = decide(

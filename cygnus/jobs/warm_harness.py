@@ -8,7 +8,7 @@ Session is persisted on disk (Hermes SQLite), so it survives JARVIS restarts.
 On boot, warm_session() pre-warms with a trivial query to eliminate first-turn lag.
 
 Usage:
-    from warm_harness import warm_send, warm_session
+    from cygnus.jobs.warm_harness import warm_send, warm_session
     result = warm_send("open notepad", timeout=300, max_turns=15)
 """
 
@@ -21,7 +21,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-import paths
+from cygnus import paths
 
 # ---------------------------------------------------------------------------
 # Config

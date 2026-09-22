@@ -30,8 +30,10 @@ frozen = [
   "eval/gate_routing.py",
   "eval/routing_gold.jsonl",
   "eval/stress_prompts.jsonl",
-  "routing_eval.py",
-  "stress_eval.py",
+  # moved from the root into eval/ by the restructure (2026-09-22), with
+  # their imports rewritten; the gate's result was unchanged
+  "eval/routing_eval.py",
+  "eval/stress_eval.py",
 ]
 
 # Snapshot the tree whenever all gates pass, and restore the best snapshot if
@@ -46,7 +48,8 @@ command = "python -m compileall -q tests"
 timeout = 120
 
 # Gate 2: don't break anything. 861 tests, green at bca53fa and 994e70f
-# (860 passed, 1 skipped, ~67s). Do not pipe the command - a pipe hides
+# (860 passed, 1 skipped, ~67s); 1082 after the 2026-09-22 restructure
+# (1081 passed, 1 skipped, ~80s). Do not pipe the command - a pipe hides
 # pytest's exit code and the gate would always report pass.
 [[gates]]
 name = "tests"

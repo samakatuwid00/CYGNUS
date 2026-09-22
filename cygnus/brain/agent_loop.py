@@ -15,7 +15,7 @@ import os
 import re
 import threading
 import time
-import paths
+from cygnus import paths
 
 MODE = os.getenv("JARVIS_AGENT_LOOP", "off").strip().lower()
 MAX_ROUNDS = int(os.getenv("JARVIS_AGENT_ROUNDS", "12"))
@@ -145,7 +145,7 @@ def verify(final: str, ran: list, asked_question: bool) -> str:
     acted = [r for r in ran if r[0] in _ACTING]
     if acted and _DENIAL_RE.search(final or ""):
         return report(ran, spoken=True)
-    import brain_gemini as bg
+    from cygnus.brain import core as bg
     if not acted and bg._ACTION_CLAIM_RE.match(final or "") and not asked_question:
         return "I didn't do that yet, sir: nothing ran. Tell me which app or site, and I will."
     return final
@@ -160,7 +160,7 @@ def _names_running_app(text: str) -> bool:
     if _AGENT_WORDS.search(text):
         return True
     try:
-        import app_commands
+        from cygnus.apps import commands as app_commands
         words = set(re.findall(r"[a-z0-9]+", text.lower()))
         return any(t["slug"] in words for t in app_commands.targets())
     except Exception:
@@ -173,7 +173,7 @@ def takes(text: str, intent: str, client: str | None = None) -> bool:
     if not t or t.startswith("/"):
         return False
     try:
-        import tools
+        from cygnus import tools
         if tools._is_not_a_task(t):
             return False
         # Destructive requests go to the old routing, whose confirm gates
@@ -240,7 +240,7 @@ _AUDITED = _APP_TOOLS | {"whats_running", "remember"}
 
 
 def _target(app: str):
-    import app_commands
+    from cygnus.apps import commands as app_commands
     slug = (app or "").strip().lower().lstrip("/")
     ts = app_commands.targets()
     hit = next((t for t in ts if t["slug"] == slug), None) or \
@@ -249,15 +249,15 @@ def _target(app: str):
 
 
 def _run_tool(name: str, args: dict, ctx: dict) -> str:
-    import brain_gemini as bg
-    import tools
+    from cygnus.brain import core as bg
+    from cygnus import tools
     user_text = ctx.get("user_text", "")
     if name == "whats_running":
-        import running_apps
+        from cygnus.apps import running as running_apps
         return running_apps.summary(running_apps.inventory(use_cache=False), focus=args.get("focus") or None)
     if name in _APP_TOOLS:
-        import app_commands
-        import running_apps
+        from cygnus.apps import commands as app_commands
+        from cygnus.apps import running as running_apps
         target, ts = _target(args.get("app", ""))
         if not target:
             names = ", ".join(f"{t['slug']} ({t['name']})" for t in ts) or "nothing with a window"
@@ -286,13 +286,13 @@ def _run_tool(name: str, args: dict, ctx: dict) -> str:
             if not step:
                 return f"[Error] {args.get('do')!r} is not one of {target['name']}'s actions. Call app_actions."
             if step.get("ask"):
-                import dialogue_state
+                from cygnus.brain import dialogue_state
                 q = f"Should I {step['label'].lower()} in {target['name']}, sir?"
                 dialogue_state.ask("ability", q, payload={"app": step["app"], "id": step["id"], "args": step["args"]})
                 return "[Held] " + q
             # The safety gate (safety.py): text for Hermes that may change
             # things, and typing or keys in a terminal, wait for a yes.
-            import safety
+            from cygnus import safety
             decision = safety.assess_app_step(target["slug"], {**step, "do": args.get("do")})
             return safety.gate(f"app_step {target['slug']} {args.get('do')} {json.dumps(raw)[:160]}", decision,
                                lambda: app_commands.run(target["slug"], [step], rows=rows))
@@ -342,7 +342,7 @@ def tidy_agent_output(text: str, agent: str = "the agent") -> str:
 
 
 def _clean(text: str) -> str:
-    import brain_gemini as bg
+    from cygnus.brain import core as bg
     return bg._clean_for_speech((text or "").strip())
 
 
@@ -358,7 +358,7 @@ Hand bigger jobs (code, files, research) to delegate; say the answer comes later
 def _system(ctx: dict) -> str:
     extra = ""
     try:
-        import app_commands
+        from cygnus.apps import commands as app_commands
         ts = app_commands.targets()
         if ts:
             extra += "\nRunning now: " + ", ".join(f"{t['slug']} ({t['name']})" for t in ts[:12]) + "."
@@ -382,7 +382,7 @@ def _safe(text: str) -> str:
     reason to be here, and folding whitespace as well flattened the system
     prompt and every prior answer in the history onto one line."""
     try:
-        import intake
+        from cygnus.brain import intake
         return intake.scrub(text or "", collapse=False)
     except Exception:
         return (text or "").encode("utf-8", "replace").decode("utf-8", "replace")
@@ -400,7 +400,7 @@ def _history(brain, n: int = 8) -> list:
 
 def _make_client():
     from openai import OpenAI
-    import brain_gemini as bg
+    from cygnus.brain import core as bg
     return OpenAI(base_url=bg.ROUTER_BASE_URL, api_key=bg.ROUTER_API_KEY or "x", max_retries=0)
 
 
@@ -410,13 +410,13 @@ MAX_MODELS = 6
 
 
 def _models() -> list:
-    import brain_gemini as bg
+    from cygnus.brain import core as bg
     return bg._router_models()[:MAX_MODELS]
 
 
 def run(brain, text: str, ctx: dict) -> str | None:
     """One agentic turn. The reply, or None when no model could take it."""
-    import brain_gemini as bg
+    from cygnus.brain import core as bg
     global _last_stats
     if not _lock.acquire(blocking=False):
         return None
@@ -485,7 +485,7 @@ def run(brain, text: str, ctx: dict) -> str | None:
                             except Exception as e:
                                 out = f"[Tool Error] {tc.function.name}: {type(e).__name__}: {e}"
                             if tc.function.name in _AUDITED:
-                                import audit
+                                from cygnus import audit
                                 audit.log_call("agent." + tc.function.name, args, time.monotonic() - t0, out)
                             if tc.function.name == "delegate":
                                 out = tidy_agent_output(out, (args.get("agent") or "hermes").title())
@@ -522,7 +522,7 @@ def run(brain, text: str, ctx: dict) -> str | None:
                 broke = type(e).__name__
                 if ran:                         # work was done: the record says so, not a next model
                     break
-                import router_keeper
+                from cygnus.brain import router_keeper
                 if router_keeper.is_connection_error(e):
                     break                       # the router went down: no other model can answer
                 continue

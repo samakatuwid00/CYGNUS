@@ -10,8 +10,8 @@ import json
 
 import pytest
 
-import machine_capabilities as mc
-import tools
+from cygnus.apps import capabilities as mc
+from cygnus import tools
 
 
 @pytest.mark.parametrize("spoken, name", [
@@ -36,7 +36,7 @@ def test_app_names_lose_for_me_but_keep_their_dots():
 
 def test_an_app_named_with_app_keeps_the_word(registries, monkeypatch):
     monkeypatch.setattr(tools, "_load_app_registry", lambda: {"ollama app": {}, "ollama": {}})
-    import web_registry as wr
+    from cygnus.apps import web_registry as wr
     monkeypatch.setattr(wr, "resolve_site", lambda t: None)
     real_open = builtins.open
 
@@ -59,7 +59,7 @@ def test_normalized_app_keys_match():
 @pytest.fixture
 def registries(monkeypatch):
     """ngrok is an app, grok and github are sites, cursor is both."""
-    import web_registry as wr
+    from cygnus.apps import web_registry as wr
     sites = {"grok": {"aliases": []}, "github": {"aliases": []}, "cursor": {"aliases": []}}
     apps = json.dumps({"apps": {"ngrok": {}, "cursor": {}, "notepad": {}}})
     real_open = builtins.open
@@ -97,7 +97,7 @@ def test_the_desktop_path_opens_registered_sites(registries, monkeypatch):
 
 
 def test_can_you_open_takes_the_fast_lane(monkeypatch):
-    import brain_gemini
+    from cygnus.brain import core as brain_gemini
     monkeypatch.setattr(tools, "resolve_open_target",
                         lambda text, force=None, browser=None:
                         ("site", "github") if tools.strip_target_noise(text) == "github" else (None, text))
@@ -109,5 +109,5 @@ def test_can_you_open_takes_the_fast_lane(monkeypatch):
     ("open the spotify app", False), ("open ollama app", False),
     ("launch the irimsv project", True), ("start the dev server", True)])
 def test_only_projects_and_servers_are_launches(text, launch):
-    import brain_gemini
+    from cygnus.brain import core as brain_gemini
     assert (brain_gemini.classify_intent(text) == "launch") is launch

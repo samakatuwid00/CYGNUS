@@ -98,7 +98,7 @@ def active_app():
         return None
     try:
         import os
-        import app_abilities
+        from cygnus.apps import abilities as app_abilities
         exe = os.path.basename(app_abilities._process_exe(pid))
         if not exe:
             return None

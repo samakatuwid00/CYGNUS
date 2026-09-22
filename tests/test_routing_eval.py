@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-import routing_eval as re_
+from eval import routing_eval as re_
 
 
 @pytest.mark.parametrize("text, route", [
@@ -21,7 +21,7 @@ def test_keyword_route_replays_the_local_order(text, route):
 
 
 def test_an_open_goes_where_the_registry_resolves(monkeypatch):
-    import tools
+    from cygnus import tools
     monkeypatch.setattr(tools, "resolve_open_target",
                         lambda text, force=None, browser=None:
                         {"notepad": ("app", "notepad"), "youtube": ("site", "youtube")}
@@ -77,7 +77,7 @@ def test_reviewed_filter_and_main(tmp_path, capsys):
 
 
 def test_delegate_backends_are_replayed(monkeypatch):
-    import tools
+    from cygnus import tools
     monkeypatch.setattr(tools, "resolve_open_target", lambda text, force=None, browser=None: (None, text))
     monkeypatch.setattr(tools, "_detect_backend", lambda t: "desktop")
     assert re_.keyword_route("Can you open Spotify?") == "open_app"
@@ -98,7 +98,7 @@ def test_a_spoken_answer_counts_for_instant_routes():
     ([{"caller": "execute_tool:web_browse", "task": "{}"}], {"type": "ability", "app": None,
                                                              "id": "web_browse"})])
 def test_actual_route_knows_the_tools_it_missed(entries, actual):
-    import intent_router
+    from cygnus.brain import intent_router
     assert intent_router.actual_route(entries) == actual
 
 

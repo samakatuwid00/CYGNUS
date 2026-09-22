@@ -75,8 +75,8 @@ def terms_right(expected, hyp):
 def whisper_wake_hits(audio, model):
     """Today's listener, replayed: 2.5 s windows every 1 s, its loudness gate,
     tiny.en, wake_engine's pattern, 4 s cooldown. Times of each wake."""
-    from voice_engine import VAD_PARAMETERS, VoiceEngine
-    from wake_engine import BURST_S, SILENCE_FLOOR, wake_word_in
+    from cygnus.voice.engine import VAD_PARAMETERS, VoiceEngine
+    from cygnus.voice.wake import BURST_S, SILENCE_FLOOR, wake_word_in
     pad = np.zeros(SR, np.float32)
     audio = np.concatenate([pad, audio, pad])
     hits, last = [], -99.0
@@ -191,8 +191,8 @@ def main():
             print(f"  sherpa-onnx skipped: {type(e).__name__}: {e}")
 
     print("\nSPEECH-TO-TEXT (commands)")
-    from config import WHISPER_INITIAL_PROMPT
-    from voice_engine import VAD_PARAMETERS, VoiceEngine
+    from cygnus.config import WHISPER_INITIAL_PROMPT
+    from cygnus.voice.engine import VAD_PARAMETERS, VoiceEngine
     small = WhisperModel("small.en", device="cpu", compute_type="int8", cpu_threads=8)
 
     def whisper_text(c):

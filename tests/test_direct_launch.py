@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 
-import tools
+from cygnus import tools
 
 EXE_SHIM = '@ECHO off\nSETLOCAL\n"%dp0%\\node_modules\\opencode-ai\\bin\\opencode.exe"   %*\n'
 NODE_SHIM = ('IF EXIST "%dp0%\\node.exe" (\n  SET "_prog=%dp0%\\node.exe"\n)\n'

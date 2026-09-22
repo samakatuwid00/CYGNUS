@@ -4,8 +4,8 @@ option's own words, and a reply that is no answer drops the question."""
 
 import pytest
 
-import dialogue_state
-from brain_gemini import answer_choice
+from cygnus.brain import dialogue_state
+from cygnus.brain.core import answer_choice
 
 
 @pytest.fixture(autouse=True)

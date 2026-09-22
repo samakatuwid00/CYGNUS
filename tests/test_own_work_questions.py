@@ -18,7 +18,7 @@ import pytest
     "which agent built the site?",
     "tell me what the website does"])
 def test_questions_about_a_website_are_not_the_site_list(text):
-    import brain_gemini
+    from cygnus.brain import core as brain_gemini
     assert brain_gemini.classify_intent(text) != "list_sites"
 
 
@@ -26,7 +26,7 @@ def test_questions_about_a_website_are_not_the_site_list(text):
     "what sites do you know?", "what websites do you know", "which sites have i visited the most",
     "list my sites", "show my bookmarks", "tell me the sites you know", "do you know my websites"])
 def test_registry_questions_still_list_the_sites(text):
-    import brain_gemini
+    from cygnus.brain import core as brain_gemini
     assert brain_gemini.classify_intent(text) == "list_sites"
 
 
@@ -42,12 +42,12 @@ def test_registry_questions_still_list_the_sites(text):
     ("how do I build a website?", False),
     ("what time is it", False)])
 def test_questions_about_jarvis_own_work(text, own):
-    import brain_gemini
+    from cygnus.brain import core as brain_gemini
     assert brain_gemini._asks_about_own_work(text) is own
 
 
 def test_job_history_keeps_every_step_across_a_restart(tmp_path, monkeypatch):
-    import jobs
+    from cygnus.jobs import registry as jobs
     log = tmp_path / "jobs.jsonl"
     rows = [{"id": "j1", "ts": 1, "task": "build a site", "tier": "autonomous", "agent": None,
              "state": "queued"},
@@ -64,7 +64,7 @@ def test_job_history_keeps_every_step_across_a_restart(tmp_path, monkeypatch):
 
 
 def test_recent_file_writes_reads_only_executed_writes(tmp_path, monkeypatch):
-    import tools
+    from cygnus import tools
     now = datetime.datetime.now()
     old = now - datetime.timedelta(hours=5)
     rows = [{"ts": now.isoformat(), "caller": "write_file", "task": "C:\\site\\index.html",
@@ -81,9 +81,9 @@ def test_recent_file_writes_reads_only_executed_writes(tmp_path, monkeypatch):
 
 
 def test_the_answer_is_grounded_then_the_turn_text_restored(monkeypatch):
-    import brain_gemini
-    import jobs
-    import tools
+    from cygnus.brain import core as brain_gemini
+    from cygnus.jobs import registry as jobs
+    from cygnus import tools
     monkeypatch.setattr(jobs, "recent_work", lambda *a, **k: "- 14:06 job j1 (autonomous): "
                                                                "[STEP 2] ✓ Dispatched OpenCode CLI")
     monkeypatch.setattr(tools, "recent_file_writes", lambda *a, **k: ["14:16 C:\\site\\index.html"])

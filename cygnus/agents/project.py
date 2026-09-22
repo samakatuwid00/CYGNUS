@@ -28,7 +28,7 @@ import queue
 import threading
 import traceback
 from pathlib import Path
-import paths
+from cygnus import paths
 
 REGISTRY_PATH = Path(os.getenv("JARVIS_PROJECTS_FILE", paths.PROJECTS))
 # Dev servers are long-lived and chatty; their output goes to a file so a voice
@@ -354,7 +354,7 @@ def launch_project(name: str) -> str:
 
         creds = None
         if secret:
-            import tools
+            from cygnus import tools
             got = tools.get_credentials(secret)
             if got.get("ok"):
                 creds = got

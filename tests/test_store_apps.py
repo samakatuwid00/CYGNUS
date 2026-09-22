@@ -2,10 +2,10 @@
 Calculator and Windows Terminal from the Start menu; the Running panel gives
 a Store app's frame window to the app itself; "close it" finds an app the
 registry does not know through the Running panel (owner, 2026-09-15)."""
-import machine_capabilities as mc
-import running_apps as ra
-import tools
-import app_commands
+from cygnus.apps import capabilities as mc
+from cygnus.apps import running as ra
+from cygnus import tools
+from cygnus.apps import commands as app_commands
 
 
 # ------------------------------------------------------------ running --
@@ -91,7 +91,7 @@ def test_close_finds_an_unregistered_app_through_the_running_panel(monkeypatch):
         return R()
     monkeypatch.setattr(tools.subprocess, "run", fake_run)
     monkeypatch.setattr(tools.time, "sleep", lambda s: None)
-    import machine_capabilities as _mc
+    from cygnus.apps import capabilities as _mc
     monkeypatch.setattr(_mc, "load_registry", lambda: {"apps": {}})
     monkeypatch.setattr(_mc, "resolve", lambda n: None)
     out = tools.close_application("close windows terminal")
@@ -116,7 +116,7 @@ def test_registry_keys_match_a_store_apps_exe():
 # ------------------------------------------------------------ close it --
 
 def test_close_it_means_the_app_just_opened(monkeypatch):
-    import dialogue_state
+    from cygnus.brain import dialogue_state
     dialogue_state.reset()
     tools._note_opened("Calculator", {"label": "Calculator"})
     seen = []
@@ -130,7 +130,7 @@ def test_close_it_means_the_app_just_opened(monkeypatch):
             returncode = 0
         return R()
     monkeypatch.setattr(tools.subprocess, "run", fake_run)
-    import machine_capabilities as _mc
+    from cygnus.apps import capabilities as _mc
     monkeypatch.setattr(_mc, "load_registry", lambda: {"apps": {"calculator": {
         "bin": "shell:AppsFolder\X!App", "exe": "CalculatorApp.exe", "label": "Calculator"}}})
     out = tools.close_application("close it")
@@ -139,6 +139,6 @@ def test_close_it_means_the_app_just_opened(monkeypatch):
 
 
 def test_close_it_with_nothing_opened_asks(monkeypatch):
-    import dialogue_state
+    from cygnus.brain import dialogue_state
     dialogue_state.reset()
     assert tools.close_application("close it").startswith("[Error] Which app")

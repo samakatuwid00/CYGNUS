@@ -10,9 +10,9 @@ import time
 
 import pytest
 
-import brain_gemini as b
-import jobs
-import tools
+from cygnus.brain import core as b
+from cygnus.jobs import registry as jobs
+from cygnus import tools
 
 
 # ------------------------------------------------ 3: grounded own-work --
@@ -90,7 +90,7 @@ def test_wh_questions_are_answered(text):
 @pytest.mark.parametrize("pick, question", [
     (("chat", 0.9), True), (("task", 0.95), False), (("task", 0.5), True), ((None, 0.0), False)])
 def test_yes_no_questions_ask_the_semantic_router(monkeypatch, pick, question):
-    import semantic_route
+    from cygnus.brain import semantic_route
     monkeypatch.setattr(semantic_route, "pick", lambda text: pick)
     assert b._is_question_not_request("can you visit websites?") is question
 
@@ -152,11 +152,11 @@ def test_router_models_follow_the_live_health_list(monkeypatch):
     import sys
     monkeypatch.setattr(b, "ROUTER_MODEL", "a")
     monkeypatch.setattr(b, "ROUTER_FALLBACK_MODELS", ["b", "c"])
-    monkeypatch.setitem(sys.modules, "router_health", None)
+    monkeypatch.setitem(sys.modules, "cygnus.brain.router_health", None)
     assert b._router_models() == ["a", "b", "c"]                  # no health module yet
-    monkeypatch.setitem(sys.modules, "router_health", _Health(["c", "b"]))
+    monkeypatch.setitem(sys.modules, "cygnus.brain.router_health", _Health(["c", "b"]))
     assert b._router_models() == ["c", "b"]
-    monkeypatch.setitem(sys.modules, "router_health", _Health([]))
+    monkeypatch.setitem(sys.modules, "cygnus.brain.router_health", _Health([]))
     assert b._router_models() == ["a", "b", "c"]                  # nothing known: configured
 
 
@@ -165,7 +165,7 @@ def test_a_down_model_hands_over_and_says_which_one_answered(monkeypatch):
     from types import SimpleNamespace
     import openai
     health = _Health(["a", "b"])
-    monkeypatch.setitem(sys.modules, "router_health", health)
+    monkeypatch.setitem(sys.modules, "cygnus.brain.router_health", health)
 
     def create(model, **kw):
         if model == "a":
@@ -194,7 +194,7 @@ def test_an_empty_reply_is_a_failure_not_an_answer(monkeypatch):
     from types import SimpleNamespace
     import openai
     health = _Health(["cu/empty", "b"])
-    monkeypatch.setitem(sys.modules, "router_health", health)
+    monkeypatch.setitem(sys.modules, "cygnus.brain.router_health", health)
 
     def create(model, **kw):
         msg = SimpleNamespace(content="" if model == "cu/empty" else "Blue, sir.", tool_calls=None)
@@ -218,11 +218,11 @@ def test_the_switch_signal_goes_out_only_once_router_health_exists(monkeypatch):
     import sys
     heard = []
     monkeypatch.setattr(b._progress_local, "cb", heard.append, raising=False)
-    monkeypatch.setitem(sys.modules, "router_health", None)
+    monkeypatch.setitem(sys.modules, "cygnus.brain.router_health", None)
     b._announce_model_switch("a", "b")
     assert heard == []                                            # nobody to read it yet
     bare = type("Health", (), {"healthy_models": staticmethod(lambda: [])})()
-    monkeypatch.setitem(sys.modules, "router_health", bare)
+    monkeypatch.setitem(sys.modules, "cygnus.brain.router_health", bare)
     b._announce_model_switch("a", "b")
     assert heard == ["model_switch:a->b"]                         # router_health words it
 
@@ -243,17 +243,17 @@ def _asked_models(monkeypatch):
 
 def test_the_rules_model_asks_answering_models_first_and_can_skip_local(monkeypatch):
     import sys
-    import config
-    import rules_ai
+    from cygnus import config
+    from cygnus.rules import ai as rules_ai
     asked = _asked_models(monkeypatch)
-    monkeypatch.setitem(sys.modules, "router_health", _Health(["oc/big-pickle", "oc/ling"]))
+    monkeypatch.setitem(sys.modules, "cygnus.brain.router_health", _Health(["oc/big-pickle", "oc/ling"]))
     assert rules_ai._ask_llm("x", local=False)[0] is None
     assert asked == ["oc/big-pickle", "oc/ling"]                     # no dead model, no Ollama
     asked.clear()
     rules_ai._ask_llm("x")
     assert asked[:2] == ["oc/big-pickle", "oc/ling"] and asked[-1] == config.OLLAMA_MODEL
     asked.clear()
-    monkeypatch.setitem(sys.modules, "router_health", None)
+    monkeypatch.setitem(sys.modules, "cygnus.brain.router_health", None)
     rules_ai._ask_llm("x", local=False)
     assert asked[0] == config.ROUTER_MODEL                             # nothing known: configured
 
@@ -267,7 +267,7 @@ def test_requests_that_change_things_skip_the_router_model(text, changes):
 
 
 def test_the_router_lead_never_waits_on_the_local_model(monkeypatch):
-    import rules_ai
+    from cygnus.rules import ai as rules_ai
     seen = []
     monkeypatch.setattr(rules_ai, "_ask_llm", lambda prompt, local=True: seen.append(local) or (None, "x"))
     b._lead_llm("prompt")
@@ -344,7 +344,7 @@ def test_an_answering_model_still_answers():
 # --------------------------------------------- 4: one conversation per client --
 
 def test_each_client_keeps_its_own_history(monkeypatch):
-    import intent_router
+    from cygnus.brain import intent_router
     monkeypatch.setattr(intent_router, "turn_started", lambda text: (_ for _ in ()).throw(RuntimeError))
     brain = object.__new__(b.JarvisBrain)
     brain._lead_record = None

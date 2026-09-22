@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-import app_commands as ac
+from cygnus.apps import commands as ac
 
 
 def test_the_owners_example_becomes_three_steps():
@@ -202,7 +202,7 @@ def test_a_spoken_session_name_finds_its_title(name, title):
 
 
 def test_an_ability_step_runs_through_the_voice_routers_runner(monkeypatch):
-    import intent_router
+    from cygnus.brain import intent_router
     ran = []
     monkeypatch.setattr(intent_router, "_run_ability",
                         lambda app, aid, args, apps: (ran.append((app, aid)), ("Find in the document, sir (PowerPoint).", True))[1])

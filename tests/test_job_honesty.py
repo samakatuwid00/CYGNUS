@@ -4,9 +4,9 @@ the background when the turn can take a late answer."""
 
 import pytest
 
-import jobs
-import plain_reply
-import tools
+from cygnus.jobs import registry as jobs
+from cygnus.brain import plain_reply
+from cygnus import tools
 
 
 @pytest.fixture

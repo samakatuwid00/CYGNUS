@@ -3,7 +3,7 @@ router that is already starting is waited for instead of started twice."""
 
 import pytest
 
-import router_keeper as rk
+from cygnus.brain import router_keeper as rk
 
 
 @pytest.fixture

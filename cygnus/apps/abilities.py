@@ -29,7 +29,7 @@ import threading
 import time
 import urllib.parse
 
-import rules_engine
+from cygnus.rules import engine as rules_engine
 
 KINDS = ("browser", "media", "office", "editor", "files", "terminal", "chat", "game",
          "utility", "system", "noise", "cli")
@@ -239,7 +239,7 @@ def heuristic_kind(key, entry):
     if key in PROFILES:
         return PROFILES[key][0]
     try:
-        import curate
+        from cygnus.apps import curate
         if curate.is_noise(key):
             return "noise"
     except Exception:
@@ -269,7 +269,7 @@ def sort_apps(apps, llm=None, progress=None):
     kinds = {k: PROFILES[k][0] for k in apps if k in PROFILES}
     rest = [(k, e) for k, e in apps.items() if k not in kinds]
     if llm is None:
-        import rules_ai
+        from cygnus.rules import ai as rules_ai
         llm = rules_ai._ask_llm
     for i in range(0, len(rest), SORT_BATCH):
         batch = rest[i:i + SORT_BATCH]
@@ -285,7 +285,7 @@ def sort_apps(apps, llm=None, progress=None):
 # ----------------------------------------------------------------- registry --
 
 def _registry_path():
-    import machine_capabilities
+    from cygnus.apps import capabilities as machine_capabilities
     return machine_capabilities.REGISTRY_PATH
 
 
@@ -322,7 +322,7 @@ def generate(keys=None, llm=None, progress=None):
         data = load_apps()
         apps = data["apps"]
         if keys is None:
-            import curate
+            from cygnus.apps import curate
             keys = [k for k, e in apps.items()
                     if isinstance(e, dict) and not e.get("hidden") and curate.is_registered(k)]
         targets = {k: apps[k] for k in keys if isinstance(apps.get(k), dict)}
@@ -347,8 +347,8 @@ def launch_class(key, entry, start_menu):
       "program" - opens a window but has no Start Menu entry: listed, not pinned
       "cli"     - a console program (coreutils, pip scripts, JDK tools): hidden
       "doc"     - a shortcut to a manual or help file: hidden"""
-    import curate
-    import machine_capabilities as mc
+    from cygnus.apps import curate
+    from cygnus.apps import capabilities as mc
     if _DOC_NAME_RE.search(key):
         return "doc"
     path = mc.norm_path(entry.get("bin"))
@@ -380,7 +380,7 @@ def _friendliness(key, entry):
 def _duplicates(apps, classes):
     """{key: kept_key} for entries that point at the same program as a
     friendlier entry ("google chrome" and "chrome", "opencode 1.18.30")."""
-    import machine_capabilities as mc
+    from cygnus.apps import capabilities as mc
     by_path = {}
     for k, cls in classes.items():
         path = mc.norm_path(apps[k].get("bin"))
@@ -416,7 +416,7 @@ def full_scan(llm=None, progress=None):
     console tools, help shortcuts and duplicates out of sight, sort the new
     apps, and pin the Start Menu ones. Abilities are a separate step."""
     say = progress or (lambda stage, pct: None)
-    import machine_capabilities
+    from cygnus.apps import capabilities as machine_capabilities
     say("Scanning the computer for apps...", 5)
     machine_capabilities.write_registry()
     say("Checking which programs are apps...", 8)
@@ -426,7 +426,7 @@ def full_scan(llm=None, progress=None):
         apps = data["apps"]
         classes = {k: launch_class(k, e, start_menu) for k, e in apps.items()
                    if isinstance(e, dict)}
-        import curate
+        from cygnus.apps import curate
         for k, cls in classes.items():
             if _users(apps[k]):
                 continue
@@ -456,7 +456,7 @@ def add_app(query, llm=None, progress=None, scan=True):
     """Register one app by program path or name, sort it, create its abilities,
     and deep-scan it (opening it once if it isn't running)."""
     say = progress or (lambda stage, pct: None)
-    import machine_capabilities as mc
+    from cygnus.apps import capabilities as mc
     query = (query or "").strip().strip('"')
     say(f"Finding {query}...", 10)
     # A program the user points at is theirs to add, wherever it lives (the
@@ -617,7 +617,7 @@ def scan_app(key, launch=False, progress=None):
     """Deep-scan one app's window and store what it can do. Opens the app only
     when launch=True, and closes it again if the scan opened it."""
     say = progress or (lambda stage, pct: None)
-    import tools
+    from cygnus import tools
     data = load_apps()
     entry = data["apps"].get(key)
     if not isinstance(entry, dict):
@@ -666,7 +666,7 @@ def cancel_scan_all():
 
 
 def _scan_all_targets():
-    import curate
+    from cygnus.apps import curate
     apps = load_apps()["apps"]
     return [k for k, e in apps.items()
             if isinstance(e, dict) and not e.get("hidden") and not e.get("deep_scan")
@@ -750,7 +750,7 @@ def _press_media(name):
 
 
 def _window_or_open(key, entry):
-    import tools
+    from cygnus import tools
     window = find_app_window(entry)
     if window is None:
         tools.open_application(key)
@@ -760,7 +760,7 @@ def _window_or_open(key, entry):
 
 def _run_op(key, entry, op, args):
     """One step of an ability. Returns an [Error] string or ""."""
-    import tools
+    from cygnus import tools
     kind = op.get("op")
     if kind == "launch":
         out = tools.open_application(key)
@@ -820,7 +820,7 @@ def _run_op(key, entry, op, args):
         subprocess.Popen([exe, arg], close_fds=True)
         return ""
     if kind == "page_click":
-        import browser_cdp
+        from cygnus.browser import cdp as browser_cdp
         out = browser_cdp.click(key, op.get("target") or "play")
         return out if out.startswith("[Error]") else ""
     window = _window_or_open(key, entry)
@@ -869,7 +869,7 @@ def run_ability(key, ability_id, args=None, confirmed=False):
     if missing:
         return f"[Error] \"{ability['name']}\" needs a {missing[0]}."
     if not confirmed:
-        import safety
+        from cygnus import safety
         decision = safety.assess_ability(key, ability)
         if decision.kind != "act":
             return safety.gate(f"ability {key} {ability_id} {args}", decision,
@@ -881,7 +881,7 @@ def run_ability(key, ability_id, args=None, confirmed=False):
             return err
     out = f"Done: {ability['name']}."
     try:
-        import audit
+        from cygnus import audit
         audit.log_call("abilities.run", {"app": key, "ability": ability_id}, time.time() - t0, out)
     except Exception:
         pass

@@ -28,7 +28,7 @@ import re
 import sys
 import threading
 import time
-import paths
+from cygnus import paths
 
 PROBE_EVERY_S = float(os.getenv("JARVIS_ROUTER_PROBE_S", "300"))
 PROBE_TIMEOUT_S = 20.0
@@ -82,7 +82,7 @@ CACHE_FRESH_S = 600.0
 
 def configured() -> list[str]:
     try:
-        from config import ROUTER_MODEL, ROUTER_FALLBACK_MODELS
+        from cygnus.config import ROUTER_MODEL, ROUTER_FALLBACK_MODELS
         return [m for m in [ROUTER_MODEL] + list(ROUTER_FALLBACK_MODELS) if m]
     except Exception:
         return []
@@ -111,7 +111,7 @@ def discover(force: bool = False) -> list[str]:
     _last_discover = time.time()
     try:
         import httpx
-        from config import ROUTER_BASE_URL, ROUTER_API_KEY
+        from cygnus.config import ROUTER_BASE_URL, ROUTER_API_KEY
         r = httpx.get(ROUTER_BASE_URL.rstrip("/") + "/models", timeout=10,
                       headers={"Authorization": f"Bearer {ROUTER_API_KEY or 'x'}"})
         ids = [m.get("id") for m in r.json().get("data", []) if m.get("id")]
@@ -151,7 +151,7 @@ def mark_unhealthy(model: str, reason: str = "") -> None:
     A call that never reached 9router says nothing about the model: the
     router is down (router_keeper restarts it), so the table is left alone."""
     try:
-        import router_keeper
+        from cygnus.brain import router_keeper
         if router_keeper.is_connection_error(reason):
             return
     except Exception:
@@ -207,9 +207,9 @@ def probe_once(models: list[str] | None = None) -> dict:
     words but calls no tool cannot run Cygnus: it counts as a failure."""
     import concurrent.futures as cf
     from openai import OpenAI
-    from config import ROUTER_BASE_URL, ROUTER_API_KEY
+    from cygnus.config import ROUTER_BASE_URL, ROUTER_API_KEY
     try:
-        import router_keeper
+        from cygnus.brain import router_keeper
         if not router_keeper.port_open():
             # Every call would fail with "Connection error": that is the
             # router, not the models. Start it; probe next round.
@@ -363,7 +363,7 @@ def answer_notice(model: str | None, backend: str | None, previous: str | None) 
         return None
     if backend == "ollama":
         try:
-            import router_keeper
+            from cygnus.brain import router_keeper
             if router_keeper.state.get("up") is False:
                 return ("9router isn't running and I couldn't start it, so the local model is "
                         "answering; it's slower.")
@@ -399,7 +399,7 @@ def notice_for(client: str | None, model: str | None, backend: str | None) -> st
 def primary() -> str | None:
     """The configured first model, as the user would name it."""
     try:
-        from config import ROUTER_MODEL
+        from cygnus.config import ROUTER_MODEL
         return friendly(ROUTER_MODEL)
     except Exception:
         return None

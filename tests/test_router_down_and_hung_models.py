@@ -7,9 +7,9 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-import agent_loop as al
-import brain_gemini as bg
-import router_keeper
+from cygnus.brain import agent_loop as al
+from cygnus.brain import core as bg
+from cygnus.brain import router_keeper
 
 
 def test_a_router_that_is_up_needs_nothing(monkeypatch):

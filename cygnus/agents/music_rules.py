@@ -17,7 +17,7 @@ Two kinds of playback rule exist today, and they are NOT equivalent in trust:
 import re
 import json
 import os
-import paths
+from cygnus import paths
 
 # Returned when no rules resolve (no registry, missing app, empty compiled_rules).
 DEFAULT_MUSIC_SETTINGS = {

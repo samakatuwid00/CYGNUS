@@ -27,7 +27,7 @@ import shutil
 import struct
 import subprocess
 import platform
-import paths
+from cygnus import paths
 
 MANIFEST_PATH = str(paths.CAPABILITIES)
 REGISTRY_PATH = str(paths.APP_REGISTRY)

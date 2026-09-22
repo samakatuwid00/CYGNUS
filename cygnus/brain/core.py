@@ -3,7 +3,7 @@ import json
 import os
 import re
 import time
-import paths
+from cygnus import paths
 
 try:
     from google import genai
@@ -13,15 +13,7 @@ except ImportError:
 
 
 # Configuration
-from config import (GEMINI_API_KEY, GEMINI_MODEL, JARVIS_USE_9ROUTER, ROUTER_BASE_URL,
-                   ROUTER_MODEL, ROUTER_API_KEY, ROUTER_FALLBACK_MODELS, JARVIS_USE_GROQ, GROQ_API_KEY,
-                   GROQ_BASE_URL, GROQ_MODEL, JARVIS_USE_CEREBRAS, CEREBRAS_API_KEY,
-                   CEREBRAS_BASE_URL, CEREBRAS_MODEL, JARVIS_USE_OLLAMA,
-                   JARVIS_PREFER_LOCAL, OLLAMA_BASE_URL, OLLAMA_MODEL,
-                   OLLAMA_API_KEY, OLLAMA_MAX_TOKENS, OLLAMA_TIMEOUT,
-                   OLLAMA_KEEP_WARM, OLLAMA_WARM_INTERVAL, JARVIS_LOCAL_ONLY,
-                   LOCAL_HISTORY_TOKEN_BUDGET, IDLE_RESET_MINUTES,
-                   ROUTER_HISTORY_TOKEN_BUDGET, TOOL_RESULT_HISTORY_CHARS)
+from cygnus.config import (GEMINI_API_KEY, GEMINI_MODEL, JARVIS_USE_9ROUTER, ROUTER_BASE_URL, ROUTER_MODEL, ROUTER_API_KEY, ROUTER_FALLBACK_MODELS, JARVIS_USE_GROQ, GROQ_API_KEY, GROQ_BASE_URL, GROQ_MODEL, JARVIS_USE_CEREBRAS, CEREBRAS_API_KEY, CEREBRAS_BASE_URL, CEREBRAS_MODEL, JARVIS_USE_OLLAMA, JARVIS_PREFER_LOCAL, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_API_KEY, OLLAMA_MAX_TOKENS, OLLAMA_TIMEOUT, OLLAMA_KEEP_WARM, OLLAMA_WARM_INTERVAL, JARVIS_LOCAL_ONLY, LOCAL_HISTORY_TOKEN_BUDGET, IDLE_RESET_MINUTES, ROUTER_HISTORY_TOKEN_BUDGET, TOOL_RESULT_HISTORY_CHARS)
 
 MAX_HISTORY = 20
 
@@ -190,7 +182,8 @@ def _call_timeout(cap):
 def _router_health():
     """The live 9router health module, or None until it exists."""
     try:
-        import router_health
+        import importlib as _il
+        router_health = _il.import_module("cygnus.brain.router_health")   # honours sys.modules (tests swap in a stand-in)
         return router_health
     except Exception:
         return None
@@ -218,7 +211,7 @@ def _router_ready():
     on the local model; router_keeper starts it and this waits (bounded by
     the turn). Raises _RouterDown when it stays down."""
     try:
-        import router_keeper
+        from cygnus.brain import router_keeper
     except ImportError:
         return
     if router_keeper.port_open():
@@ -271,8 +264,8 @@ def _is_open_target(name):
     """Whether `name` is a registered app or site (the chain splitter's test
     for "open vscode, notepad and chrome")."""
     try:
-        import machine_capabilities
-        import tools
+        from cygnus.apps import capabilities as machine_capabilities
+        from cygnus import tools
         kind, found = tools.resolve_open_target(name)
         # A referent ("it", "the other one") is not a link in an open chain:
         # the splitter would have made "open vscode and it" two openable names.
@@ -298,7 +291,7 @@ def _changes_things(text):
     is skipped: it took 8-10 s and came back "invalid" for "delete the file
     ..." (2026-09-12)."""
     try:
-        import tools
+        from cygnus import tools
         return bool(tools._MUTATING_RE.search(text or ""))
     except Exception:
         return False
@@ -309,7 +302,7 @@ def _lead_llm(prompt):
     models only. The dead 9router model, then the CPU model, held a delete
     request for 25 s before its confirm (2026-09-12); with no cloud model up
     the router simply does not lead, and routing carries on."""
-    import rules_ai
+    from cygnus.rules import ai as rules_ai
     return rules_ai._ask_llm(prompt, local=False)
 
 
@@ -424,7 +417,7 @@ def parse_open_site(text: str):
 def _strip_correction(text: str) -> str:
     """'I mean visit X' -> 'visit X' (tools.strip_correction_prefix)."""
     try:
-        import tools
+        from cygnus import tools
         return tools.strip_correction_prefix(text)
     except Exception:
         return text or ""
@@ -444,7 +437,7 @@ def _scrub(text: str) -> str:
     """intake's sanitizer: no NUL, ANSI escape, zero-width, bidi override,
     lone surrogate or Cyrillic look-alike reaches a routing rule."""
     try:
-        import intake
+        from cygnus.brain import intake
         return intake.scrub(text)
     except Exception:
         return (text or "").strip()
@@ -453,7 +446,7 @@ def _scrub(text: str) -> str:
 def _is_blank(text: str) -> bool:
     """Nothing was said: "", "  ", ".", "!!!!", "\\xa0\\xa0", "\\x00"."""
     try:
-        import intake
+        from cygnus.brain import intake
         return intake.is_blank(text)
     except Exception:
         return not (text or "").strip()
@@ -464,7 +457,7 @@ def _outer(text: str) -> str:
     relaying (tools.outer_request). An imperative inside a quotation or behind
     an attribution is content and must not pick the route."""
     try:
-        import tools
+        from cygnus import tools
         return tools.outer_request(text)
     except Exception:
         return text or ""
@@ -478,7 +471,7 @@ def _relays_the_only_command(text: str) -> bool:
     if not t:
         return False
     try:
-        import tools
+        from cygnus import tools
         outer = tools.outer_request(t)
         if outer == t:
             return False
@@ -490,7 +483,7 @@ def _relays_the_only_command(text: str) -> bool:
 def _is_referent(text) -> bool:
     """The whole utterance points at something instead of naming it."""
     try:
-        import tools
+        from cygnus import tools
         return tools.is_referent(text)
     except Exception:
         return False
@@ -499,7 +492,7 @@ def _is_referent(text) -> bool:
 def _is_transport_referent(text) -> bool:
     """The bare "it" / "that" a play or pause continuation means."""
     try:
-        import tools
+        from cygnus import tools
         return tools.is_transport_referent(text)
     except Exception:
         return False
@@ -514,7 +507,7 @@ def _referent_object(text, verb_pattern):
     if not m:
         return None
     try:
-        import tools
+        from cygnus import tools
         rest = m.group(1).strip()
         return rest if rest and tools.is_referent(rest) else None
     except Exception:
@@ -950,7 +943,7 @@ def play_favorites(text):
     ability. None when the command isn't that, or Spotify has no such ability."""
     if not (_FAVORITES_RE.search(text or "") and re.search(r"\bspotify\b", text or "", re.I)):
         return None
-    import app_abilities
+    from cygnus.apps import abilities as app_abilities
     out = app_abilities.run_ability("spotify", "spotify.play_liked")
     if out.startswith("Done"):
         return "Playing your liked songs on Spotify, sir."
@@ -1001,7 +994,7 @@ _ACKNOWLEDGE_RE = re.compile(r"(?:ok(?:ay)?|yes|yeah|yep|sure|no|nope|nothing|ne
 def _is_bare_check_in(text):
     """A lone "test", "ok", "jarvis?" - tools' own not-a-task words."""
     try:
-        import tools
+        from cygnus import tools
         return tools._is_not_a_task(text)
     except Exception:
         return False
@@ -1055,7 +1048,7 @@ def _is_question_not_request(text):
     if not _YES_NO_RE.match(t):
         return False
     try:
-        import semantic_route
+        from cygnus.brain import semantic_route
         route, score = semantic_route.pick(t)
     except Exception:
         return False
@@ -1069,7 +1062,7 @@ def _own_work_facts(question=""):
     said it had never built it (2026-09-12)."""
     parts = []
     try:
-        import jobs
+        from cygnus.jobs import registry as jobs
         matched = jobs.find_work(question)
         if matched:
             parts.append("Jobs matching what the user asked about, best match first:\n"
@@ -1080,8 +1073,8 @@ def _own_work_facts(question=""):
     except Exception:
         pass
     try:
-        import jobs
-        import tools
+        from cygnus.jobs import registry as jobs
+        from cygnus import tools
         words = sorted(jobs.content_words(question))
         writes = (tools.recent_file_writes(match=words) if words else []) or tools.recent_file_writes()
         if writes:
@@ -1112,7 +1105,7 @@ def _fast_lane_opens(text):
     if not m:
         return False
     try:
-        import tools
+        from cygnus import tools
         stripped, bword = tools._split_browser(m.group(1).rstrip(".!?"))
         kind, _ = tools.resolve_open_target(stripped, browser=tools._browser_key(bword) if bword else None)
         return kind in ("site", "app", "clarify")
@@ -1140,7 +1133,7 @@ _SEMANTIC_LEAD = {"job_status": "job_status", "open_site": "open_site",
 def _semantic_lead(text):
     """The brain route a confident, trusted semantic pick leads to, or None."""
     try:
-        import semantic_route
+        from cygnus.brain import semantic_route
         route = semantic_route.lead(text)
     except Exception as e:
         print(f"[semantic] lead failed: {type(e).__name__}: {e}", flush=True)
@@ -1196,7 +1189,7 @@ def _asks_something(reply):
 def remember_question(text):
     """Ask before saving a preference that only might be one. The question,
     or '' when another question is already open (one at a time)."""
-    import dialogue_state
+    from cygnus.brain import dialogue_state
     if dialogue_state.pending():
         return ""
     words = text.split()
@@ -1209,11 +1202,11 @@ def remember_question(text):
 def answer_remember(text):
     """Yes or no to "Should I remember that …?", else None: anything longer
     is a new turn and routes as one."""
-    import dialogue_state
+    from cygnus.brain import dialogue_state
     asked = dialogue_state.pending("remember")
     if not asked:
         return None
-    import tools
+    from cygnus import tools
     reply = _consent.read(text, soft=True)
     if reply.kind == "yes":
         dialogue_state.answered()
@@ -1227,14 +1220,14 @@ def answer_remember(text):
 def answer_running_stop(text):
     """Yes or no to "I'll stop ... Say confirm", else None. Read strictly: a
     bare "ok" does not stop anything."""
-    import dialogue_state
+    from cygnus.brain import dialogue_state
     asked = dialogue_state.pending("running_stop")
     if not asked:
         return None
     reply = _consent.read(text)
     if reply.kind == "yes":
         dialogue_state.answered()
-        import running_apps
+        from cygnus.apps import running as running_apps
         return running_apps.stop_now(asked["payload"])
     if reply.kind == "no":
         dialogue_state.answered()
@@ -1248,7 +1241,7 @@ def answer_choice(text):
     outright, (reply, None) answers now, (None, None) when no such question
     is open. A reply that is not an answer drops the question: the owner
     moved on, and it is routed as the new request it is."""
-    import dialogue_state
+    from cygnus.brain import dialogue_state
     asked = dialogue_state.pending("pick") or dialogue_state.pending("clarify")
     if not asked:
         return None, None
@@ -1490,7 +1483,7 @@ def _load_jarvis_profile() -> str:
 _profile_text = _load_jarvis_profile()
 # Phase 20b: augment persistent memory with Honcho-sourced context (best-effort).
 try:
-    from tools import get_memory_context
+    from cygnus.tools import get_memory_context
     _honcho_mem = get_memory_context(tokens=4000)
     if _honcho_mem and _honcho_mem != "(no memory context available)":
         JARVIS_SYSTEM += (
@@ -1910,7 +1903,7 @@ for _consent_tool in ("desktop_control", "run_opencli", "delegate_to_hermes",
 # match sentences that merely CONTAIN "yes"/"confirm" — those route normally.
 # A bare yes or no to the confirm just asked, read the way every other
 # question's answer is (consent.py): "yeah" and "sige" confirm, "ok" does not.
-import consent as _consent
+from cygnus.brain import consent as _consent
 _BARE_CONFIRM_RE = _consent.YES_RE
 _BARE_DECLINE_RE = _consent.NO_RE
 # A model reply that reports an action. Only true when a tool ran this turn.
@@ -1988,7 +1981,7 @@ def _held_for_question(name: str, args: dict, last_user_text: str) -> str | None
 
 def execute_tool(name: str, args: dict, last_user_text: str = "") -> str:
     """Execute a tool by name with arguments."""
-    import tools
+    from cygnus import tools
     held = _held_for_question(name, args, last_user_text)
     if held:
         return held
@@ -2121,7 +2114,7 @@ class JarvisBrain:
         # waited out a 7-minute Claude job, came back to approve the next
         # step, and found the conversation wiped (2026-09-14).
         try:
-            import jobs
+            from cygnus.jobs import registry as jobs
             if jobs.active():
                 return
         except Exception:
@@ -2168,7 +2161,7 @@ class JarvisBrain:
         _progress_local.user_text = user_input       # open_application reads "a new ..."
         started = None
         try:
-            import intent_router
+            from cygnus.brain import intent_router
             started = intent_router.turn_started(user_input)
         except Exception:
             pass
@@ -2178,7 +2171,7 @@ class JarvisBrain:
         self._shared_out = False
         _progress_local.grounded = None
         try:
-            import command_chain
+            from cygnus.brain import command_chain
             clauses = command_chain.split_commands(user_input, is_target=_is_open_target)
         except Exception:
             clauses = [user_input]
@@ -2204,7 +2197,7 @@ class JarvisBrain:
             reply += note
         if self._gate is not None:          # what the gate would do, next to what ran
             try:
-                import action_gate
+                from cygnus.brain import action_gate
                 action_gate.log_shadow(user_input, self._gate, {
                     "backend": self.last_backend, "intent": (self.last_stats or {}).get("intent"),
                     "asked": isinstance(reply, str) and _asks_something(reply)})
@@ -2234,7 +2227,7 @@ class JarvisBrain:
         if not self.conversation or self.conversation[-1].get("role") != "user":
             return
         try:
-            import running_apps
+            from cygnus.apps import running as running_apps
             facts = running_apps.explain_context(running_apps.inventory(), running_apps.focus_of(text))
         except Exception:
             return
@@ -2307,13 +2300,13 @@ class JarvisBrain:
         # Store progress callback in thread-local so tools can reach it.
         _progress_local.cb = progress_cb
         # A delegation the model starts takes the same late-answer path.
-        import tools as _tools_jobs
+        from cygnus import tools as _tools_jobs
         _tools_jobs.set_job_callback(on_hermes_done)
         self._maybe_reset_idle()
         self._last_turn_ts = time.time()
         # A new user turn for the safety gate: a held action runs only on a
         # yes in a later turn, and a tool's confirm flag counts only then.
-        import safety as _safety
+        from cygnus import safety as _safety
         _safety.begin_turn()
         self.conversation.append({"role": "user", "content": user_input})
         self._cap_conversation()
@@ -2321,7 +2314,7 @@ class JarvisBrain:
         # The answer to the router's own "Should I ... in Spotify, sir?"
         # (an ability the user marked ask): yes runs it, no drops it.
         try:
-            import intent_router as _ir
+            from cygnus.brain import intent_router as _ir
             _consent = _ir.answer_pending_ability(user_input)
             if _consent is not None:
                 self.conversation.append({"role": "assistant", "content": _consent})
@@ -2375,10 +2368,10 @@ class JarvisBrain:
         # "Which movie?") keeps its answer.
         if _BARE_DECLINE_RE.match((user_input or "").strip()):
             try:
-                import rules_steps as _rs
-                import tools as _td
+                from cygnus.rules import steps as _rs
+                from cygnus import tools as _td
                 if not _rs.active() and not _td._PENDING_RULE_SLOT:
-                    import safety as _sf
+                    from cygnus import safety as _sf
                     _declined = _sf.decline_pending() or _td.decline_pending()
                     if _declined is not None:
                         self.conversation.append({"role": "assistant", "content": _declined})
@@ -2397,7 +2390,7 @@ class JarvisBrain:
         # the marker — parse_search_command reads it to replace the previous
         # query instead of starting a new one, and strips fillers itself.
         try:
-            import tools as _tc
+            from cygnus import tools as _tc
             _routed = _tc.strip_fillers(_tc.strip_correction_prefix(
                 _tc.strip_fillers(user_input)))
             if _routed != user_input and not _tc._SEARCH_START.match(_routed):
@@ -2413,7 +2406,7 @@ class JarvisBrain:
         # instant answer skips that tier, which made "what time is it" take
         # about 4 s (2026-09-22).
         try:
-            import tools as _tr
+            from cygnus import tools as _tr
             _rule_out = _tr.try_rule_action(user_input, semantic=fast_path_answer(user_input)[0] is None)
         except Exception:
             _rule_out = None
@@ -2435,7 +2428,7 @@ class JarvisBrain:
                 _pref_text = user_input.strip()
                 def _capture_pref():
                     try:
-                        import tools as _tools
+                        from cygnus import tools as _tools
                         _tools.remember_fact(_pref_text)
                     except Exception:
                         pass
@@ -2456,8 +2449,8 @@ class JarvisBrain:
         # jobs forever. If nothing is pending, fall through to normal routing.
         if _BARE_CONFIRM_RE.match((user_input or "").strip()):
             try:
-                import tools as _t
-                import safety as _sf
+                from cygnus import tools as _t
+                from cygnus import safety as _sf
                 hermes_pending = _t.pending_confirm_task()
                 auton_pending = _t.pending_autonomous_goal()
                 out = None
@@ -2505,7 +2498,7 @@ class JarvisBrain:
         # AGENT_LOOP_PLAN.md). Instant intents and slash commands stay with
         # the routing below; so does any turn no model could take.
         try:
-            import agent_loop as _al
+            from cygnus.brain import agent_loop as _al
             if _al.MODE in ("lead", "shadow") and _al.takes(user_input, classify_intent(user_input), _client_key()):
                 _ctx = {"client": _client_key(), "user_text": user_input, "on_done": on_hermes_done,
                         "progress_cb": progress_cb, "remote": getattr(_progress_local, "remote", False)}
@@ -2527,7 +2520,7 @@ class JarvisBrain:
         # names the target ("a website, youtube") is rewritten to "open
         # youtube" and routed normally, so the answer actually reaches the
         # open path instead of being chatted at.
-        import dialogue_state as _dq
+        from cygnus.brain import dialogue_state as _dq
         if _dq.pending("open_choice"):
             _dq.answered()
             _open_ans, _open_rewrite = resolve_open_choice(user_input)
@@ -2616,11 +2609,11 @@ class JarvisBrain:
         # a confirm (answer_running_stop). From the phone only the list.
         if intent in ("running", "running_front", "running_stop", "running_text", "running_describe"):
             try:
-                import running_apps
+                from cygnus.apps import running as running_apps
                 out, plan = running_apps.handle(intent, user_input,
                                                 remote=getattr(_progress_local, "remote", False))
                 if plan:
-                    import dialogue_state
+                    from cygnus.brain import dialogue_state
                     dialogue_state.ask("running_stop", out, plan, owner="brain")
                 self.conversation.append({"role": "assistant", "content": out})
                 self.last_backend = "instant"
@@ -2631,10 +2624,10 @@ class JarvisBrain:
         if intent in ("job_status", "job_stop", "remember"):
             try:
                 if intent == "remember":
-                    from tools import remember_fact
+                    from cygnus.tools import remember_fact
                     out = remember_fact(user_input)
                 else:
-                    from tools import job_control
+                    from cygnus.tools import job_control
                     out = job_control("status" if intent == "job_status" else "stop")
                 self.conversation.append({"role": "assistant", "content": out})
                 self.last_backend = "instant"
@@ -2652,7 +2645,7 @@ class JarvisBrain:
         # question cost a "Delegating to Hermes: CONTEXT [PROFILE]..." ack and
         # a ~2-min background job.
         try:
-            from tools import is_conversational
+            from cygnus.tools import is_conversational
             _conversational = is_conversational(user_input)
         except Exception:
             _conversational = False
@@ -2682,9 +2675,9 @@ class JarvisBrain:
         # anything else falls through to the routing below, unchanged.
         if intent in ("general", "app_reference") and not _conversational:
             try:
-                import app_abilities as _aa
-                import dialogue_state as _ds
-                import intent_router as _ir
+                from cygnus.apps import abilities as _aa
+                from cygnus.brain import dialogue_state as _ds
+                from cygnus.brain import intent_router as _ir
                 if _ir.MODE == "lead" and not _fast_lane_opens(user_input) \
                         and _router_may_lead(user_input) and not _changes_things(user_input):
                     _apps = _aa.load_apps()["apps"]
@@ -2703,11 +2696,11 @@ class JarvisBrain:
         # shadow it only records what it would do; in lead it asks.
         if intent in ("general", "app_reference") and not _conversational:
             try:
-                import action_gate as _ag
+                from cygnus.brain import action_gate as _ag
                 if _ag.MODE in ("shadow", "lead"):
                     _sem = None
                     try:
-                        import semantic_route as _sr
+                        from cygnus.brain import semantic_route as _sr
                         _sem = _sr.pick(user_input)[1]
                     except Exception:
                         pass
@@ -2725,7 +2718,7 @@ class JarvisBrain:
         if intent in _MULTISTEP_INTENTS and not _conversational \
                 and _is_multistep_goal(user_input):
             try:
-                from tools import run_autonomous
+                from cygnus.tools import run_autonomous
                 out = run_autonomous(user_input)
                 if not out.startswith("[NEEDS_CONFIRM]"):
                     self.conversation.append({"role": "assistant", "content": out})
@@ -2740,7 +2733,7 @@ class JarvisBrain:
                 print(f"[JARVIS] autonomous launch failed ({e}); falling back...")
         if intent in ("general", "app_reference") and not _conversational:
             try:
-                from tools import delegate
+                from cygnus.tools import delegate
                 # Phase 4: if a delivery callback is supplied (voice/WS path), run
                 # Hermes in the background so the mic stays live; think() returns the
                 # "working" ack now and on_hermes_done receives the real answer later.
@@ -2771,7 +2764,7 @@ class JarvisBrain:
         # RESCAN: instant local tool — scan installed software, no cloud needed.
         if intent == "rescan":
             try:
-                from tools import rescan_applications
+                from cygnus.tools import rescan_applications
                 res = rescan_applications()
                 self.conversation.append({"role": "assistant", "content": res})
                 self.last_backend = "instant"
@@ -2784,7 +2777,7 @@ class JarvisBrain:
         # "add X to my apps" / "install X in JARVIS" / "make X available to JARVIS".
         if intent == "app_install":
             try:
-                from tools import install_app
+                from cygnus.tools import install_app
                 app_name = user_input
                 # Pattern A: "add X to my apps" / "install X in jarvis" / "add X to jarvis"
                 m = re.search(
@@ -2819,7 +2812,7 @@ class JarvisBrain:
         # "remove X from JARVIS" / "uninstall X from my apps" / "stop controlling X".
         if intent == "app_uninstall":
             try:
-                from tools import uninstall_app
+                from cygnus.tools import uninstall_app
                 app_name = user_input
                 # Pattern A: "remove X from jarvis" / "uninstall X from my apps"
                 m = re.search(
@@ -2845,7 +2838,7 @@ class JarvisBrain:
         # LIST INSTALLED: instant local route — list all apps in JARVIS's registry.
         if intent == "list_installed":
             try:
-                from tools import list_installed_apps
+                from cygnus.tools import list_installed_apps
                 res = list_installed_apps()
                 self.conversation.append({"role": "assistant", "content": res})
                 self.last_backend = "instant"
@@ -2860,7 +2853,7 @@ class JarvisBrain:
         # stayed empty.
         if intent == "add_site":
             try:
-                import tools as _tools_mod
+                from cygnus import tools as _tools_mod
                 _tools_mod.set_progress_cb(_progress_local.cb)
                 parsed = parse_add_site(user_input)
                 if parsed:
@@ -2879,7 +2872,7 @@ class JarvisBrain:
         # LIST_SITES: question ABOUT the registry — answer from it, never freelance.
         if intent == "list_sites":
             try:
-                import tools as _tools_mod
+                from cygnus import tools as _tools_mod
                 _tools_mod.set_progress_cb(_progress_local.cb)
                 res = execute_tool("list_sites", {}, user_input)
                 self.conversation.append({"role": "assistant", "content": res})
@@ -2893,7 +2886,7 @@ class JarvisBrain:
         # raw URL) right here, never through the Hermes delegation.
         if intent == "open_site":
             try:
-                import tools as _tools_mod
+                from cygnus import tools as _tools_mod
                 _tools_mod.set_progress_cb(_progress_local.cb)
                 # "open github in brave": the browser is where, not what.
                 # parse_open_site drops the phrase, so read it off the request.
@@ -2919,7 +2912,7 @@ class JarvisBrain:
                 # not per block, so importing it anywhere inside think() made the
                 # module-level 3-arg wrapper unreachable from EVERY route in this
                 # function, including the close_app/stop ones further down.
-                import tools as _tools_mod, re as _re3
+                import re as _re3; from cygnus import tools as _tools_mod
                 _tools_mod.set_progress_cb(_progress_local.cb)
                 tu = (user_input or "").strip()
                 m = _re3.search(r"https?://\S+", tu)
@@ -2947,7 +2940,7 @@ class JarvisBrain:
         if intent == "recall_memory":
             try:
                 # See web_browse above: no local execute_tool import in think().
-                import tools as _tools_mod
+                from cygnus import tools as _tools_mod
                 _tools_mod.set_progress_cb(_progress_local.cb)
                 _progress("Recalling what I remember...")
                 res = execute_tool("get_memory_context", {"tokens": 4000})
@@ -2972,7 +2965,7 @@ class JarvisBrain:
                 # to the cloud brain, so this deterministic route never once ran —
                 # and the call also skipped _apply_consent_policy, which the wrapper
                 # is what applies.
-                import tools as _tools_mod, re as _re2
+                import re as _re2; from cygnus import tools as _tools_mod
                 _tools_mod.set_progress_cb(_progress_local.cb)
                 m = _re2.search(
                     r"\b(?:close|quit|exit|kill|shut down)\b\s+(?:the\s+|my\s+)*(.+)",
@@ -2993,7 +2986,7 @@ class JarvisBrain:
         if intent == "stop":
             try:
                 # Same shadowing bug as close_app above — see that comment.
-                import tools as _tools_mod
+                from cygnus import tools as _tools_mod
                 _tools_mod.set_progress_cb(_progress_local.cb)
                 _progress("Stopping music...")
                 if re.search(r"\bspotify\b", (user_input or "").lower()):
@@ -3180,7 +3173,7 @@ class JarvisBrain:
                         )
                     except Exception as ce:
                         cs = str(ce)
-                        import router_keeper as _rk
+                        from cygnus.brain import router_keeper as _rk
                         if _rk.is_connection_error(ce):
                             # Every other model goes through the same dead
                             # router: stop here, the caller says so.
@@ -3218,7 +3211,7 @@ class JarvisBrain:
                         for tc in message.tool_calls:
                             # Expose the progress callback to tools so they can stream
                             # mid-task status while think() is still running.
-                            import tools as _tools_mod
+                            from cygnus import tools as _tools_mod
                             _tools_mod.set_progress_cb(_progress_local.cb)
                             result = execute_tool(tc.function.name, _safe_json(tc.function.arguments),
                                                   user_input)
@@ -3597,7 +3590,7 @@ class JarvisBrain:
                 })
 
                 for tc in message.tool_calls:
-                    import tools as _tools_mod
+                    from cygnus import tools as _tools_mod
                     _tools_mod.set_progress_cb(_progress_local.cb)
                     result = execute_tool(tc.function.name, _safe_json(tc.function.arguments),
                                           user_input)
@@ -3716,7 +3709,7 @@ class JarvisBrain:
                 })
 
                 for tc in message.tool_calls:
-                    import tools as _tools_mod
+                    from cygnus import tools as _tools_mod
                     _tools_mod.set_progress_cb(_progress_local.cb)
                     result = execute_tool(tc.function.name, _safe_json(tc.function.arguments),
                                           user_input)
@@ -3843,7 +3836,7 @@ class JarvisBrain:
         # the PREVIOUS conversation's context across a clear (verified live:
         # a codename given before /clear leaked into the next session).
         try:
-            from warm_harness import warm_reset
+            from cygnus.jobs.warm_harness import warm_reset
             warm_reset()
         except Exception as e:
             print(f"[JARVIS] warm session reset failed ({e}); brain context cleared anyway.")

@@ -2,7 +2,7 @@
 
 import pytest
 
-import consent
+from cygnus.brain import consent
 
 APPS = ["code", "codium", "cursor"]
 APP_OR_SITE = [["app", "application", "program"], ["website", "site", "web"]]

@@ -103,7 +103,7 @@ def compose_report(topic: str, output_path: str = None, verbatim: bool = False) 
     this returns the one-time sign-in instruction and does nothing else.
     """
     try:
-        import browser_agent
+        from cygnus.browser import agent as browser_agent
 
         if not browser_agent.is_signed_in():
             return ("I need the Cygnus browser signed in to ChatGPT before I can "
@@ -142,7 +142,7 @@ def compose_report(topic: str, output_path: str = None, verbatim: bool = False) 
             today_v = datetime.date.today().isoformat()
             if output_path:
                 try:
-                    from tools import _resolve_write_path
+                    from cygnus.tools import _resolve_write_path
                     out_v = _resolve_write_path(output_path)
                 except Exception:
                     out_v = Path(output_path).expanduser()
@@ -159,7 +159,7 @@ def compose_report(topic: str, output_path: str = None, verbatim: bool = False) 
                     f"for word from {len(used)} conversation(s).")
 
         material = "\n\n".join(sources)[:12000]
-        import brain_gemini
+        from cygnus.brain import core as brain_gemini
 
         brain = brain_gemini.JarvisBrain()
         prose = brain.think(
@@ -179,7 +179,7 @@ def compose_report(topic: str, output_path: str = None, verbatim: bool = False) 
             # against the server's working directory, or the .docx lands among the
             # source files while JARVIS reports it saved to Documents.
             try:
-                from tools import _resolve_write_path
+                from cygnus.tools import _resolve_write_path
                 out = _resolve_write_path(output_path)
             except Exception:
                 out = Path(output_path).expanduser()

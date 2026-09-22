@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from music_agent import _strip_ytm_suffix, _title_matches, _title_similarity  # noqa: E402
+from cygnus.agents.music import _strip_ytm_suffix, _title_matches, _title_similarity  # noqa: E402
 
 CASES = [
     ('bohemian rhapsody', 'Bohemian Rhapsody - Queen - YouTube Music', True),

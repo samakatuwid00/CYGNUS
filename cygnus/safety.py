@@ -121,7 +121,7 @@ def assess(tool: str, args: dict | None = None) -> Decision:
                             f"Run {os.path.basename(app)}? Opening that file runs it, sir.")
     if tool == "write_to_notepad" and str(args.get("filename") or "").strip():
         try:
-            import tools
+            from cygnus import tools
             p = tools._resolve_write_path(str(args["filename"]).strip())
             if p.suffix == "":
                 p = p.with_suffix(".txt")
@@ -146,7 +146,7 @@ def assess_app_step(slug: str, step: dict) -> Decision:
     if slug == "hermes" and do == "send":
         text = str(args.get("text") or "")
         try:
-            import tools
+            from cygnus import tools
             safe = tools._is_safe_task(text)
         except Exception:
             safe = False
@@ -235,7 +235,7 @@ def gate(key: str, decision: Decision, run):
 
 def _audit(decision: str, key: str, reason: str) -> None:
     try:
-        import tools
+        from cygnus import tools
         tools._audit_log("safety", key[:300], decision, extra={"reason": reason})
     except Exception:
         pass

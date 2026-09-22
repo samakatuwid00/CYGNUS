@@ -5,9 +5,9 @@ import json
 
 import pytest
 
-import app_abilities as aa
-import dialogue_state as ds
-import intent_router as ir
+from cygnus.apps import abilities as aa
+from cygnus.brain import dialogue_state as ds
+from cygnus.brain import intent_router as ir
 
 RULE = {"rule_id": "search_movie", "source_phrase": "search movie", "enforcement": "action",
         "action": {"type": "search_site", "site": "hollymoviehd.cc", "url": "https://hollymoviehd.cc",
@@ -62,7 +62,7 @@ def test_the_reply_names_the_detail_it_used(monkeypatch):
 
 
 def test_questions_are_answered_not_acted_on():
-    import brain_gemini
+    from cygnus.brain import core as brain_gemini
     assert brain_gemini._router_may_lead("what is the status of the sticky brain open source repo") is False
     assert brain_gemini._router_may_lead("from what is the status of the repo") is False
     assert brain_gemini._router_may_lead("how do I clear my cache") is False
@@ -115,7 +115,7 @@ def test_a_missing_detail_is_asked_for(monkeypatch):
 
 
 def test_a_confident_rule_runs_with_the_named_detail(monkeypatch):
-    import tools
+    from cygnus import tools
     ran = []
     monkeypatch.setattr(tools, "run_rule_action",
                         lambda rule, owner, action, slot="", entry=None:
@@ -153,8 +153,8 @@ def test_a_led_turn_is_logged_once_without_a_second_model_call(logs, monkeypatch
 
 
 def test_registry_opens_stay_on_the_fast_lane(monkeypatch):
-    import brain_gemini
-    import tools
+    from cygnus.brain import core as brain_gemini
+    from cygnus import tools
     monkeypatch.setattr(tools, "resolve_open_target",
                         lambda text, force=None, browser=None:
                         ("app", "notepad") if text == "notepad" else (None, text))

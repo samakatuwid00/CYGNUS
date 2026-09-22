@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """Unit tests for semantic_memory: AUDN classification, recall fusion, decay."""
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))   # the repository
+
 import math
 import os
 import sys
@@ -8,7 +12,7 @@ import tempfile
 tmp = tempfile.mkdtemp(prefix="sm_test_")
 os.environ["JARVIS_SEMANTIC_DB"] = os.path.join(tmp, "semantic.db")
 
-import semantic_memory as sm  # noqa: E402
+from cygnus.memory import semantic as sm  # noqa: E402
 
 fails = []
 

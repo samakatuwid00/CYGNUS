@@ -42,8 +42,8 @@ for f in ("autonomous.py", "tools.py", "brain_gemini.py"):
     except py_compile.PyCompileError as e:
         check(f"py_compile {f}", False, str(e)[:120])
 
-import autonomous
-import jobs as jobreg
+from cygnus.jobs import autonomous
+from cygnus.jobs import registry as jobreg
 
 # --- contract text -----------------------------------------------------------
 c = autonomous._contract("test goal", "C:/x/y.status")
@@ -176,7 +176,7 @@ check("supervisor tails STEP lines into progress notes",
       "[STEP 1]" in notes, notes[:120])
 
 # --- Phase 17 slice: independent verifier ----------------------------------
-import autonomous as _au
+from cygnus.jobs import autonomous as _au
 
 # a claimed step whose path does NOT exist on disk must be UNVERIFIED
 _nonexistent = _au._verify_step(

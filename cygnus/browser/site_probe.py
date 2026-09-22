@@ -19,7 +19,7 @@ import re
 import subprocess
 import threading
 import urllib.parse
-import paths
+from cygnus import paths
 
 PROFILE_DIR = os.path.join(os.getenv("LOCALAPPDATA") or os.path.expanduser("~"),
                            "JARVIS", "verifier-chrome")

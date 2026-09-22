@@ -7,8 +7,12 @@ Pure stdlib assertions -- no mic, no model. Verifies the Layer-1 contract:
   * confidence triage + word_conf demotion
   * autocomplete always returns tappable chips
 """
-import intake
-from intake import load_corpus, resolve_intent, normalize, autocomplete
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))   # the repository
+
+from cygnus.brain import intake
+from cygnus.brain.intake import load_corpus, resolve_intent, normalize, autocomplete
 
 C = load_corpus()
 

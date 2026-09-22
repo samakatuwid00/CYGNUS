@@ -3,7 +3,7 @@ may call the other while holding it (a deadlock hung the suite, 2026-09-22)."""
 
 import threading
 
-import router_health as rh
+from cygnus.brain import router_health as rh
 
 
 def test_healthy_models_returns_with_the_real_candidates(monkeypatch):

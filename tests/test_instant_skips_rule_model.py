@@ -2,9 +2,9 @@
 reads Apps-panel rules by meaning: that call made "what time is it" take
 about 4 s (smoke run, 2026-09-22)."""
 
-import brain_gemini
-import rules_match
-import tools
+from cygnus.brain import core as brain_gemini
+from cygnus.rules import match as rules_match
+from cygnus import tools
 
 
 def test_try_rule_action_can_skip_the_semantic_tier(monkeypatch):
@@ -17,7 +17,7 @@ def test_try_rule_action_can_skip_the_semantic_tier(monkeypatch):
 
 
 def test_an_instant_turn_skips_it(monkeypatch):
-    import agent_loop
+    from cygnus.brain import agent_loop
     monkeypatch.setattr(agent_loop, "MODE", "off")
     seen = []
     real = tools.try_rule_action

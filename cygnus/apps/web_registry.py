@@ -24,7 +24,7 @@ import time
 import difflib
 from datetime import datetime
 from urllib.parse import urlparse
-import paths
+from cygnus import paths
 
 REGISTRY_PATH = str(paths.WEB_REGISTRY)
 

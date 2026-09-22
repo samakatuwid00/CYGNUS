@@ -5,9 +5,9 @@ import json
 
 import pytest
 
-import app_abilities as aa
-import dialogue_state as ds
-import intent_router as ir
+from cygnus.apps import abilities as aa
+from cygnus.brain import dialogue_state as ds
+from cygnus.brain import intent_router as ir
 
 RULE = {"rule_id": "search_movie", "source_phrase": "search movie",
         "summary": "search hollymoviehd.cc in Brave"}

@@ -4,8 +4,8 @@ one: both started work unasked before 2026-09-13."""
 
 import pytest
 
-import jobs
-import tools
+from cygnus.jobs import registry as jobs
+from cygnus import tools
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ def ran(monkeypatch, tmp_path):
                         lambda task, agent=None, timeout=300: calls.append(("spec", agent, task)) or "SPEC DONE")
     monkeypatch.setattr(tools, "_run_pi_specialist",
                         lambda task, agent=None, timeout=300: calls.append(("pi", agent, task)) or "PI DONE")
-    import autonomous
+    from cygnus.jobs import autonomous
     monkeypatch.setattr(autonomous, "start_goal",
                         lambda goal, timeout=1800, progress_cb=None: (calls.append(("auto", goal)) or "AUTO ACK", "a1"))
     return calls
@@ -88,7 +88,7 @@ def test_no_drops_a_waiting_specialist(ran):
 
 
 def test_claude_gets_the_code_brief(monkeypatch):
-    import context_assembler as ca
+    from cygnus.brain import context_assembler as ca
     monkeypatch.setattr(ca, "_load_profile", lambda: "")
     monkeypatch.setattr(ca, "_recent_summary", lambda n: "")
     monkeypatch.setattr(ca, "_app_context", lambda t: "")

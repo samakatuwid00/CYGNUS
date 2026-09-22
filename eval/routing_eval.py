@@ -24,14 +24,20 @@ import datetime
 import json
 import os
 import re
+import sys
 from collections import Counter
 
 import numpy as np
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-GOLD = os.path.join(BASE_DIR, "eval", "routing_gold.jsonl")
-SHADOW = os.path.join(BASE_DIR, "logs", "shadow.jsonl")
-AUDIT = os.path.join(BASE_DIR, "logs", "audit.jsonl")
+# Run directly (python eval/<this>.py) or imported by eval/gate_routing.py:
+# either way the repository root must be importable for the cygnus package.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+from cygnus import paths  # noqa: E402
+GOLD = str(paths.EVAL_DIR / "routing_gold.jsonl")
+SHADOW = paths.log("shadow.jsonl")
+AUDIT = paths.log("audit.jsonl")
 
 # classify_intent labels that name their route outright.
 INTENT_ROUTE = {
@@ -88,8 +94,8 @@ def load_gold(path=GOLD, reviewed_only=False):
 
 def keyword_route(text):
     """The route the keyword router takes for `text`, with no model call."""
-    import brain_gemini as b
-    import tools
+    from cygnus.brain import core as b
+    from cygnus import tools
     t = (text or "").strip()
     if b._BARE_CONFIRM_RE.match(t):
         return "confirm"
@@ -176,7 +182,7 @@ _RELEARNED = ("play_spotify", "web_browse")
 def rebuild_actual(records, audit):
     """Logged turns, with the plain-chat ones that used a relearned tool
     re-read from the audit lines between the previous record and their own."""
-    import intent_router
+    from cygnus.brain import intent_router
     stamped = [(t, a) for a in audit
                if (a.get("tool") or (a.get("caller") or "").replace("execute_tool:", "")) in _RELEARNED
                and (t := _ts(a.get("ts")))]
@@ -199,7 +205,7 @@ def rebuild_actual(records, audit):
 
 def false_disagreements(records, rebuilt):
     """Logged disagreements that agree once the turn's actions are re-read."""
-    import intent_router
+    from cygnus.brain import intent_router
     return [r for r, n in zip(records, rebuilt)
             if not r.get("agree") and intent_router.agree(r.get("decision") or {}, n["actual"])]
 
@@ -259,14 +265,14 @@ def _groups(vectors):
 
 def fold_ids(gold):
     """Fold per row; near-duplicates share one."""
-    import semantic_route as sr
+    from cygnus.brain import semantic_route as sr
     return [g % FOLDS for g in _groups(sr.embed([r["text"] for r in gold]))]
 
 
 def cross_validate(gold):
     """(row, route, score) per row, each routed with no threshold by a router
     built from the folds it is not in."""
-    import semantic_route as sr
+    from cygnus.brain import semantic_route as sr
     vectors = sr.embed([r["text"] for r in gold])
     fold = [g % FOLDS for g in _groups(vectors)]
     out = [None] * len(gold)

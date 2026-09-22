@@ -20,8 +20,8 @@ import subprocess
 import threading
 import time
 
-import jobs as jobreg
-import paths
+from cygnus.jobs import registry as jobreg
+from cygnus import paths
 
 # --- config -----------------------------------------------------------------
 MAX_TURNS = 40            # autonomous runs get a generous turn budget
@@ -132,7 +132,7 @@ def start_goal(goal_text: str, timeout: int = DEFAULT_TIMEOUT,
     if not goal_text:
         return "[Error] No goal given.", ""
 
-    from warm_harness import _HERMES_BIN, _child_env, warm_session
+    from cygnus.jobs.warm_harness import _HERMES_BIN, _child_env, warm_session
     sid = warm_session(timeout=min(timeout, 120))
 
     os.makedirs(_JOBS_DIR, exist_ok=True)
@@ -225,7 +225,7 @@ def _verify_step(rest: str) -> tuple[bool, str]:
 def _supervise(jid: str, goal: str, proc, timeout: int,
                on_done=None, progress_cb=None):
     """Watcher thread: tail status file → jobs notes; wait on process."""
-    import warm_harness  # local import to avoid cycles at module load
+    from cygnus.jobs import warm_harness  # local import to avoid cycles at module load
     meta = _RUNNING.get(jid, {})
     spath = meta.get("status_path") or status_path(jid)
     offset = 0

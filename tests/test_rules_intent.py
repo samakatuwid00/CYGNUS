@@ -8,12 +8,12 @@ import json
 
 import pytest
 
-import dialogue_state
-import rules_ai
-import rules_engine
-import rules_match
-import rules_voice
-import tools
+from cygnus.brain import dialogue_state
+from cygnus.rules import ai as rules_ai
+from cygnus.rules import engine as rules_engine
+from cygnus.rules import match as rules_match
+from cygnus.rules import voice as rules_voice
+from cygnus import tools
 
 
 def _fake_llm(reply, seen=None):
@@ -231,7 +231,7 @@ def spoken(monkeypatch, tmp_path):
     monkeypatch.setattr(tools, "_RULE_FIX", {})
     monkeypatch.setattr(tools, "_EXPECT_HINTS", {})
     ran = []
-    import rules_steps
+    from cygnus.rules import steps as rules_steps
     monkeypatch.setattr(rules_steps, "start", lambda rule, owner, action, slot="", entry=None:
                         ran.append((rule["rule_id"], slot)) or "Opened the app.")
     return path, ran
@@ -293,7 +293,7 @@ def test_that_didnt_work_reworks_the_rule(spoken, monkeypatch):
     reply = {"type": "steps", "goal": "play workout", "steps": [
         {"op": "launch"}, {"op": "click", "target": "Workout"}, {"op": "click", "target": "Play"}]}
     monkeypatch.setattr(rules_ai, "_ask_llm", _fake_llm(reply))
-    import machine_capabilities
+    from cygnus.apps import capabilities as machine_capabilities
     monkeypatch.setattr(machine_capabilities, "REGISTRY_PATH", str(path))
     out = tools.try_rule_action("that didn't work, it should press play too")
     assert out.startswith("Here's a new version:")

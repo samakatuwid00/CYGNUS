@@ -248,7 +248,7 @@ def commit_rules(app_id, compiled_rules, registry_path, accept=False, merge=Fals
         "rules": [r["rule_id"] for r in compiled_rules],
     }
     try:
-        import audit
+        from cygnus import audit
         audit.log_call(
             tool="rules.commit",
             args={"event": entry["event"], "app": app_id, "rules": entry["rules"]},
@@ -294,7 +294,7 @@ def remove_rule(app_id, rule_id, registry_path):
         "rules": dropped,
     }
     try:
-        import audit
+        from cygnus import audit
         audit.log_call(
             tool="rules.remove",
             args={"event": entry["event"], "app": app_id, "rules": entry["rules"]},

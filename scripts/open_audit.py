@@ -50,9 +50,9 @@ def _recorders(calls):
 
 def route(text, apps_abilities):
     """(kind, arg) of what the brain would launch for `text`."""
-    import brain_gemini as b
-    import intent_router as ir
-    import tools
+    from cygnus.brain import core as b
+    from cygnus.brain import intent_router as ir
+    from cygnus import tools
     t = tools.strip_fillers(tools.strip_correction_prefix(tools.strip_fillers(text)))
     intent = b.classify_intent(t)
     if intent == "open_site":
@@ -85,8 +85,8 @@ def route(text, apps_abilities):
 
 def _app_key(arg, apps):
     """The registry key open_application() would land on for `arg`, or None."""
-    import tools
-    from machine_capabilities import resolve_normalized
+    from cygnus import tools
+    from cygnus.apps.capabilities import resolve_normalized
     name = tools._clean_app_name(str(arg or "")).lower().strip()
     if name in apps:
         return name
@@ -94,20 +94,20 @@ def _app_key(arg, apps):
     if key:
         return key
     try:
-        from curate import registered_match
+        from cygnus.apps.curate import registered_match
         return registered_match(name)
     except Exception:
         return None
 
 
 def verdict(kind, arg, want_kind, want_key, apps):
-    import web_registry as wr
+    from cygnus.apps import web_registry as wr
     if kind == "router":
         return "router"
     if kind == "clarify" or (isinstance(arg, str) and arg.startswith("Found '")):
         return "pass" if want_key in apps and wr.get_site(want_key) else "fail"
     if kind == "open_site":
-        import tools
+        from cygnus import tools
         key = wr.resolve_site(tools._clean_site_name(str(arg or "")))
         return "pass" if want_kind == "site" and key == want_key else "fail"
     if kind == "open_application":
@@ -120,8 +120,8 @@ def verdict(kind, arg, want_kind, want_key, apps):
 
 
 def audit():
-    import app_abilities
-    import web_registry as wr
+    from cygnus.apps import abilities as app_abilities
+    from cygnus.apps import web_registry as wr
     apps = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                        "app_registry.json"), encoding="utf-8"))["apps"]
     abilities = app_abilities.load_apps()["apps"]

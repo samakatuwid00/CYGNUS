@@ -23,7 +23,7 @@ import re
 import time
 from pathlib import Path
 
-import rules_engine
+from cygnus.rules import engine as rules_engine
 
 SURE = 0.75
 ASK = 0.4
@@ -90,7 +90,7 @@ def _line(owner, rule, action):
 
 def _context():
     try:
-        import dialogue_state
+        from cygnus.brain import dialogue_state
         snap = dialogue_state.snapshot()
     except Exception:
         return ""
@@ -115,7 +115,7 @@ def semantic(utterance, apps=None, llm=None, front=None):
         return None
     if front is None:
         try:
-            import dialogue_state
+            from cygnus.brain import dialogue_state
             front = dialogue_state.active_app()
         except Exception:
             front = None
@@ -126,7 +126,7 @@ def semantic(utterance, apps=None, llm=None, front=None):
                             rules="\n".join(_line(o, r, a) for o, r, a, _ in cat))
     t0 = time.time()
     if llm is None:
-        import rules_ai
+        from cygnus.rules import ai as rules_ai
         raw, model = rules_ai._ask_llm(prompt, local=False, timeout=SEMANTIC_TIMEOUT,
                                        max_tokens=120)
     else:
@@ -157,8 +157,8 @@ def semantic(utterance, apps=None, llm=None, front=None):
 def _known_apps():
     """The owner's active apps (registered and enabled), by key."""
     try:
-        import app_abilities
-        import curate
+        from cygnus.apps import abilities as app_abilities
+        from cygnus.apps import curate
         return {k for k in app_abilities.load_apps().get("apps", {}) if curate.is_registered(k)}
     except Exception:
         return set()
@@ -173,7 +173,7 @@ def _names_other_app(text, owner):
 
 def _audit(text, key, conf, slot, model, took):
     try:
-        import audit
+        from cygnus import audit
         audit.log_call("rules.semantic", {"said": text[:120], "rule": key, "confidence": conf,
                                           "slot": slot, "model": model}, took, "matched")
     except Exception:
@@ -186,12 +186,12 @@ def learn_trigger(owner, rule_id, phrase, registry_path=None):
     """Remember the user's own wording as another trigger of the rule, so the
     fast tier catches it next time. The panel shows it under "also works
     for"; the user can clear it with the rule. Returns True when written."""
-    import rules_ai
+    from cygnus.rules import ai as rules_ai
     clean = rules_ai._clean_phrase(phrase)
     if not clean or len(clean) > 80:
         return False
     try:
-        import rules_compiler as rc
+        from cygnus.rules import compiler as rc
         path = Path(registry_path or rules_engine.APP_REGISTRY_PATH)
         data = rc._load_registry(path)
         entry = (data.get("apps") or {}).get(owner) or {}

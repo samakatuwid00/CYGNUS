@@ -8,9 +8,9 @@ escapes and Cyrillic look-alikes.
 
 import pytest
 
-import brain_gemini as b
-import intake
-import routing_eval as re_
+from cygnus.brain import core as b
+from cygnus.brain import intake
+from eval import routing_eval as re_
 
 DEGENERATE = ["", "   ", "\t\t\t", ".", "?", "!!!!!!!!", "...", "-", ",",
               "\xa0\xa0\xa0", "\x00", "‍‍", "‮", "\x1b[0m"]

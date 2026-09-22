@@ -7,7 +7,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-import agent_loop as al
+from cygnus.brain import agent_loop as al
 
 
 class FakeBrain:
@@ -180,17 +180,17 @@ def test_tidy_agent_output():
     (r"delete the file C:\cygnus_smoke_missing\old.txt", "general", False),
     ("wipe my downloads folder", "general", False), ("kill the node process", "general", False)])
 def test_which_turns_the_loop_takes(text, intent, taken, monkeypatch):
-    import app_commands
+    from cygnus.apps import commands as app_commands
     monkeypatch.setattr(app_commands, "targets", lambda rows=None, apps=None: [])
     assert al.takes(text, intent) is taken
 
 
 def test_the_app_in_play_is_remembered_and_told_to_the_model(monkeypatch):
     al._current_app.clear()
-    import app_commands
+    from cygnus.apps import commands as app_commands
     monkeypatch.setattr(app_commands, "targets", lambda rows=None, apps=None: [
         {"slug": "chrome", "name": "Google Chrome", "row": "1", "driver": "abilities", "kind": "window", "doing": ""}])
-    import running_apps
+    from cygnus.apps import running as running_apps
     monkeypatch.setattr(running_apps, "inventory", lambda use_cache=True: [{"id": "1", "name": "Google Chrome",
                                                                             "group": "apps", "windows": [{"hwnd": 1}]}])
     monkeypatch.setattr(running_apps, "handle", lambda intent, text, remote=False: ("Google Chrome is in front, sir.", None))
@@ -200,9 +200,9 @@ def test_the_app_in_play_is_remembered_and_told_to_the_model(monkeypatch):
 
 
 def test_an_ability_marked_ask_is_asked_not_run(monkeypatch):
-    import app_commands
-    import dialogue_state
-    import running_apps
+    from cygnus.apps import commands as app_commands
+    from cygnus.brain import dialogue_state
+    from cygnus.apps import running as running_apps
     dialogue_state.reset()
     target = {"slug": "powerpoint", "name": "PowerPoint", "row": "20", "driver": "abilities", "kind": "window", "doing": ""}
     monkeypatch.setattr(app_commands, "targets", lambda rows=None, apps=None: [target])
@@ -244,7 +244,7 @@ def test_the_loops_own_tools_are_audited(loop, monkeypatch):
     # The smoke test reads logs/audit.jsonl to see what ran; the loop's app
     # tools never reached it, so a garbled sentence that opened a Hermes
     # session and brought it forward passed as "nothing ran" (2026-09-22).
-    import audit
+    from cygnus import audit
     logged = []
     monkeypatch.setattr(audit, "log_call", lambda tool, args, d, result, confirmed=False: logged.append((tool, args)))
     loop([reply(tool_calls=[call("whats_running", {})]),

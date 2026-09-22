@@ -27,7 +27,7 @@ import sqlite3
 import threading
 import time
 import datetime
-import paths
+from cygnus import paths
 
 _DB_PATH = os.environ.get("JARVIS_SEMANTIC_DB", str(paths.MEMORY_DIR / "semantic.db"))
 

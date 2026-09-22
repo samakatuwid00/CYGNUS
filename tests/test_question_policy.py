@@ -3,8 +3,8 @@ Hermes job is told it is look-only and reports files that changed anyway."""
 
 import pytest
 
-import brain_gemini
-import tools
+from cygnus.brain import core as brain_gemini
+from cygnus import tools
 
 
 @pytest.mark.parametrize("text", [
@@ -44,7 +44,7 @@ def test_a_held_tool_never_reaches_tools(monkeypatch):
 
 
 def _fake_hermes(monkeypatch, changes, tmp_path):
-    import jobs
+    from cygnus.jobs import registry as jobs
     # The job registry and audit trail are the real ones otherwise: every run
     # of these tests put a "read jarvis_hud_v3.html…" job in the owner's
     # Active Tasks.

@@ -20,7 +20,7 @@ import re
 import time
 import urllib.parse
 
-import rules_engine
+from cygnus.rules import engine as rules_engine
 
 WEB_OPS = {"search", "pick", "open", "click", "wait", "ask"}
 DESKTOP_OPS = {"launch", "click", "type", "key", "wait", "ask"}
@@ -106,7 +106,7 @@ def extract_picks(url, query, count=PICK_COUNT, dom=None):
     count=None returns every result, for choosing a title that wasn't listed.
     """
     if dom is None:
-        import site_probe
+        from cygnus.browser import site_probe
         dom = site_probe.load(url)["dom"]
     words = [w for w in re.findall(r"[a-z0-9]+", (query or "").lower()) if len(w) > 1]
     here = url.split("#", 1)[0].rstrip("/")
@@ -181,7 +181,7 @@ def remember(kind, run, url, title=None):
     _LAST.update(kind=kind, url=url, title=title, ts=time.time(),
                  rule=run["rule"], owner=run["owner"], action=run["action"],
                  slot=run.get("slot", ""), entry=run.get("entry") or {})
-    import dialogue_state
+    from cygnus.brain import dialogue_state
     dialogue_state.remember_result(kind, url=url, title=title, app=run["owner"],
                                    slot=run.get("slot", ""))
 
@@ -244,7 +244,7 @@ def _needs_clicks(run):
 
 def _audit(run, step, result):
     try:
-        import audit
+        from cygnus import audit
         audit.log_call("rules.step", {"rule": run["rule"].get("rule_id"), "op": step.get("op"),
                                       "target": step.get("target"), "url": run.get("url")},
                        0.0, result)
@@ -255,8 +255,8 @@ def _audit(run, step, result):
 def _open(run, url, title):
     """Open url in the rule's browser; attach the debugging port when a later
     step must click. Returns (message, wait_kind)."""
-    import browser_cdp
-    import tools
+    from cygnus.browser import cdp as browser_cdp
+    from cygnus import tools
     browser = run["action"].get("browser") or "chrome"
     if _needs_clicks(run) and browser_cdp.supported(browser) and not run.get("no_clicks"):
         if browser_cdp.is_attached(browser):
@@ -305,15 +305,15 @@ def _do_web(run, step):
     if op == "click":
         if run.get("no_clicks"):
             return f"You can {step.get('target') or 'click'} it yourself.", None
-        import browser_cdp
+        from cygnus.browser import cdp as browser_cdp
         return browser_cdp.click(action.get("browser") or "chrome", step.get("target") or "play",
                                  url_hint=run.get("url")), None
     return _do_common(run, step)
 
 
 def _do_desktop(run, step):
-    import desktop_driver
-    import tools
+    from cygnus.apps import desktop_driver
+    from cygnus import tools
     op = step.get("op")
     if op == "launch":
         return tools.open_application(run["owner"]), None
@@ -392,7 +392,7 @@ def _pause(run, said):
     _RUN.clear()
     _RUN.update(run)
     text = " ".join(s for s in said if s)
-    import dialogue_state
+    from cygnus.brain import dialogue_state
     dialogue_state.ask(run.get("awaiting") or "step", text, {"rule": run["rule"].get("rule_id")},
                        owner="rules_steps")
     return text
@@ -458,7 +458,7 @@ def resume(text, looks_new=False):
             return "[Error] I lost track of which page to open. Say the command again."
         url, title = pending
         if _YES_RE.match(reply):
-            import browser_cdp
+            from cygnus.browser import cdp as browser_cdp
             browser = run["action"].get("browser") or "chrome"
             if not browser_cdp.restart(browser, url):
                 cancel()

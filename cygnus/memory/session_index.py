@@ -18,7 +18,7 @@ import json
 import os
 import sqlite3
 import threading
-import paths
+from cygnus import paths
 
 _SESSIONS_DIR = str(paths.SESSIONS_DIR)
 _DB_PATH = os.path.join(_SESSIONS_DIR, "index.db")

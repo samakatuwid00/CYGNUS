@@ -2,7 +2,7 @@
 app: "play lo-fi on spotify" was answered "Did you mean your 'play music
 brave' rule (brave)?" (live smoke, 2026-09-22)."""
 
-import rules_match
+from cygnus.rules import match as rules_match
 
 
 def _fake(monkeypatch, owner="brave"):

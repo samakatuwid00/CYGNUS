@@ -17,7 +17,7 @@ import os
 import re
 import json
 from pathlib import Path
-import paths
+from cygnus import paths
 
 _PROFILE_PATH = paths.PROFILE
 _VAULT_HINT = "Second Brain vault at C:/Users/deped/Documents/Second Brain (semantic search via turbovec; read/write wiki/evergreen)."
@@ -30,14 +30,14 @@ def _load_profile() -> str:
 
 def _recent_summary(n=6) -> str:
     try:
-        from session_store import recent_summary as rs
+        from cygnus.memory.session_store import recent_summary as rs
         return rs(n)
     except Exception:
         return ""
 
 def _app_context(task: str) -> str:
     try:
-        from tools import _app_context as ac
+        from cygnus.tools import _app_context as ac
         return ac(task)
     except Exception:
         return ""
@@ -49,9 +49,9 @@ def _vault_context(task: str, max_hits=3, delegate: str = "hermes") -> str:
         # Use semantic search if available, else keyword
         result = ""
         try:
-            from tools import execute_tool as _et
+            from cygnus.tools import execute_tool as _et
             # need to avoid recursion via delegate loop; call search directly
-            import tools as t
+            from cygnus import tools as t
             # Try semantic first
             result = t.search_vault_semantic(task, limit=max_hits) if hasattr(t, "search_vault_semantic") else t.search_vault(task, limit=max_hits)
         except Exception:
@@ -82,7 +82,7 @@ def assemble_brief(task: str, delegate: str = "hermes") -> str:
     # recall-shaped queries also pull past session matches
     facts = ""
     try:
-        import semantic_memory as smod
+        from cygnus.memory import semantic as smod
         block = smod.context_block(10)
         if block:
             facts = block + "\n"
@@ -91,7 +91,7 @@ def assemble_brief(task: str, delegate: str = "hermes") -> str:
     recall = ""
     if re.search(r"\b(remember|last time|did i|what did i|previously|before|history)\b", task, re.I):
         try:
-            import session_index as si
+            from cygnus.memory import session_index as si
             si.rebuild()
             hits = si.search_sessions(task, 3)
             if hits:
@@ -134,9 +134,9 @@ def assemble_brief(task: str, delegate: str = "hermes") -> str:
     header += "TASK:\n"
     # Log brief (truncated) to audit trail
     try:
-        import audit
+        from cygnus import audit
         # Use tools audit helper if available, else direct
-        from tools import _audit_log
+        from cygnus.tools import _audit_log
         _audit_log(f"context:{delegate}", task[:200], "brief_assembled", result=header[:1000], extra={"delegate": delegate, "vault_len": len(vault), "appctx_len": len(appctx)})
     except Exception:
         pass

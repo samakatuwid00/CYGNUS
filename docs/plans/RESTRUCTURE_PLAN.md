@@ -183,7 +183,7 @@ This phase makes the later moves safe.
   5505).
 - Nothing moves, so behaviour must not change. The gates prove it.
 
-### Phase 2: create the package and move the files
+### Phase 2: create the package and move the files - done 2026-09-22
 
 - Add `pyproject.toml` (package `cygnus`), then `pip install -e .` into
   `.venv`, so tests and scripts import `cygnus` without path tricks.
@@ -207,7 +207,7 @@ This phase makes the later moves safe.
   `jarvis_web.py`, and do the same in `watch_and_restart.py` and
   `make_shortcut.ps1`. Delete the broken root `__main__.py`.
 
-### Phase 3: rewrite the imports and remove the aliases
+### Phase 3: rewrite the imports and remove the aliases - done 2026-09-22
 
 - Rewrite imports with a script that uses the Python parser, not regex:
   `import tools` becomes `from cygnus import tools`, and

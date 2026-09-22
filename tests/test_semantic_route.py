@@ -6,8 +6,8 @@ so no test loads the real model."""
 import numpy as np
 import pytest
 
-import routing_eval as re_
-import semantic_route as sr
+from eval import routing_eval as re_
+from cygnus.brain import semantic_route as sr
 
 # Three directions of meaning; each text is a unit vector near one of them.
 _AXES = {"music": [1, 0, 0], "close": [0, 1, 0], "chat": [0, 0, 1]}
@@ -105,7 +105,7 @@ def test_trust_eval_picks_labels_on_other_folds():
 
 
 def test_a_turn_logs_the_semantic_pick(monkeypatch, tmp_path):
-    import intent_router as ir
+    from cygnus.brain import intent_router as ir
     monkeypatch.setattr(ir, "SHADOW_LOG", str(tmp_path / "shadow.jsonl"))
     monkeypatch.setattr(ir, "AUDIT_LOG", str(tmp_path / "audit.jsonl"))
     (tmp_path / "audit.jsonl").write_text("", encoding="utf-8")

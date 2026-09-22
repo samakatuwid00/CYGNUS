@@ -26,7 +26,7 @@ may structure the user's words, not invent destinations.
 import json
 import re
 
-import rules_engine
+from cygnus.rules import engine as rules_engine
 
 CONFIG_TIME_ONLY = True
 
@@ -217,7 +217,8 @@ def _router_models(config):
     else the brain's model and two of its fallbacks. The configured model has
     been dead for days (503), and asking it first cost every call."""
     try:
-        import router_health
+        import importlib as _il
+        router_health = _il.import_module("cygnus.brain.router_health")   # honours sys.modules (tests swap in a stand-in)
         healthy = [m for m in router_health.healthy_models() if m][:3]
     except Exception:
         healthy = []
@@ -232,7 +233,7 @@ def _ask_llm(prompt, local=True, timeout=20, max_tokens=600):
     more and must not sit on a reply's path."""
     try:
         from openai import OpenAI
-        import config
+        from cygnus import config
     except Exception as e:
         return None, f"no LLM client ({type(e).__name__})"
     tries = [(config.ROUTER_BASE_URL, config.ROUTER_API_KEY or "dummy", m, timeout)
@@ -306,7 +307,7 @@ def _clean_steps_report(raw_steps, web):
     Returns (steps, dropped): `dropped` says, in plain words, what the model
     asked for that Cygnus cannot do, so the user is told instead of finding a
     silently weaker rule ("press ctrl s" used to vanish)."""
-    import rules_steps
+    from cygnus.rules import steps as rules_steps
     allowed = rules_steps.WEB_OPS if web else rules_steps.DESKTOP_OPS
     out, dropped = [], []
     for s in raw_steps if isinstance(raw_steps, list) else []:
@@ -396,7 +397,7 @@ def _catalog_site(text):
     if best:
         return best[1]
     try:
-        import web_registry as wr
+        from cygnus.apps import web_registry as wr
         for n in (3, 2, 1):
             words = low.split()
             for i in range(len(words) - n + 1):
@@ -451,7 +452,7 @@ def describe_condition(cond):
 
 
 def _steps_summary(trigger, action, app_key):
-    import rules_sim
+    from cygnus.rules import sim as rules_sim
     slot = action.get("slot") or ""
     article = "an" if slot[:1].lower() in "aeiou" else "a"
     said = f'When you say "{trigger}"' + (f" with {article} {slot}" if slot else "")
@@ -654,7 +655,7 @@ def compile_drafts(app_key, drafts, existing_rules=None, entry=None, llm=None):
     it named is never lost. Lines no model can read keep the legacy keyword
     parser, as before.
     """
-    import rules_compiler as rc
+    from cygnus.rules import compiler as rc
     by_phrase = {}
     for r in existing_rules or []:
         if isinstance(r, dict) and r.get("source_phrase"):
@@ -706,7 +707,7 @@ def propose_markdown(app_key, rules, notes=None):
             if a.get("search_url"):
                 lines.append(f"    search address: {a['search_url']}")
             if a.get("steps"):
-                import rules_sim
+                from cygnus.rules import sim as rules_sim
                 lines.extend(f"    step {i}: {rules_sim.describe_step(s)}"
                              for i, s in enumerate(a["steps"], 1))
             others = [t for t in r.get("triggers") or [] if t != r.get("source_phrase")]

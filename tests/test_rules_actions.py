@@ -8,10 +8,10 @@ import json
 
 import pytest
 
-import rules_ai
-import rules_compiler as rc
-import rules_engine
-import rules_voice
+from cygnus.rules import ai as rules_ai
+from cygnus.rules import compiler as rc
+from cygnus.rules import engine as rules_engine
+from cygnus.rules import voice as rules_voice
 
 LEGACY_BRAVE_RULE = {
     "rule_id": "search_a_movie_in_brave",
@@ -255,8 +255,8 @@ def test_voice_setup_does_not_split_a_command(tmp_path, monkeypatch):
 
 @pytest.fixture
 def spoken(tmp_path, monkeypatch):
-    import audit
-    import tools
+    from cygnus import audit
+    from cygnus import tools
     path = _registry(tmp_path, [LEGACY_BRAVE_RULE])
     monkeypatch.setattr(rules_engine, "APP_REGISTRY_PATH", str(path))
     monkeypatch.setattr(audit, "AUDIT_DIR", str(tmp_path))
@@ -326,7 +326,7 @@ def test_reply_that_repeats_the_rule_answers_the_question(spoken):
 
 
 def test_answer_slot_needs_the_rules_own_verb():
-    import rules_engine
+    from cygnus.rules import engine as rules_engine
     rule = {"source_phrase": "search movie", "triggers": ["find movie on brave"]}
     assert rules_engine.answer_slot("search, movie, name, the social network", rule) == \
         "social network"
@@ -334,7 +334,7 @@ def test_answer_slot_needs_the_rules_own_verb():
 
 
 def test_search_query_drops_trailing_jarvis():
-    import tools
+    from cygnus import tools
     assert tools.parse_search_command("search movies in brave browser, Jarvis.")["query"] \
         == "movies"
 

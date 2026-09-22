@@ -69,7 +69,7 @@ def _effect(task):
     """What a task waiting for its confirm will do to the machine, by the
     lists the confirm gates use, for the read-back ('' when nothing to say)."""
     try:
-        import tools
+        from cygnus import tools
     except Exception:
         return ""
     if tools._DESTRUCTIVE_RE.search(task):
@@ -199,7 +199,7 @@ def for_error(err) -> str:
 def _full_result(event: dict) -> str:
     """The job's whole result (the event carries only a 200-character summary)."""
     try:
-        import jobs
+        from cygnus.jobs import registry as jobs
         j = jobs.get(event.get("id")) or {}
         return j.get("result") or event.get("summary") or ""
     except Exception:
@@ -253,7 +253,7 @@ def _detail(note: str) -> str:
 def _interrupted(job: dict) -> bool:
     """The backend restarted under it: the work may have finished, but its
     answer never came back."""
-    import jobs
+    from cygnus.jobs import registry as jobs
     return job.get("state") == "error" and job.get("error") == jobs.INTERRUPTED
 
 
@@ -316,7 +316,7 @@ def _ago(seconds: float) -> str:
 
 def job_status(now: float | None = None) -> str:
     """'status?' for every kind of background task, in plain words."""
-    import jobs
+    from cygnus.jobs import registry as jobs
     now = now or time.time()
     act = jobs.active()
     if act:

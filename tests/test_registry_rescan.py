@@ -3,7 +3,7 @@ set on them (rules, drafts, switches, registration, hidden flags)."""
 
 import json
 
-import machine_capabilities as mc
+from cygnus.apps import capabilities as mc
 
 RULE = {"rule_id": "search_movie", "source_phrase": "search movie", "enforcement": "action"}
 

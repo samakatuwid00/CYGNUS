@@ -760,7 +760,7 @@ def describe_window(row, question=None):
         return None, "I couldn't capture that window"
     import base64
     from openai import OpenAI
-    from config import ROUTER_API_KEY, ROUTER_BASE_URL
+    from cygnus.config import ROUTER_API_KEY, ROUTER_BASE_URL
     client = OpenAI(base_url=ROUTER_BASE_URL, api_key=ROUTER_API_KEY or "none", timeout=40, max_retries=0)
     ask = question or ("Describe what this window shows and what the program seems to be doing, in two or "
                        "three short spoken sentences. No markup, no lists.")
@@ -1024,7 +1024,7 @@ def _front_or_open(rows, text):
         return bring_to_front(row)[1]
     if not phrase:
         return "I couldn't tell which window you mean, sir."
-    import tools
+    from cygnus import tools
     out = tools.open_application(phrase)
     if out.startswith("[NEEDS_PICK]"):
         return out.split("] ", 1)[1]
@@ -1195,7 +1195,7 @@ def _ports():
 
 def _cygnus_jobs():
     try:
-        import jobs
+        from cygnus.jobs import registry as jobs
         return jobs.active()
     except Exception:
         return []

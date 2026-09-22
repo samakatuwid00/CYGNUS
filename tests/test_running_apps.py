@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-import running_apps as ra
+from cygnus.apps import running as ra
 
 NOW = 1_800_000_000.0
 
@@ -315,7 +315,7 @@ def test_the_app_a_show_request_names(text, app):
 
 
 def test_show_brings_the_open_window_and_opens_one_that_is_not(acting, monkeypatch):
-    import tools
+    from cygnus import tools
     raised, opened = [], []
     monkeypatch.setattr(ra, "bring_to_front", lambda row: raised.append(row["id"]) or (True, "Visual Studio Code is in front, sir."))
     monkeypatch.setattr(tools, "open_application", lambda app: opened.append(app) or "Opened notepad")
@@ -326,8 +326,8 @@ def test_show_brings_the_open_window_and_opens_one_that_is_not(acting, monkeypat
 
 def test_open_brings_an_open_app_forward_instead_of_a_second_copy(monkeypatch):
     import os
-    import running_apps
-    import tools
+    from cygnus.apps import running as running_apps
+    from cygnus import tools
     launched, raised = [], []
     monkeypatch.setattr(os, "startfile", lambda p: launched.append(p), raising=False)
     monkeypatch.setattr(running_apps, "inventory", lambda use_cache=True: acting_rows())
@@ -342,8 +342,8 @@ def test_open_brings_an_open_app_forward_instead_of_a_second_copy(monkeypatch):
 
 def test_a_window_that_wont_come_forward_is_not_launched_again(monkeypatch):
     import os
-    import running_apps
-    import tools
+    from cygnus.apps import running as running_apps
+    from cygnus import tools
     launched = []
     monkeypatch.setattr(os, "startfile", lambda p: launched.append(p), raising=False)
     monkeypatch.setattr(running_apps, "inventory", lambda use_cache=True: acting_rows())
@@ -360,8 +360,8 @@ def test_a_stop_leaves_a_process_that_is_no_longer_the_same_one(monkeypatch):
 
 
 def test_confirming_a_stop_runs_it_and_no_leaves_it(monkeypatch):
-    import brain_gemini
-    import dialogue_state
+    from cygnus.brain import core as brain_gemini
+    from cygnus.brain import dialogue_state
     dialogue_state.reset()
     stopped = []
     monkeypatch.setattr(ra, "stop_now", lambda plan: stopped.append(plan) or "Stopped tail.")
@@ -386,7 +386,7 @@ def test_confirming_a_stop_runs_it_and_no_leaves_it(monkeypatch):
     ("stop the background task", "job_stop"), ("read the terminal", "running_text"),
     ("what's on my screen", "running_describe"), ("describe the chrome window", "running_describe")])
 def test_routing_seeing_and_acting(text, intent):
-    import brain_gemini
+    from cygnus.brain import core as brain_gemini
     assert brain_gemini.classify_intent(text) == intent
 
 
@@ -395,5 +395,5 @@ def test_routing_seeing_and_acting(text, intent):
     ("what is claude doing", "running"), ("explain what claude is doing", "running_explain"),
     ("what's the status?", "job_status"), ("what apps do I have", "list_installed")])
 def test_routing(text, intent):
-    import brain_gemini
+    from cygnus.brain import core as brain_gemini
     assert brain_gemini.classify_intent(text) == intent

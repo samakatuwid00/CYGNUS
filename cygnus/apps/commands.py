@@ -22,7 +22,7 @@ import threading
 import time
 from contextlib import contextmanager
 
-import running_apps
+from cygnus.apps import running as running_apps
 
 READ_TIMEOUT_S = 240          # a Hermes turn with tools can take minutes
 MAX_ACTIONS = 60              # what the model is shown for one app
@@ -109,7 +109,7 @@ def describe(step: dict) -> str:
 
 def _apps() -> dict:
     try:
-        import app_abilities
+        from cygnus.apps import abilities as app_abilities
         return app_abilities.load_apps().get("apps") or {}
     except Exception:
         return {}
@@ -166,7 +166,7 @@ def targets(rows=None, apps=None) -> list[dict]:
 
 def _rule_label(rule: dict) -> str:
     try:
-        import rules_voice
+        from cygnus.rules import voice as rules_voice
         return re.sub(r"^\s*\d+[.)]\s*", "", rules_voice._rule_line(1, rule)).strip()
     except Exception:
         return str(rule.get("trigger") or rule.get("rule_id") or "rule")
@@ -215,7 +215,7 @@ Instruction: {text}"""
 
 
 def _ask_model(prompt: str):
-    import rules_ai
+    from cygnus.rules import ai as rules_ai
     return rules_ai._ask_llm(prompt, local=False)
 
 
@@ -537,7 +537,7 @@ def _short(text: str, n: int = 60) -> str:
 def _run_app_step(step: dict, apps: dict) -> str:
     """An ability or a rule of an ordinary app, through the same runners the
     voice router uses."""
-    import intent_router
+    from cygnus.brain import intent_router
     runner = intent_router._run_ability if step["op"] == "ability" else intent_router._run_rule
     reply, ok = runner(step["app"], step["id"], step.get("args") or {}, apps)
     if not ok:

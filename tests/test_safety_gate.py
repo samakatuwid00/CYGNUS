@@ -8,8 +8,8 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-import safety
-import tools
+from cygnus import safety
+from cygnus import tools
 
 
 @pytest.fixture(autouse=True)
@@ -141,9 +141,9 @@ def test_the_model_cannot_confirm_in_the_turn_that_asked(monkeypatch):
 # ------------------------------------------------ agent_loop app_step --
 
 def test_app_step_holds_a_risky_hermes_send(monkeypatch):
-    import agent_loop as al
-    import app_commands
-    import running_apps
+    from cygnus.brain import agent_loop as al
+    from cygnus.apps import commands as app_commands
+    from cygnus.apps import running as running_apps
     target = {"slug": "hermes", "name": "Hermes", "row": 1, "driver": "hermes-window"}
     monkeypatch.setattr(al, "_target", lambda app: (target, [target]))
     monkeypatch.setattr(running_apps, "inventory", lambda use_cache=True: [{"id": 1}])
@@ -168,7 +168,7 @@ def test_app_step_holds_a_risky_hermes_send(monkeypatch):
 # -------------------------------------------------- run_ability --
 
 def test_run_ability_holds_terminal_typing_but_not_the_panel_test(monkeypatch):
-    import app_abilities
+    from cygnus.apps import abilities as app_abilities
     ability = {"id": "ps.type", "name": "Type a command", "how": [{"op": "type", "target": "input", "text": "{cmd}"}],
                "needs": {"cmd": "the command"}}
     monkeypatch.setattr(app_abilities, "load_apps", lambda: {"apps": {"powershell": {"abilities": [ability]}}})
@@ -184,8 +184,8 @@ def test_run_ability_holds_terminal_typing_but_not_the_panel_test(monkeypatch):
 # ------------------------------------------------ the brain: yes / no --
 
 def test_a_bare_yes_releases_the_held_action_and_no_drops_it(monkeypatch):
-    import agent_loop
-    import brain_gemini
+    from cygnus.brain import agent_loop
+    from cygnus.brain import core as brain_gemini
     monkeypatch.setattr(agent_loop, "MODE", "off")
     b = brain_gemini.JarvisBrain()
     safety.begin_turn()

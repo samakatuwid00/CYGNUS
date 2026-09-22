@@ -41,7 +41,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from typing import Optional
-import paths
+from cygnus import paths
 
 # ---------------------------------------------------------------------------
 # Corpus

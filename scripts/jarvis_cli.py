@@ -17,7 +17,7 @@ import os
 import argparse
 
 # Add project to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # the repository
 
 
 BANNER = """
@@ -48,7 +48,7 @@ COMMANDS = {
 
 def print_status(brain, voice):
     """Show system status."""
-    from tools import get_system_info
+    from cygnus.tools import get_system_info
     info = get_system_info()
     print("\n📊 System Status:")
     print(f"   OS: {info['os']} {info['os_version']}")
@@ -65,8 +65,8 @@ def print_status(brain, voice):
 
 def run_voice_mode():
     """Run JARVIS in voice mode with wake word detection."""
-    from voice_engine import VoiceEngine
-    from brain_gemini import JarvisBrain
+    from cygnus.voice.engine import VoiceEngine
+    from cygnus.brain.core import JarvisBrain
 
     print(BANNER)
     print("[JARVIS] Initializing voice engine...")
@@ -119,8 +119,8 @@ def run_voice_mode():
 
 def run_text_mode():
     """Run JARVIS in text mode (keyboard input)."""
-    from voice_engine import TextInterface
-    from brain_gemini import JarvisBrain
+    from cygnus.voice.engine import TextInterface
+    from cygnus.brain.core import JarvisBrain
 
     print(BANNER)
     print("[JARVIS] Text mode activated.")

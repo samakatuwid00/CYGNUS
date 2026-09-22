@@ -5,7 +5,7 @@ import os
 import re
 import sys
 import urllib.parse
-import paths
+from cygnus import paths
 
 APP_REGISTRY_PATH = str(paths.APP_REGISTRY)
 WEB_REGISTRY_PATH = str(paths.WEB_REGISTRY)

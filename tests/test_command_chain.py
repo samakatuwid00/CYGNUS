@@ -3,8 +3,8 @@ their own; goals, questions and plain sentences stay whole."""
 
 import pytest
 
-import brain_gemini
-from command_chain import split_commands
+from cygnus.brain import core as brain_gemini
+from cygnus.brain.command_chain import split_commands
 
 
 @pytest.mark.parametrize("text, commands", [
@@ -63,8 +63,8 @@ def test_an_open_list_shares_its_verb_only_with_real_targets():
 
 
 def test_open_targets_are_exact_alias_or_normalized_names(monkeypatch):
-    import machine_capabilities
-    import tools
+    from cygnus.apps import capabilities as machine_capabilities
+    from cygnus import tools
     monkeypatch.setattr(tools, "resolve_open_target", lambda name, force=None, browser=None: (None, name))
     monkeypatch.setattr(tools, "APP_ALIASES", {"calculator": "calc", "vscode": "code"})
     monkeypatch.setattr(machine_capabilities, "load_registry",

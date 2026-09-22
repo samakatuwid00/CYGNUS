@@ -1,7 +1,7 @@
 """What "what do you remember about me?" says: facts, never the memory
 file's own headings and notes."""
 
-import brain_gemini as bg
+from cygnus.brain import core as bg
 
 PROFILE = """# Cygnus Profile
 

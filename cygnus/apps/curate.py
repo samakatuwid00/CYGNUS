@@ -15,7 +15,7 @@ import json
 import os
 import re
 
-from machine_capabilities import REGISTRY_PATH, load_registry
+from cygnus.apps.capabilities import REGISTRY_PATH, load_registry
 
 # Seed opt-in set: the apps the plan says to register first. These start as
 # registered+enabled; everything else is detected-but-not-registered until the
@@ -81,7 +81,7 @@ def _apps():
     """The registry's apps, re-read only when the file changes. Every check
     here used to parse the whole file: registered_match asked once per app,
     twice, so opening an app spent ~7 s reading the same JSON 2,000 times."""
-    import machine_capabilities as mc
+    from cygnus.apps import capabilities as mc
     try:
         st = os.stat(mc.REGISTRY_PATH)
     except OSError:
@@ -118,7 +118,7 @@ def mark_registered(key, registered=True, enabled=True):
         return False
     # Same lock as the scans: a pin clicked while a Full scan was sorting
     # was overwritten when the scan saved its own copy of the registry.
-    import app_abilities
+    from cygnus.apps import abilities as app_abilities
     with app_abilities._LOCK:
         data = json.load(open(REGISTRY_PATH, encoding="utf-8"))
         apps = data.setdefault("apps", {})

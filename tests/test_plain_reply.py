@@ -3,8 +3,8 @@ announcements and "status?" are plain; a job's closing question is spoken."""
 
 import time
 
-import jobs
-import plain_reply as pr
+from cygnus.jobs import registry as jobs
+from cygnus.brain import plain_reply as pr
 
 MOBILE = ("here in mobile when I click your chat terminal the chat terminal does not expand, "
           "and also the orb disappears")

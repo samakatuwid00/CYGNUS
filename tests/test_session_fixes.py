@@ -12,8 +12,8 @@ import pytest
 # ---------------------------------------------------------- web search --
 
 def test_search_the_web_is_never_limited_to_the_last_site(monkeypatch):
-    import conversation_window as cw
-    import tools
+    from cygnus.brain import conversation_window as cw
+    from cygnus import tools
     opened = []
     monkeypatch.setattr(cw, "last_site", lambda: {"key": "github", "url": "https://github.com",
                                                    "browser": "chrome"})
@@ -25,7 +25,7 @@ def test_search_the_web_is_never_limited_to_the_last_site(monkeypatch):
 
 
 def test_research_phrasing_is_not_a_search_tab():
-    import tools
+    from cygnus import tools
     assert tools.parse_search_command(
         "search the web for the top 3 lo-fi YouTube channels and summarize them") is None
     assert tools.parse_search_command("search the web for cats")["query"] == "cats"
@@ -34,7 +34,7 @@ def test_research_phrasing_is_not_a_search_tab():
 # --------------------------------------------------------- named browser --
 
 def test_open_site_tool_passes_the_browser(monkeypatch):
-    import tools
+    from cygnus import tools
     seen = {}
     monkeypatch.setattr(tools, "open_site",
                         lambda name, url=None, browser=None, **k: seen.update(name=name, browser=browser)
@@ -44,7 +44,7 @@ def test_open_site_tool_passes_the_browser(monkeypatch):
 
 
 def test_split_browser_reads_in_brave():
-    import tools
+    from cygnus import tools
     text, word = tools._split_browser("open github in brave")
     assert text == "open github" and word == "brave"
 
@@ -52,8 +52,8 @@ def test_split_browser_reads_in_brave():
 # ------------------------------------------------------- unverified job --
 
 def test_unverified_job_names_the_step_it_could_not_confirm(tmp_path, monkeypatch):
-    import autonomous
-    import jobs
+    from cygnus.jobs import autonomous
+    from cygnus.jobs import registry as jobs
     monkeypatch.setattr(jobs, "update", lambda *a, **k: None)
     monkeypatch.setattr(autonomous, "status_path", lambda jid: str(tmp_path / "s.status"))
     monkeypatch.setattr(autonomous, "_verify_step",
@@ -82,8 +82,8 @@ def test_unverified_job_names_the_step_it_could_not_confirm(tmp_path, monkeypatc
 # ------------------------------------------------------------- closing --
 
 def test_close_never_force_kills_unless_asked(monkeypatch):
-    import machine_capabilities as mc
-    import tools
+    from cygnus.apps import capabilities as mc
+    from cygnus import tools
     ran = []
     monkeypatch.setattr(mc, "load_registry",
                         lambda: {"apps": {"notepad": {"name": "notepad", "bin": "C:/notepad.exe"}}})
@@ -100,7 +100,7 @@ def test_close_never_force_kills_unless_asked(monkeypatch):
 # ------------------------------------------------------------ web_browse --
 
 def test_web_browse_refuses_a_sentence_as_a_url():
-    import tools
+    from cygnus import tools
     out = tools.web_browse("go back to the lo-fi channels which one is the most popular?")
     assert out.startswith("[Error]") and "isn't a web address" in out
 
@@ -108,7 +108,7 @@ def test_web_browse_refuses_a_sentence_as_a_url():
 # ---------------------------------------------------------- stale jobs --
 
 def test_weeks_old_confirms_are_not_active(monkeypatch):
-    import jobs
+    from cygnus.jobs import registry as jobs
     monkeypatch.setattr(jobs, "_load_history", lambda: None)
     monkeypatch.setattr(jobs, "_append_log", lambda rec: None)
     monkeypatch.setattr(jobs, "_emit", lambda rec: None)
@@ -128,7 +128,7 @@ def test_weeks_old_confirms_are_not_active(monkeypatch):
     ("I prefer lo-fi while coding", True), ("my favorite editor is VS Code", True),
     ("play some of my favorite on spotify", False), ("open my favorite site", False)])
 def test_commands_are_not_saved_as_preferences(text, pref):
-    import brain_gemini
+    from cygnus.brain import core as brain_gemini
     assert brain_gemini._looks_like_preference(text) is pref
 
 
@@ -143,14 +143,14 @@ def test_commands_are_not_saved_as_preferences(text, pref):
      "parked md notes then tell me what is it", None),
     ("I don't know", None), ("do I like jazz?", None), ("play some of my favorite on spotify", None)])
 def test_only_preferences_said_outright_are_saved_unasked(text, kind):
-    import brain_gemini
+    from cygnus.brain import core as brain_gemini
     assert brain_gemini.preference_kind(text) == kind
 
 
 def test_an_unclear_preference_is_asked_about_and_yes_saves_it(monkeypatch):
-    import brain_gemini
-    import dialogue_state
-    import tools
+    from cygnus.brain import core as brain_gemini
+    from cygnus.brain import dialogue_state
+    from cygnus import tools
     dialogue_state.reset()
     saved = []
     monkeypatch.setattr(tools, "remember_fact",
@@ -166,9 +166,9 @@ def test_an_unclear_preference_is_asked_about_and_yes_saves_it(monkeypatch):
 
 
 def test_no_drops_the_unclear_preference(monkeypatch):
-    import brain_gemini
-    import dialogue_state
-    import tools
+    from cygnus.brain import core as brain_gemini
+    from cygnus.brain import dialogue_state
+    from cygnus import tools
     dialogue_state.reset()
     monkeypatch.setattr(tools, "remember_fact", lambda t: pytest.fail("saved after a no"))
     brain_gemini.remember_question("for coding I usually prefer lo-fi")
@@ -179,7 +179,7 @@ def test_no_drops_the_unclear_preference(monkeypatch):
 # ------------------------------------------------------------ rule slot --
 
 def test_rule_slot_drops_that_site_for_and_instead():
-    import rules_engine
+    from cygnus.rules import engine as rules_engine
     rule = {"rule_id": "search_movie", "source_phrase": "search movie",
             "triggers": ["search movie"], "enforcement": "action",
             "action": {"type": "search_site", "site": "hollymoviehd.cc",
@@ -195,9 +195,9 @@ def test_rule_slot_drops_that_site_for_and_instead():
 
 def test_pinning_takes_the_scan_lock(tmp_path, monkeypatch):
     import json
-    import app_abilities as aa
-    import curate
-    import machine_capabilities as mc
+    from cygnus.apps import abilities as aa
+    from cygnus.apps import curate
+    from cygnus.apps import capabilities as mc
     path = tmp_path / "app_registry.json"
     path.write_text(json.dumps({"apps": {"vlc": {"name": "vlc"}}}), encoding="utf-8")
     monkeypatch.setattr(mc, "REGISTRY_PATH", str(path))
@@ -218,8 +218,8 @@ def test_pinning_takes_the_scan_lock(tmp_path, monkeypatch):
 # ------------------------------------------------------ voice session 2 --
 
 def test_my_favorites_on_spotify_plays_liked_songs(monkeypatch):
-    import app_abilities as aa
-    import brain_gemini
+    from cygnus.apps import abilities as aa
+    from cygnus.brain import core as brain_gemini
     ran = []
     monkeypatch.setattr(aa, "run_ability",
                         lambda key, aid, args=None: ran.append((key, aid)) or "Done: Play liked songs.")
@@ -231,8 +231,8 @@ def test_my_favorites_on_spotify_plays_liked_songs(monkeypatch):
 
 
 def test_an_unconfigured_manus_is_never_picked(monkeypatch):
-    import manus_agent
-    import tools
+    from cygnus.browser import manus as manus_agent
+    from cygnus import tools
     monkeypatch.setattr(tools, "_detect_backend_by_task", lambda task: "manus")
     monkeypatch.setattr(manus_agent, "_cookies_present", lambda: False)
     assert tools._detect_backend("make it 100% volume") == "hermes"
@@ -241,7 +241,7 @@ def test_an_unconfigured_manus_is_never_picked(monkeypatch):
 
 
 def test_set_the_system_volume(monkeypatch):
-    import app_abilities as aa
+    from cygnus.apps import abilities as aa
     presses = []
     monkeypatch.setattr(aa, "_press_media", lambda name: presses.append(name))
     op = {"op": "volume_set", "percent": "{percent}"}
@@ -255,7 +255,7 @@ def test_set_the_system_volume(monkeypatch):
 
 
 def test_a_question_that_names_an_app_does_not_open_it(monkeypatch):
-    import tools
+    from cygnus import tools
     ran = []
     monkeypatch.setattr(tools, "execute_tool", lambda name, args, *a: ran.append((name, args)) or "ok")
     assert tools._desktop_dispatch("from what is the status of the sticky brain on open source repo") is None
@@ -272,12 +272,12 @@ def test_a_question_that_names_an_app_does_not_open_it(monkeypatch):
     ("what is the status of the sticky brain open source repo", False),
     ("what's the progress on my thesis", False)])
 def test_only_job_questions_get_the_job_status(text, job):
-    import brain_gemini
+    from cygnus.brain import core as brain_gemini
     assert (brain_gemini.classify_intent(text) == "job_status") is job
 
 
 def test_jarvis_does_not_try_to_close_itself():
-    import tools
+    from cygnus import tools
     assert tools.close_application("yourself").startswith("I can't close myself")
     assert tools.close_application("can you close yourself").startswith("I can't close myself")
 
@@ -285,7 +285,7 @@ def test_jarvis_does_not_try_to_close_itself():
 # ------------------------------------------------------- honesty guard --
 
 def test_honesty_guard_leaves_questions_alone():
-    from brain_gemini import honest_reply
+    from cygnus.brain.core import honest_reply
     answer = "Opened three things for you so far, sir."
     assert honest_reply(answer, [], "router", "how many things have you opened for me so far?") == answer
     assert honest_reply("Opened notes app.", [], "router", "open my notes app") != "Opened notes app."

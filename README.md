@@ -5,19 +5,20 @@ it answers, opens and shows apps, looks at what is running, or hands bigger
 work to a coding agent and reports back. It runs as a desktop app with a
 tray panel, a full HUD and a mini orb, and the same HUD works on a phone.
 
-The project began as JARVIS. The code still uses that name in places
-(`jarvis_web.py`, `jarvis_hud_v3.html`, `JARVIS_*` settings); the assistant
-and the repository are Cygnus.
+The project began as JARVIS. Some names still say so (`jarvis_hud_v3.html`,
+`JARVIS_*` settings); the assistant, the package and the repository are
+Cygnus.
 
 ## What it does
 
 - **Voice**: the wake word "Cygnus" is heard by a small Whisper model
-  (`wake_engine.py`); speech is transcribed locally with faster-whisper;
+  (`cygnus/voice/wake.py`); speech is transcribed locally with faster-whisper;
   replies are spoken with Kokoro or edge-tts.
 - **Brain**: turns go to a cloud model through a local router (9router, an
   OpenAI-compatible proxy), with fallback models tried in order and a local
-  Ollama model as the last resort. `router_health.py` keeps track of which
-  models answer and says when a stand-in is answering.
+  Ollama model as the last resort. `cygnus/brain/router_health.py` keeps
+  track of which models answer and says when a stand-in is answering, and
+  `router_keeper.py` restarts 9router when it is down or hung.
 - **Apps and sites**: opens installed apps and registered websites. "Show X on
   screen" or "open X" brings an app that is already open to the front instead
   of starting a second copy.
@@ -30,8 +31,9 @@ and the repository are Cygnus.
   as background tasks. Anything that may change files asks for a confirm
   first. The result comes back as a reply and stays in the conversation, so
   "what did it change?" is answered from the record.
-- **Confirm and clarify**: one shared reader for yes/no/which-one answers, and
-  an act/confirm/clarify gate before actions (`consent.py`, `action_gate.py`).
+- **Confirm and clarify**: one safety gate where actions run
+  (`cygnus/safety.py`): risky actions wait for a yes in a later turn. One
+  shared reader for yes/no/which-one answers (`cygnus/brain/consent.py`).
 - **Phone**: the HUD is served over Tailscale, so the phone can talk to
   Cygnus, see what is running, and bring a window forward.
 
@@ -49,7 +51,7 @@ copy .env.example .env        # then set the router and model settings
 The backend and HUD (port from `JARVIS_PORT` in `.env`):
 
 ```bash
-.venv\Scripts\python jarvis_web.py     # then open http://127.0.0.1:<port>
+.venv\Scripts\python -m cygnus     # then open http://127.0.0.1:<port>
 ```
 
 The desktop app in `desktop/` puts the HUD in a tray panel (Ctrl+Alt+J), a
@@ -64,8 +66,8 @@ npm run dev
 
 If a backend is already running, the app attaches to it; otherwise it starts
 one from `.venv`, restarts it if it crashes, and stops it on quit. Do not run
-`watch_and_restart.py` while the app owns the backend: both would start a
-server on the same port.
+`scripts/watch_and_restart.py` while the app owns the backend: both would
+start a server on the same port.
 
 ## Routine check
 
@@ -105,14 +107,20 @@ All settings live in `.env` (see `.env.example`). The ones most often changed:
 
 | Path | What it is |
 |---|---|
-| `jarvis_web.py` | FastAPI backend: WebSocket turns, HUD, Running endpoints |
-| `brain_gemini.py` | Routing, model chain, conversation state |
-| `tools.py` | Tools: apps, sites, music, delegation, files |
-| `running_apps.py` | What is running, window text, pictures, raise and stop |
-| `wake_engine.py`, `voice_engine.py` | Wake word and speech |
-| `jarvis_hud_v3.html` | The HUD |
+| `cygnus/server/app.py` | FastAPI backend: WebSocket turns, HUD, Running endpoints (`python -m cygnus`) |
+| `cygnus/brain/` | Routing, the model chain (`core.py`), the agent loop, 9router health and keeper |
+| `cygnus/tools.py` | Tools: apps, sites, music, delegation, files |
+| `cygnus/safety.py` | The one confirm gate in front of every action |
+| `cygnus/apps/` | Installed apps, their abilities, what is running |
+| `cygnus/rules/` | The Apps-panel rules: compile, match, simulate, run |
+| `cygnus/voice/`, `cygnus/memory/`, `cygnus/browser/`, `cygnus/jobs/`, `cygnus/agents/` | Speech and wake word; memory and sessions; the browser; background jobs; music, reports, projects |
+| `cygnus/paths.py` | Where every file lives |
+| `web/` | The HUD, the Apps panel and their static files |
+| `config/` | Committed settings: app aliases, agents, projects |
 | `desktop/` | Electron desktop app |
-| `tests/` | pytest suite (`.venv\Scripts\python -m pytest tests`) |
+| `eval/` | The routing gate and evaluations |
+| `tests/` | pytest suite (`.venv\Scripts\python -m pytest`) |
+| `scripts/` | The routine check, smoke tests, dev tools, `checks/` |
 | `docs/plans/`, `docs/reviews/` | Design notes and decisions for each feature; reviews |
 | `scripts/prod_check.py` | The routine check (see above) |
 

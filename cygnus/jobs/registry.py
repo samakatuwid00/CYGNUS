@@ -22,7 +22,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-import paths
+from cygnus import paths
 
 _LOG_PATH = Path(os.getenv("JARVIS_JOBS_LOG", paths.LOG_DIR / "jobs.jsonl"))
 

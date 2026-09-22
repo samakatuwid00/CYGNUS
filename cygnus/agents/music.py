@@ -32,7 +32,7 @@ from pathlib import Path
 # app_registry.json into real playback controls. Import is best-effort: if the
 # module is absent, playback still works, just without rule enforcement.
 try:
-    import music_rules as _music_rules
+    from cygnus.agents import music_rules as _music_rules
 except Exception:  # pragma: no cover - defensive
     _music_rules = None
 

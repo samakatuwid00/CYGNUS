@@ -47,7 +47,7 @@ _misses = 0
 
 def _address():
     try:
-        from config import ROUTER_BASE_URL
+        from cygnus.config import ROUTER_BASE_URL
     except Exception:
         ROUTER_BASE_URL = "http://localhost:20128/v1"
     u = urlparse(ROUTER_BASE_URL)
@@ -212,7 +212,7 @@ def check() -> str:
     if ensure_up(wait=START_WAIT_S):
         # The models "timed out" because the router did: try them again now.
         try:
-            import router_health
+            from cygnus.brain import router_health
             router_health.forgive_timeouts()
             threading.Thread(target=router_health.probe_once, daemon=True, name="router-reprobe").start()
         except Exception as e:

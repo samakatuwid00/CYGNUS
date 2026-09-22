@@ -16,7 +16,7 @@ No external deps; stdlib only so it can't break JARVIS startup.
 import os
 import json
 import datetime
-import paths
+from cygnus import paths
 
 _SESSIONS_DIR = str(paths.SESSIONS_DIR)
 _WINDOW = 20  # last N turns held in memory
@@ -58,7 +58,7 @@ def log(role: str, text: str) -> None:
         return
     # Phase 13: keep the FTS5 index current for fresh turns (fail-open).
     try:
-        import session_index
+        from cygnus.memory import session_index
         session_index.log_and_index(role, rec["text"], rec["ts"],
                                     _today_file(), line_no)
     except Exception:

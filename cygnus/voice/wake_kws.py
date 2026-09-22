@@ -14,7 +14,7 @@ import glob
 import os
 
 import numpy as np
-import paths
+from cygnus import paths
 
 DEFAULT_DIR = os.path.join(str(paths.MODELS_DIR), "kws", "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01")
 # The bench's middle setting: 17/20 caught, 0 false wakes. Lower thresholds

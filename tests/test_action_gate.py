@@ -6,13 +6,13 @@ from types import SimpleNamespace
 
 import pytest
 
-import action_gate
-import dialogue_state
+from cygnus.brain import action_gate
+from cygnus.brain import dialogue_state
 
 
 @pytest.fixture(autouse=True)
 def no_real_lookups(monkeypatch):
-    import tools
+    from cygnus import tools
     monkeypatch.setattr(tools, "resolve_open_target", lambda t: (None, t))
     monkeypatch.setattr(action_gate, "_intake", lambda t: SimpleNamespace(
         entity=None, verb=None, candidates=[], needs_confirmation=lambda: False))
@@ -35,7 +35,7 @@ def test_safe_and_sure_acts_risky_and_sure_confirms():
 
 
 def test_an_app_and_a_website_with_one_name_is_asked_about(monkeypatch):
-    import tools
+    from cygnus import tools
     monkeypatch.setattr(tools, "resolve_open_target", lambda t: ("clarify", {"name": "spotify"}))
     d = action_gate.decide("open spotify", open_target="spotify")
     assert d.kind == "clarify"
@@ -60,8 +60,8 @@ def test_unsure_without_choices_still_acts_and_says_why():
 
 
 def test_asking_opens_a_clarify_the_answer_routes(monkeypatch):
-    import tools
-    from brain_gemini import answer_choice
+    from cygnus import tools
+    from cygnus.brain.core import answer_choice
     monkeypatch.setattr(tools, "resolve_open_target", lambda t: ("clarify", {"name": "spotify"}))
     d = action_gate.decide("open spotify", open_target="spotify")
     assert action_gate.ask(d) == "The spotify app or the website, sir?"

@@ -7,8 +7,8 @@ import time
 
 import pytest
 
-import brain_gemini
-import tools
+from cygnus.brain import core as brain_gemini
+from cygnus import tools
 
 SMOKE = ("Delegate to Claude Code: implement the design in running_panel_mockup.html into the real "
          "Running panel in jarvis_hud_v3.html. Merge Active Tasks and Running Now into one panel like "
@@ -44,7 +44,7 @@ def test_a_question_about_a_handed_off_job_is_answered_from_the_record(text, own
 
 @pytest.fixture
 def launched(monkeypatch):
-    import browser_agent
+    from cygnus.browser import agent as browser_agent
     calls = []
     monkeypatch.setattr(browser_agent, "_chrome_exe", lambda: __file__)      # any existing file
     monkeypatch.setattr(tools.subprocess, "Popen", lambda args, **kw: calls.append(args))
@@ -99,7 +99,7 @@ def test_a_finished_job_joins_the_askers_history_and_counts_as_activity(monkeypa
 
 
 def test_the_idle_reset_waits_while_a_job_runs(monkeypatch):
-    import jobs
+    from cygnus.jobs import registry as jobs
     b = brain_gemini.JarvisBrain()
     monkeypatch.setattr(brain_gemini._progress_local, "client", "remote", raising=False)
     b.conversation = [{"role": "user", "content": "delegate the mockup"}]

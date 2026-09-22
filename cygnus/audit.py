@@ -14,7 +14,7 @@ import re
 import threading
 import time
 from datetime import datetime
-import paths
+from cygnus import paths
 
 AUDIT_DIR = str(paths.LOG_DIR)
 AUDIT_PATH = os.path.join(AUDIT_DIR, "audit.jsonl")

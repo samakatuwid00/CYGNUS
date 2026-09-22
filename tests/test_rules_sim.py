@@ -4,11 +4,11 @@ probe + fake model, never a real browser)."""
 
 import json
 
-import rules_ai
-import rules_engine
-import rules_sim
-import rules_voice
-import site_probe
+from cygnus.rules import ai as rules_ai
+from cygnus.rules import engine as rules_engine
+from cygnus.rules import sim as rules_sim
+from cygnus.rules import voice as rules_voice
+from cygnus.browser import site_probe
 
 WP_HOME = """<html><head><title>HollyMovieHD - Watch Movies</title></head><body>
 <form method="post" action="/login"><input type="text" name="user"></form>

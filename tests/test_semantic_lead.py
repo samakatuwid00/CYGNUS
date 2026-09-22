@@ -4,8 +4,8 @@ route onto a path it already has. Embeddings are faked."""
 
 import pytest
 
-import brain_gemini
-import semantic_route as sr
+from cygnus.brain import core as brain_gemini
+from cygnus.brain import semantic_route as sr
 
 
 class _Bank:

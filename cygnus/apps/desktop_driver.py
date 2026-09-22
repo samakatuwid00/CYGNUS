@@ -30,7 +30,7 @@ def has_driver() -> bool:
 
 def _audit(action: str, target: str, result: str, ok: bool):
     try:
-        from tools import _audit_log
+        from cygnus.tools import _audit_log
         _audit_log(f"desktop_driver:{action}", target[:200], "ok" if ok else "failed", result=result[:400])
     except Exception:
         pass

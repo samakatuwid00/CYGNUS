@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-import dialogue_state
-import preferences
+from cygnus.brain import dialogue_state
+from cygnus.memory import preferences
 
 RULE = {"rule_id": "search_movie", "source_phrase": "search movie", "enforcement": "action",
         "triggers": ["search movie"],
@@ -17,9 +17,9 @@ RULE = {"rule_id": "search_movie", "source_phrase": "search movie", "enforcement
 
 @pytest.fixture
 def spoken(tmp_path, monkeypatch):
-    import audit
-    import rules_engine
-    import tools
+    from cygnus import audit
+    from cygnus.rules import engine as rules_engine
+    from cygnus import tools
     path = tmp_path / "app_registry.json"
     path.write_text(json.dumps({"apps": {"brave": {"category": "browser",
                                                    "compiled_rules": [RULE]}}}))

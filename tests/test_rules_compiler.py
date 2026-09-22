@@ -4,7 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 
-import rules_compiler as rc
+from cygnus.rules import compiler as rc
 
 
 def test_clear_clause():

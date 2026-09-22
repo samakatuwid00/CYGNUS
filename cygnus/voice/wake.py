@@ -49,7 +49,7 @@ import numpy as np
 import sounddevice as sd
 
 import re
-import paths
+from cygnus import paths
 
 # The wake word is "Cygnus", matched the way Whisper actually writes it:
 # Cygnus, Signus, Signis, Signess, Signes, Signez(z), Signeze, and "Heysignas"
