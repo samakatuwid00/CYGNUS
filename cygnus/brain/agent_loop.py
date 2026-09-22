@@ -484,13 +484,19 @@ def run(brain, text: str, ctx: dict) -> str | None:
                                 out = _run_tool(tc.function.name, args, ctx)
                             except Exception as e:
                                 out = f"[Tool Error] {tc.function.name}: {type(e).__name__}: {e}"
+                            if not isinstance(out, str):
+                                # recall_facts returns a list; .startswith on it ended
+                                # the model's turn (2026-09-22). The model reads JSON.
+                                out = json.dumps(out, ensure_ascii=False, default=str)
                             if tc.function.name in _AUDITED:
                                 from cygnus import audit
                                 audit.log_call("agent." + tc.function.name, args, time.monotonic() - t0, out)
                             if tc.function.name == "delegate":
                                 out = tidy_agent_output(out, (args.get("agent") or "hermes").title())
                             ran.append((tc.function.name, args, out[:4000]))
-                            print(f"[agent] {tc.function.name} {json.dumps(args)[:120]} -> {out[:120]!r}", flush=True)
+                            # ascii(): a character the Windows console cannot encode
+                            # raised inside print and ended the turn (2026-09-22).
+                            print(f"[agent] {tc.function.name} {json.dumps(args)[:120]} -> {ascii(out[:120])}", flush=True)
                             messages.append({"role": "tool", "tool_call_id": tc.id, "content": out[:6000]})
                             if "[NEEDS_CONFIRM" in out or out.startswith("[Held] ") or out.startswith("[NEEDS_PICK]"):
                                 stop = out

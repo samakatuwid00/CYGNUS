@@ -206,8 +206,12 @@ def read_file(path: str) -> str:
     """Read a file's contents, scoped to allowed roots, quarantined, audited."""
     try:
         p = Path(path).expanduser()
+        # A relative path is the user's ("Desktop/x.txt" is in their Desktop):
+        # it was checked that way but read relative to the server's folder,
+        # which showed the model Cygnus's own files (2026-09-22).
+        p = p if p.is_absolute() else _resolve_write_path(str(p))
         # Scope check before touching disk (Phase 7)
-        if not _is_allowed_path(p if p.is_absolute() else _resolve_write_path(str(p))):
+        if not _is_allowed_path(p):
             _audit_log("read_file", str(p), "blocked_scope", result="outside allowed roots")
             return f"[Blocked] Path outside allowed scope: {p}. Allowed: Documents, Desktop, Downloads, Second Brain, Portfolio, or {_PROJECT_NAME}."
         if not p.exists():
@@ -334,6 +338,7 @@ def search_files(query: str, path: str = ".", max_results: int = 20) -> str:
     try:
         root = Path(path).expanduser()
         check_root = root if root.is_absolute() else (_resolve_write_path(str(root)) if str(root) not in (".", "") else Path.home() / "Documents")
+        root = check_root     # search what was checked (see read_file)
         if not _is_allowed_path(check_root):
             _audit_log("search_files", str(root), "blocked_scope")
             return f"[Blocked] Path outside allowed scope: {root}. Allowed: Documents, Desktop, Downloads, Second Brain, Portfolio."
@@ -395,6 +400,7 @@ def list_directory(path: str = ".") -> str:
         p = Path(path).expanduser()
         # Resolve relative to allowed roots: bare "." means Documents for voice safety
         check_p = p if p.is_absolute() else (_resolve_write_path(str(p)) if str(p) not in (".", "") else Path.home() / "Documents")
+        p = check_p           # list what was checked (see read_file)
         if not _is_allowed_path(check_p):
             _audit_log("list_directory", str(p), "blocked_scope")
             return f"[Blocked] Path outside allowed scope: {p}. Allowed: Documents, Desktop, Downloads, Second Brain, Portfolio."
