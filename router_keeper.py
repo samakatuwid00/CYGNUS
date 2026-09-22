@@ -39,8 +39,9 @@ state = {"up": None, "started": 0, "restarts_hung": 0, "last_error": ""}   # rea
 # A router whose port is open but which answers nothing: on 2026-09-22 its
 # server spun one CPU core at 100% for hours after its tray launcher was gone,
 # and every model call timed out while the port looked fine. After this many
-# silent checks in a row it is stopped and started again.
-HUNG_AFTER = 2
+# silent checks in a row (WATCH_EVERY_S apart) it is stopped and started
+# again. Three, not two: a busy machine once made a working router miss two.
+HUNG_AFTER = 3
 _misses = 0
 
 
@@ -154,12 +155,13 @@ def ensure_up(wait: float = START_WAIT_S) -> bool:
 
 
 def responds(timeout: float = 5.0) -> bool:
-    """9router answers /v1/models within `timeout` (it serves it locally)."""
+    """9router answers its health check within `timeout`. /api/health takes
+    about 0.2 s; /v1/models took 1.6 to 6.7 s on an idle machine, too close to
+    any timeout to tell slow from hung (2026-09-22)."""
     try:
         import httpx
-        from config import ROUTER_BASE_URL, ROUTER_API_KEY
-        r = httpx.get(ROUTER_BASE_URL.rstrip("/") + "/models", timeout=timeout,
-                      headers={"Authorization": f"Bearer {ROUTER_API_KEY or 'x'}"})
+        host, port = _address()
+        r = httpx.get(f"http://{host}:{port}/api/health", timeout=timeout)
         return r.status_code < 500
     except Exception:
         return False

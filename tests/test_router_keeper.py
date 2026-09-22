@@ -88,8 +88,9 @@ def test_one_slow_answer_is_not_a_hang(hung):
     assert hung["stopped"] == [] and hung["spawned"] == []
 
 
-def test_a_router_that_answers_nothing_twice_is_restarted(hung):
+def test_a_router_that_answers_nothing_three_times_is_restarted(hung):
     rk.check()
+    assert rk.check() == "slow"             # two misses: a busy machine, not a hang
     assert rk.check() == "restarted"
     assert hung["stopped"] == [True] and len(hung["spawned"]) == 1
     assert rk.state["restarts_hung"] == 1
