@@ -16,8 +16,9 @@ No external deps; stdlib only so it can't break JARVIS startup.
 import os
 import json
 import datetime
+import paths
 
-_SESSIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sessions")
+_SESSIONS_DIR = str(paths.SESSIONS_DIR)
 _WINDOW = 20  # last N turns held in memory
 
 # In-memory rolling window (per-process; the JSONL is the durable source).

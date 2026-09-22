@@ -14,9 +14,9 @@ import re
 import threading
 import time
 from datetime import datetime
+import paths
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-AUDIT_DIR = os.path.join(BASE_DIR, "logs")
+AUDIT_DIR = str(paths.LOG_DIR)
 AUDIT_PATH = os.path.join(AUDIT_DIR, "audit.jsonl")
 
 _LOCK = threading.Lock()

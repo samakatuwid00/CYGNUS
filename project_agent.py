@@ -28,12 +28,12 @@ import queue
 import threading
 import traceback
 from pathlib import Path
+import paths
 
-HERE = Path(__file__).resolve().parent
-REGISTRY_PATH = Path(os.getenv("JARVIS_PROJECTS_FILE", HERE / "projects.json"))
+REGISTRY_PATH = Path(os.getenv("JARVIS_PROJECTS_FILE", paths.PROJECTS))
 # Dev servers are long-lived and chatty; their output goes to a file so a voice
 # turn is never blocked by a full pipe buffer.
-LOG_PATH = HERE / "projects.log"
+LOG_PATH = paths.PROJECTS_LOG
 
 BRAVE_EXE = os.getenv(
     "JARVIS_BRAVE_EXE",

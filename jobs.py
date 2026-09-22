@@ -22,9 +22,9 @@ import threading
 import time
 import uuid
 from pathlib import Path
+import paths
 
-_HERE = Path(__file__).resolve().parent
-_LOG_PATH = Path(os.getenv("JARVIS_JOBS_LOG", _HERE / "logs" / "jobs.jsonl"))
+_LOG_PATH = Path(os.getenv("JARVIS_JOBS_LOG", paths.LOG_DIR / "jobs.jsonl"))
 
 _lock = threading.Lock()
 _jobs: dict[str, dict] = {}

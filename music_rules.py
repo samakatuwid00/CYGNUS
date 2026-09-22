@@ -17,6 +17,7 @@ Two kinds of playback rule exist today, and they are NOT equivalent in trust:
 import re
 import json
 import os
+import paths
 
 # Returned when no rules resolve (no registry, missing app, empty compiled_rules).
 DEFAULT_MUSIC_SETTINGS = {
@@ -108,8 +109,7 @@ def resolve_music_rules(registry_path=None, app_key="spotify"):
     playback rule lookup can never crash a music command.
     """
     if registry_path is None:
-        registry_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                     "app_registry.json")
+        registry_path = str(paths.APP_REGISTRY)
     try:
         with open(registry_path, "r", encoding="utf-8") as f:
             registry = json.load(f)

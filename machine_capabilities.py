@@ -27,9 +27,10 @@ import shutil
 import struct
 import subprocess
 import platform
+import paths
 
-MANIFEST_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "capabilities.json")
-REGISTRY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_registry.json")
+MANIFEST_PATH = str(paths.CAPABILITIES)
+REGISTRY_PATH = str(paths.APP_REGISTRY)
 
 _CATEGORIES = {
     "edit": ["code", "vscode", "notepad", "sublime", "vim", "neovim", "atom", "cursor"],

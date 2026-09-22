@@ -17,10 +17,10 @@ import json
 import time
 import datetime
 from pathlib import Path
+import paths
 
-HERE = Path(__file__).parent
-PROFILE_PATH = HERE / "jarvis-profile.md"
-SESSIONS_DIR = HERE / "sessions"
+PROFILE_PATH = paths.PROFILE
+SESSIONS_DIR = paths.SESSIONS_DIR
 ARCHIVE_DIR = SESSIONS_DIR / "archive"
 REMEMBER_HEADING = "## Remembered"
 REMEMBER_CAP = 40
@@ -120,7 +120,7 @@ def run_hygiene() -> str:
 
 
 # ---- sleep-time distillation (upgrade #2) ---------------------------------
-DISTILL_STATE = HERE / "memory" / "distilled.json"
+DISTILL_STATE = paths.MEMORY_DIR / "distilled.json"
 DISTILL_CHUNK_LINES = 80     # episode lines per extraction call
 DISTILL_MAX_FACTS = 8        # per chunk
 DISTILL_RECENT_DAYS = 14     # only distill sessions touched in the last 2 weeks

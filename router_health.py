@@ -28,6 +28,7 @@ import re
 import sys
 import threading
 import time
+import paths
 
 PROBE_EVERY_S = float(os.getenv("JARVIS_ROUTER_PROBE_S", "300"))
 PROBE_TIMEOUT_S = 20.0
@@ -75,7 +76,7 @@ _thread = None
 _last_switch_notice = 0.0
 # The table survives a restart: a turn in the ~20 s before the first probe
 # walked the dead models and ran out of time (2026-09-12, "Cygnus?" 47 s).
-CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "router_health.json")
+CACHE_PATH = paths.log("router_health.json")
 CACHE_FRESH_S = 600.0
 
 

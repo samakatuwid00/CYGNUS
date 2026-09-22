@@ -41,6 +41,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from typing import Optional
+import paths
 
 # ---------------------------------------------------------------------------
 # Corpus
@@ -75,7 +76,7 @@ DEFAULT_CORPUS = {
     ],
 }
 
-CORPUS_PATH = os.path.join(os.path.dirname(__file__), "intake_corpus.json")
+CORPUS_PATH = str(paths.INTAKE_CORPUS)
 
 
 def load_corpus(path: str = CORPUS_PATH) -> dict:

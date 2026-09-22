@@ -14,9 +14,10 @@ import json
 import os
 import threading
 import time
+import paths
 
 STREAK = 3
-_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory", "preferences.json")
+_PATH = str(paths.MEMORY_DIR / "preferences.json")
 _LOCK = threading.Lock()
 
 

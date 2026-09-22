@@ -14,9 +14,9 @@ import glob
 import os
 
 import numpy as np
+import paths
 
-REPO = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_DIR = os.path.join(REPO, "models", "kws", "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01")
+DEFAULT_DIR = os.path.join(str(paths.MODELS_DIR), "kws", "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01")
 # The bench's middle setting: 17/20 caught, 0 false wakes. Lower thresholds
 # caught 18 with one false wake in a minute of talk.
 THRESHOLD = float(os.getenv("JARVIS_WAKE_KWS_THRESHOLD", "0.15"))

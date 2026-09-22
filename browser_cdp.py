@@ -18,8 +18,8 @@ import urllib.parse
 import urllib.request
 
 import rules_engine
+import paths
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # One fixed port per browser. Chrome shares 9223 with browser_agent and the
 # "Chrome (JARVIS)" shortcut: one Chrome profile can only serve one port.
 PORTS = {"brave": 9331, "chrome": int(os.getenv("JARVIS_BROWSER_PORT", "9223")),
@@ -101,7 +101,7 @@ def label(browser):
 
 def _exe(browser):
     try:
-        with open(os.path.join(BASE_DIR, "app_registry.json"), encoding="utf-8") as f:
+        with open(paths.APP_REGISTRY, encoding="utf-8") as f:
             exe = (json.load(f).get("apps", {}).get(browser) or {}).get("bin")
         return exe if exe and os.path.isfile(exe) else None
     except Exception:

@@ -17,8 +17,9 @@ import os
 import re
 import json
 from pathlib import Path
+import paths
 
-_PROFILE_PATH = Path(__file__).parent / "jarvis-profile.md"
+_PROFILE_PATH = paths.PROFILE
 _VAULT_HINT = "Second Brain vault at C:/Users/deped/Documents/Second Brain (semantic search via turbovec; read/write wiki/evergreen)."
 
 def _load_profile() -> str:

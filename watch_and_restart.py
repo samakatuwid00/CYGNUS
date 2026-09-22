@@ -2,8 +2,9 @@
 Usage: python watch_and_restart.py
 Polls every 2s. Kills old process, starts new one. Ctrl+C to stop."""
 import os, sys, time, subprocess, signal, glob
+import paths
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = str(paths.ROOT)
 WATCH = [os.path.join(ROOT, f) for f in ("brain_gemini.py", "tools.py", "autonomous.py",
                                            "music_agent.py", "voice_engine.py", "wake_engine.py",
                                            "config.py", "session_store.py", "browser_agent.py",

@@ -27,9 +27,9 @@ import sqlite3
 import threading
 import time
 import datetime
+import paths
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_DB_PATH = os.environ.get("JARVIS_SEMANTIC_DB", os.path.join(_HERE, "memory", "semantic.db"))
+_DB_PATH = os.environ.get("JARVIS_SEMANTIC_DB", str(paths.MEMORY_DIR / "semantic.db"))
 
 NOOP_COS = 0.985
 SUPERSEDE_COS = 0.90

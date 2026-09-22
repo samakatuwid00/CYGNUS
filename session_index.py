@@ -18,9 +18,9 @@ import json
 import os
 import sqlite3
 import threading
+import paths
 
-_BASE = os.path.dirname(os.path.abspath(__file__))
-_SESSIONS_DIR = os.path.join(_BASE, "sessions")
+_SESSIONS_DIR = str(paths.SESSIONS_DIR)
 _DB_PATH = os.path.join(_SESSIONS_DIR, "index.db")
 
 _LOCK = threading.Lock()

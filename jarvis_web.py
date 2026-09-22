@@ -11,6 +11,7 @@ import os
 import io
 import sys
 import json
+import paths
 
 # The console (and a redirected log) is cp1252 on Windows: a page read or a
 # job note with "↘" or "ロ" crashed the print, and with it the announcement.
@@ -452,7 +453,7 @@ _TTS_ENGINE = (os.environ.get("JARVIS_TTS_ENGINE") or "edge").strip().lower()
 _PIPER_MODEL = os.path.join(os.path.expanduser("~"), ".jarvis-tts",
                             "en_GB-nem-medium.onnx")
 _piper_voice = None
-_KOKORO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "kokoro")
+_KOKORO_DIR = str(paths.MODELS_DIR / "kokoro")
 _KOKORO_TTS = None
 
 
@@ -844,7 +845,7 @@ def _no_cache(resp):
 
 @app.get("/")
 async def get():
-    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jarvis_hud_v3.html")
+    html_path = str(paths.HUD_HTML)
     with open(html_path, "r", encoding="utf-8") as f:
         html = f.read()
     return _no_cache(HTMLResponse(content=html, status_code=200))
@@ -868,7 +869,7 @@ async def get_manifest():
 @app.get("/icon-{size}.png")
 async def get_icon(size: int):
     from fastapi.responses import FileResponse
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", f"icon-{size}.png")
+    path = str(paths.STATIC_DIR / f"icon-{size}.png")
     if not os.path.exists(path):
         return JSONResponse({"error": "no such icon"}, status_code=404)
     return FileResponse(path, media_type="image/png")
@@ -877,14 +878,13 @@ async def get_icon(size: int):
 @app.get("/hud.html")
 async def get_hud():
     # The untouched HUD artifact (served into an iframe)
-    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hud_artifact.html")
+    html_path = str(paths.HUD_ARTIFACT_HTML)
     with open(html_path, "r", encoding="utf-8") as f:
         html = f.read()
     return _no_cache(HTMLResponse(content=html, status_code=200))
 
 
-DELEGATE_REGISTRY_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "delegate_registry.json")
+DELEGATE_REGISTRY_PATH = str(paths.DELEGATE_REGISTRY)
 
 
 def _website_items():
@@ -1711,7 +1711,7 @@ async def post_apps_hide(message: Request):
 
 @app.get("/apps.html")
 async def get_apps_panel():
-    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "apps_panel.html")
+    html_path = str(paths.APPS_PANEL_HTML)
     with open(html_path, "r", encoding="utf-8") as f:
         html = f.read()
     return _no_cache(HTMLResponse(content=html, status_code=200))

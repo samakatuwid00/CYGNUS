@@ -15,13 +15,14 @@ import os
 import re
 import threading
 import time
+import paths
 
 MODE = os.getenv("JARVIS_AGENT_LOOP", "off").strip().lower()
 MAX_ROUNDS = int(os.getenv("JARVIS_AGENT_ROUNDS", "12"))
 BUDGET_S = float(os.getenv("JARVIS_AGENT_BUDGET", "240"))
 CALL_CAP_S = 45.0
 ACK_AFTER_S = 8.0
-SHADOW_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "agent_shadow.jsonl")
+SHADOW_PATH = paths.log("agent_shadow.jsonl")
 
 # The old routing answers these instantly and well; the loop leaves them.
 INSTANT_INTENTS = {

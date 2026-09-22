@@ -21,6 +21,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+import paths
 
 # ---------------------------------------------------------------------------
 # Config
@@ -44,7 +45,7 @@ _lock = threading.Lock()
 _last_job_session: str | None = None
 
 # Where we cache the session_id on disk so a JARVIS restart can pick it up.
-_CACHE_DIR = Path(__file__).parent / ".warm_harness"
+_CACHE_DIR = paths.WARM_HARNESS_DIR
 _SESSION_CACHE = _CACHE_DIR / "session_id.txt"
 
 # Regex to extract session_id from hermes chat -Q output.

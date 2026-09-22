@@ -203,5 +203,6 @@ MAX_HISTORY = int(os.getenv("MAX_HISTORY", "20"))
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
 # Paths
-BASE_DIR = Path(__file__).parent
-ENV_FILE = BASE_DIR / ".env"
+import paths as _paths
+BASE_DIR = _paths.ROOT
+ENV_FILE = _paths.ENV_FILE

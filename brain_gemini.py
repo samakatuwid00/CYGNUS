@@ -3,6 +3,7 @@ import json
 import os
 import re
 import time
+import paths
 
 try:
     from google import genai
@@ -1479,7 +1480,7 @@ When using tools:
 Current system info will be provided in context."""
 
 # ── Pillar C (memory): ground the brain in the durable profile ──────────────
-_PROFILE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jarvis-profile.md")
+_PROFILE_FILE = str(paths.PROFILE)
 def _load_jarvis_profile() -> str:
     try:
         with open(_PROFILE_FILE, "r", encoding="utf-8") as f:

@@ -21,6 +21,7 @@ import threading
 import time
 
 import jobs as jobreg
+import paths
 
 # --- config -----------------------------------------------------------------
 MAX_TURNS = 40            # autonomous runs get a generous turn budget
@@ -28,8 +29,7 @@ POLL_INTERVAL = 2.0       # seconds between status-file polls
 DEFAULT_TIMEOUT = 1800    # hard ceiling per goal (30 min)
 RETRY_LIMIT = 0           # Phase 17 will raise this to 1
 
-_JOBS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                         ".hermes-jobs")
+_JOBS_DIR = str(paths.HERMES_JOBS_DIR)
 
 # jid -> {"proc": Popen, "status_path": str, "agent": str|None}
 _RUNNING: dict[str, dict] = {}
@@ -158,7 +158,7 @@ def start_goal(goal_text: str, timeout: int = DEFAULT_TIMEOUT,
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace",
             env=_child_env(),
-            cwd=os.path.dirname(os.path.abspath(__file__)))
+            cwd=str(paths.ROOT))
     except Exception as e:
         jobreg.update(jid, state="error", error=str(e)[:200])
         return f"[Error] Could not launch autonomous job: {e}", jid

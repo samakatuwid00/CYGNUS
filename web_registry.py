@@ -24,9 +24,9 @@ import time
 import difflib
 from datetime import datetime
 from urllib.parse import urlparse
+import paths
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-REGISTRY_PATH = os.path.join(BASE_DIR, "web_registry.json")
+REGISTRY_PATH = str(paths.WEB_REGISTRY)
 
 TOP_DOMAINS = int(os.getenv("JARVIS_WEB_TOP_N", "30"))
 TOP_URLS_PER_DOMAIN = 5

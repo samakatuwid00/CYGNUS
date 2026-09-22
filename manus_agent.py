@@ -18,9 +18,10 @@ import os
 import time
 import traceback
 from pathlib import Path
+import paths
 
 COOKIE_FILE = Path(os.getenv("JARVIS_MANUS_COOKIES",
-                             Path(__file__).parent / "manus_cookies.json"))
+                             paths.MANUS_COOKIES))
 MANUS_URL = "https://manus.im/app"
 DEBUG_PORT = int(os.getenv("JARVIS_BROWSER_PORT", "9223"))
 

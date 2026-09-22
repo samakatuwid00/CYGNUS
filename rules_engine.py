@@ -5,10 +5,10 @@ import os
 import re
 import sys
 import urllib.parse
+import paths
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-APP_REGISTRY_PATH = os.path.join(BASE_DIR, "app_registry.json")
-WEB_REGISTRY_PATH = os.path.join(BASE_DIR, "web_registry.json")
+APP_REGISTRY_PATH = str(paths.APP_REGISTRY)
+WEB_REGISTRY_PATH = str(paths.WEB_REGISTRY)
 
 # enforcement -> gate verdict. "hard" is the legacy spelling of "deny".
 _DENY_ENFORCEMENTS = {"deny", "hard", "block"}

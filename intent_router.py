@@ -24,11 +24,11 @@ import re
 import threading
 import time
 import uuid
+import paths
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SHADOW_LOG = os.path.join(BASE_DIR, "logs", "shadow.jsonl")
-LABELS_LOG = os.path.join(BASE_DIR, "logs", "shadow_labels.jsonl")
-AUDIT_LOG = os.path.join(BASE_DIR, "logs", "audit.jsonl")
+SHADOW_LOG = paths.log("shadow.jsonl")
+LABELS_LOG = paths.log("shadow_labels.jsonl")
+AUDIT_LOG = paths.log("audit.jsonl")
 MODE = os.getenv("JARVIS_ROUTER", "lead").strip().lower()
 if MODE not in ("lead", "shadow", "off"):
     MODE = "lead"

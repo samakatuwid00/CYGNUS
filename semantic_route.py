@@ -16,9 +16,9 @@ import os
 import threading
 
 import numpy as np
+import paths
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-GOLD = os.path.join(BASE_DIR, "eval", "routing_gold.jsonl")
+GOLD = str(paths.EVAL_DIR / "routing_gold.jsonl")
 MODEL = os.getenv("JARVIS_SEMANTIC_MODEL", "minishlab/potion-multilingual-128M")
 MODE = os.getenv("JARVIS_SEMANTIC", "lead").strip().lower()
 NEIGHBOURS = 5

@@ -20,9 +20,10 @@ import json
 import os
 import time
 from dataclasses import dataclass, field
+import paths
 
 MODE = os.getenv("JARVIS_GATE", "shadow").strip().lower()
-SHADOW_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "gate_shadow.jsonl")
+SHADOW_LOG = paths.log("gate_shadow.jsonl")
 # Unsure, but with no choices to offer: logged as reasons only. The intent
 # router leads from 0.85; the semantic router from 0.7.
 ROUTER_UNSURE = (0.5, 0.85)

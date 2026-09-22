@@ -13,11 +13,12 @@ import webbrowser
 import urllib.parse
 import urllib.request
 from pathlib import Path
+import paths
 
 # Phase 1: Structured audit trail (load-bearing before concurrency).
 # Every delegation + every file read/write lands here as JSONL: timestamp,
 # caller, args (redacted), result (truncated), confirm-gate decision. Stdlib only.
-_AUDIT_PATH = Path(__file__).parent / "logs" / "audit.jsonl"
+_AUDIT_PATH = paths.LOG_DIR / "audit.jsonl"
 _AUDIT_LOCK = threading.Lock()
 _AUDIT_SECRET_RE = re.compile(
     r"""(?i)([A-Z0-9_-]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)[A-Z0-9_-]*)(["']?\s*[=:]\s*)(["']?)([^\s"',;]+)"""
@@ -179,10 +180,10 @@ _ALLOWED_ROOTS = [
     Path.home() / "Downloads",
     Path.home() / "Documents" / "Second Brain",
     Path.home() / "Documents" / "Portfolio",
-    Path(__file__).parent,  # the project folder itself (configs, logs) — scoped
+    paths.ROOT,  # the project folder itself (configs, logs) — scoped
 ]
 # Its name in the blocked-path replies ("CYGNUS"), so they name the real folder.
-_PROJECT_NAME = Path(__file__).parent.name
+_PROJECT_NAME = paths.ROOT.name
 
 def _is_allowed_path(p: Path) -> bool:
     """True if p is under any allowed root (resolved, case-insensitive on Windows)."""
@@ -1014,8 +1015,7 @@ def _norm_phrase(s: str) -> str:
 
 def _load_app_registry() -> dict:
     try:
-        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               "app_registry.json"), encoding="utf-8") as f:
+        with open(paths.APP_REGISTRY, encoding="utf-8") as f:
             return json.load(f).get("apps", {})
     except Exception:
         return {}
@@ -2084,8 +2084,7 @@ def resolve_open_target(text: str, force: str | None = None,
 
     app_hit = False
     try:
-        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               "app_registry.json"), encoding="utf-8") as f:
+        with open(paths.APP_REGISTRY, encoding="utf-8") as f:
             apps = json.load(f).get("apps", {})
         # A name open_application knows by alias ("vs code" -> code) is an
         # app: "open VS Code" otherwise fell through to the coding specialist
@@ -2674,7 +2673,7 @@ _LOOK_ONLY_BRIEF = ("LOOK-ONLY TASK: read, search and report back. Do not create
 
 def _repo_changes() -> dict:
     """{path: mtime} for every file git sees as changed in Cygnus's folder."""
-    root = os.path.dirname(os.path.abspath(__file__))
+    root = str(paths.ROOT)
     try:
         out = subprocess.run(["git", "status", "--porcelain"], cwd=root, capture_output=True,
                              text=True, timeout=10).stdout
@@ -2992,7 +2991,7 @@ def _confirm_grounded(kw: dict, jid: str | None) -> str:
 # plus an instruction to ground answers in the Second Brain vault and cite sources.
 # Keep this import-local so importing tools.py never hard-fails if session_store
 # is absent on some deployment.
-_PROFILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jarvis-profile.md")
+_PROFILE_PATH = str(paths.PROFILE)
 _VAULT_HINT = ("Second Brain vault at C:/Users/deped/Documents/Second Brain "
                "(semantic search via turbovec; read/write wiki/evergreen).")
 
@@ -3014,7 +3013,6 @@ def _app_context(task: str) -> str:
         from machine_capabilities import resolve as _resolve
     except Exception:
         try:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             from machine_capabilities import resolve as _resolve
         except Exception:
             return ""
@@ -3092,7 +3090,7 @@ def delegate_to_hermes_grounded(task: str, timeout: int = 300, max_turns: int = 
 # Collapses delegate_task / delegate_to_hermes / delegate_to_hermes_grounded
 # into ONE function. The router picks the backend; delegate() executes.
 
-_DELEGATE_REGISTRY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "delegate_registry.json")
+_DELEGATE_REGISTRY_PATH = str(paths.DELEGATE_REGISTRY)
 _DELEGATE_CACHE = None
 _DELEGATE_CACHE_MTIME = 0
 
@@ -3229,8 +3227,7 @@ def _known_agents() -> tuple:
     then simply finds nothing, and auto-routing still works).
     """
     try:
-        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               "opencode.json"), encoding="utf-8") as f:
+        with open(paths.OPENCODE_JSON, encoding="utf-8") as f:
             agents = json.load(f).get("agent", {})
         return tuple(agents.keys())
     except Exception:
@@ -3280,8 +3277,7 @@ def _explicit_specialist(task: str):
 # Data-driven via cli_agents.json; binaries resolved at CALL TIME so
 # installing a CLI later needs zero code changes. "using gemini" / "via
 # chatgpt" forces this tier with NO Hermes fallback (user's rule).
-_CLI_AGENTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "cli_agents.json")
+_CLI_AGENTS_PATH = str(paths.CLI_AGENTS)
 
 
 def _cli_registry() -> dict:
@@ -3365,7 +3361,7 @@ def _run_cli_agent(task: str, name: str, timeout: int = 300) -> str:
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True,
                               timeout=timeout,
-                              cwd=os.path.dirname(os.path.abspath(__file__)))
+                              cwd=str(paths.ROOT))
     except subprocess.TimeoutExpired:
         return f"[cli:{name}] timed out after {timeout}s."
     out = (proc.stdout or "").strip()
@@ -3387,7 +3383,7 @@ try:                     # .env counts however tools is imported (config loads i
 except Exception:
     pass
 CLI_JOB_TIMEOUT = int(os.getenv("JARVIS_CLI_JOB_TIMEOUT", "900"))
-_REPO_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_DIR = str(paths.ROOT)
 
 # Words that are not a task: "test" became a Hermes job waiting for confirm.
 _NOT_A_TASK_RE = re.compile(
@@ -3626,7 +3622,7 @@ def _run_specialist(task: str, agent: str | None = None, timeout: int = 300) -> 
     cmd.append(task)
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True,
-                              timeout=timeout, cwd=os.path.dirname(os.path.abspath(__file__)))
+                              timeout=timeout, cwd=str(paths.ROOT))
     except subprocess.TimeoutExpired:
         return f"[specialist:{agent or 'build'}] timed out after {timeout}s."
     out = (proc.stdout or "").strip()
@@ -3714,7 +3710,7 @@ def _run_specialist_bg(task: str, agent: str | None, timeout: int,
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace",
-            cwd=os.path.dirname(os.path.abspath(__file__)))
+            cwd=str(paths.ROOT))
     except Exception as e:
         jobreg.update(jid, state="error", error=str(e)[:200])
         return f"[specialist] failed to launch: {e}", jid
@@ -3790,8 +3786,7 @@ def _run_pi_specialist(task: str, agent: str | None = None, timeout: int = 300) 
     bash = shutil.which("bash")
     if bash is None:
         return "[pi] bash unavailable; cannot launch sandbox."
-    script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          "scripts", "pi_sandbox.sh")
+    script = str(paths.SCRIPTS_DIR / "pi_sandbox.sh")
     if not os.path.exists(script):
         return "[pi] sandbox wrapper missing; route to opencode."
     try:
@@ -3803,7 +3798,7 @@ def _run_pi_specialist(task: str, agent: str | None = None, timeout: int = 300) 
     jid = jobreg.create(task[:200], tier="pi", agent=agent or "pi", background=False)
     jobreg.update(jid, state="running", note="sandboxed pi coding task")
     # repo to mount = current working dir (JARVIS cwd) by default
-    repo = os.path.dirname(os.path.abspath(__file__))
+    repo = str(paths.ROOT)
     cmd = [bash, script, repo, task, str(timeout)]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -3835,8 +3830,7 @@ def _run_pi_specialist_bg(task: str, agent: str | None, timeout: int,
                            on_done=None) -> tuple[str, str]:
     """Spawn a Pi specialist as a non-blocking process; returns (ack, jid)."""
     import shutil, subprocess, jobs as jobreg
-    script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          "scripts", "pi_sandbox.sh")
+    script = str(paths.SCRIPTS_DIR / "pi_sandbox.sh")
     if not os.path.exists(script):
         return ("[pi] sandbox wrapper missing; route to opencode.", "")
     try:
@@ -3846,7 +3840,7 @@ def _run_pi_specialist_bg(task: str, agent: str | None, timeout: int,
     except Exception:
         full_task = task
     jid = jobreg.create(task, tier="pi", agent=agent or "pi", background=True)
-    repo = os.path.dirname(os.path.abspath(__file__))
+    repo = str(paths.ROOT)
     cmd = ["bash", script, repo, full_task, str(timeout)]
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -3970,8 +3964,7 @@ def job_control(action: str, jid: str | None = None) -> str:
 # Phase 18: durable memory writes. "remember X" appends a bullet to
 # jarvis-profile.md under ## Remembered — deduped, capped at _REMEMBER_CAP
 # lines so the profile injected into JARVIS_SYSTEM can't grow unbounded.
-_PROFILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "jarvis-profile.md")
+_PROFILE_PATH = str(paths.PROFILE)
 _REMEMBER_HEADING = "## Remembered"
 _REMEMBER_CAP = 40
 
@@ -4160,7 +4153,7 @@ def _specialist_model_args(agent: str | None) -> list:
         healthy = router_health.healthy_models()
         if not healthy:
             return []
-        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "opencode.json"),
+        with open(paths.OPENCODE_JSON,
                   encoding="utf-8") as f:
             cfg = json.load(f)
         model = (((cfg.get("agent") or {}).get(agent or "") or {}).get("model")
@@ -4608,8 +4601,7 @@ def write_to_notepad(content: str, filename: str = "") -> str:
 # name through verbatim and every Office app fails to open.
 # Phase 14b: data now lives in app_aliases.json (editable without code changes);
 # this dict is the loaded cache with a built-in fallback if the file is missing.
-_ALIASES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "app_aliases.json")
+_ALIASES_PATH = str(paths.APP_ALIASES)
 _APP_ALIASES_FALLBACK = {
     "word": "winword", "microsoft word": "winword", "ms word": "winword",
     "excel": "excel", "powerpoint": "powerpnt", "notepad": "notepad.exe",
@@ -4896,7 +4888,6 @@ def open_application(app: str, action: str = None, query: str = None,
             from machine_capabilities import resolve as _resolve
         except Exception:
             try:
-                sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
                 from machine_capabilities import resolve as _resolve
             except Exception:
                 _resolve = None
@@ -5495,7 +5486,6 @@ def play_spotify(query: str) -> str:
             import music_rules as _music_rules
         except ImportError:
             import sys as _sys
-            _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
             import music_rules as _music_rules
         cap = _music_rules.resolve_music_rules(app_key="spotify").get("cap_volume")
     except Exception:
@@ -5508,7 +5498,6 @@ def play_spotify(query: str) -> str:
         from machine_capabilities import resolve as _resolve
     except Exception:
         try:
-            sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
             from machine_capabilities import resolve as _resolve
         except Exception:
             _resolve = None

@@ -171,7 +171,7 @@ Archiving jarvis-demo (done on 2026-09-22, except the deletions in step 6):
   `test_loop`, `capture_page`, `_hud_edit`) into `scripts/diag|bench|probe/`,
   or delete them if they are dead. Most are from August and nothing imports them.
 
-### Phase 1: one source for paths (files stay where they are)
+### Phase 1: one source for paths (files stay where they are) - done 2026-09-22
 
 This phase makes the later moves safe.
 

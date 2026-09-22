@@ -49,6 +49,7 @@ import numpy as np
 import sounddevice as sd
 
 import re
+import paths
 
 # The wake word is "Cygnus", matched the way Whisper actually writes it:
 # Cygnus, Signus, Signis, Signess, Signes, Signez(z), Signeze, and "Heysignas"
@@ -86,7 +87,7 @@ SPEAKING_CAP_S = 90.0
 # the HUD did with each wake. On unless JARVIS_WAKE_DEBUG=0; 1 MB, one old
 # file kept.
 WAKE_DEBUG = os.environ.get("JARVIS_WAKE_DEBUG", "1") != "0"
-WAKE_DEBUG_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "wake_debug.log")
+WAKE_DEBUG_LOG = paths.log("wake_debug.log")
 
 
 def _debug_logger():

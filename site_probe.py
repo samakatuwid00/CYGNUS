@@ -19,8 +19,8 @@ import re
 import subprocess
 import threading
 import urllib.parse
+import paths
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROFILE_DIR = os.path.join(os.getenv("LOCALAPPDATA") or os.path.expanduser("~"),
                            "JARVIS", "verifier-chrome")
 # host -> search address a real page check verified (see remember_search).
@@ -51,7 +51,7 @@ _SEARCH_FIELDS = ("s", "q", "query", "search_query", "search", "keyword", "keywo
 def chrome_path():
     """The installed Chrome, from the app registry first."""
     try:
-        with open(os.path.join(BASE_DIR, "app_registry.json"), encoding="utf-8") as f:
+        with open(paths.APP_REGISTRY, encoding="utf-8") as f:
             exe = (json.load(f).get("apps", {}).get("chrome") or {}).get("bin")
         if exe and os.path.isfile(exe):
             return exe
