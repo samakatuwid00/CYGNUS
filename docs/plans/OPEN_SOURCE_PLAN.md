@@ -81,3 +81,14 @@ Targets to hold before publishing (measured, not felt):
 The harness for the first five rows can be automated. The labelled utterances
 and the stopwatch baseline need the owner: invented sentences do not measure
 this, and the time-saved number is what a public README has to show.
+
+**Routing (2026-09-23).** `scripts/bench/routing.py` mines the real utterances
+out of `data/sessions/` (2018 turns, 1082 distinct, 749 groups), groups the
+phrasings that route the same way, and puts the 150 that matter most up for
+review - doubtful first, then the routes that act. `accept` folds them into
+`data/routing_gold.jsonl`, `score` measures. Auto-accepted rows are marked
+`proposed` and counted separately, because the classifier agreeing with itself
+is not a measurement: **the number only becomes real once the owner has read
+the review file.** Its first run already found a live bug - Whisper's commas on
+staccato speech ("Open, Telegram.") sent real commands to the model as
+chit-chat; fixed, with tests.

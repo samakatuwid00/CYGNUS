@@ -9,7 +9,9 @@ import datetime
 import os
 import re
 
-from cygnus.brain.core import parse_add_site  # defined before this module is imported
+# parse_add_site lives in brain/core, which imports this module: importing it at
+# module level only worked when core was imported first, so `import
+# cygnus.brain.intents` on its own raised ImportError. Imported at the call site.
 
 
 
@@ -166,6 +168,28 @@ def _outer(text: str) -> str:
         return text or ""
 
 
+def _destaccato(text: str) -> str:
+    """"Force, close, brave." -> "force close brave".
+
+    Whisper punctuates staccato speech word by word, and every action rule wants
+    the verb next to its target ("open\\s+\\w+"), so the commas sent real
+    commands to the model as chit-chat: 2026-09-23, mined out of data/sessions/
+    by scripts/bench/routing.py, "Open, Telegram." routed general while "open
+    telegram" routed app_reference.
+
+    Only when EVERY comma-separated piece is a single word. "open notepad,
+    chrome" names two targets and is left alone, chain words and all.
+    """
+    if "," not in text:
+        return text
+    pieces = [p.strip() for p in text.split(",")]
+    if len(pieces) < 2 or not all(len(p.split()) == 1 for p in pieces):
+        return text
+    if any(re.fullmatch(r"and|then|also|or", p, re.I) for p in pieces):
+        return text
+    return " ".join(pieces)
+
+
 def _relays_the_only_command(text: str) -> bool:
     """True when every action word sits inside quoted or third-party content,
     so the owner's own words ask for nothing on the machine. "translate this:
@@ -235,7 +259,7 @@ def classify_intent(text: str) -> str:
     # returned "hermes" from _detect_backend and were delegated as a task.
     if _is_blank(text):
         return CLARIFY_ASK
-    t = _outer(_scrub(_strip_correction(text))).strip().lower()
+    t = _destaccato(_outer(_scrub(_strip_correction(text))).strip().lower())
     if not t:
         return "general"
     # math: a string that is essentially an arithmetic expression
@@ -512,6 +536,7 @@ def classify_intent(text: str) -> str:
         return "app_reference"
     # add_site: registry write. MUST sit ahead of web_browse — that branch fires
     # on any URL-shaped token, so registration requests were read as page reads.
+    from cygnus.brain.core import parse_add_site
     if parse_add_site(t):
         return "add_site"
     # web_browse: token-cheap read of a specific page via the local oc CLI.

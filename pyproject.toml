@@ -56,8 +56,3 @@ packages = [
     "cygnus", "cygnus.apps", "cygnus.agents", "cygnus.brain", "cygnus.browser",
     "cygnus.jobs", "cygnus.memory", "cygnus.rules", "cygnus.server", "cygnus.tools",
 ]
-
-[tool.pytest.ini_options]
-# pytest.ini is the one that runs; this mirrors it for tools that read pyproject.
-testpaths = ["tests"]
-python_files = ["test_*.py"]
