@@ -338,7 +338,8 @@ def _client_key():
     return getattr(_progress_local, "client", None) or "default"
 # Moved to intents.py (restructure phase 5); re-exported so
 # `tools.<name>` keeps working for callers and tests.
-from cygnus.brain.intents import (  # noqa: E402,F401
+from cygnus.brain.intents import (
+    NO_RULE_GUESS_INTENTS,  # noqa: E402,F401
     _ACKNOWLEDGE_RE,
     _APP_WORDS,
     _asks_about_own_work,
@@ -1279,7 +1280,10 @@ class JarvisBrain:
         # about 4 s (2026-09-22).
         try:
             from cygnus import tools as _tr
-            _rule_out = _tr.try_rule_action(user_input, semantic=fast_path_answer(user_input)[0] is None)
+            _rule_out = _tr.try_rule_action(
+                user_input,
+                semantic=(fast_path_answer(user_input)[0] is None
+                          and classify_intent(user_input) not in NO_RULE_GUESS_INTENTS))
         except Exception:
             _rule_out = None
         if _rule_out is not None:

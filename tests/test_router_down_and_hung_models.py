@@ -19,6 +19,9 @@ def test_a_router_that_is_up_needs_nothing(monkeypatch):
 
 def test_a_router_that_is_down_is_started_and_waited_for(monkeypatch):
     waits = []
+    # How long it may wait comes off the turn's budget: give it a full turn,
+    # so a deadline another test left behind cannot shrink it to zero.
+    monkeypatch.setattr(bg, "_time_left", lambda: 240.0)
     monkeypatch.setattr(router_keeper, "port_open", lambda timeout=0.5: False)
     monkeypatch.setattr(router_keeper, "ensure_up", lambda wait=20: waits.append(wait) or True)
     bg._router_ready()

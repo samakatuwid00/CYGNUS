@@ -217,6 +217,18 @@ def _referent_object(text, verb_pattern):
         return None
 
 
+# Intents Cygnus answers on its own. Asking the rule model what an
+# Apps-panel rule might mean costs a cloud call (3.5 s measured), and for
+# these the answer never comes from a rule: "stop the music" with nothing
+# playing took 7.2 s (bench/latency.py, 2026-09-23). Left out on purpose:
+# music, launch, report, rescan and the app install intents, where a rule
+# the user wrote ("play music brave") may well be what they meant.
+NO_RULE_GUESS_INTENTS = {
+    "math", "greeting", "thanks", "time", "help", "stop", "job_status", "job_stop",
+    "recall_memory", "remember", "list_sites", "running_stop",
+    "clarify_play", "clarify_search", "clarify_open"}
+
+
 def classify_intent(text: str) -> str:
     """Return a coarse intent label for fast-path / tool-gating decisions."""
     # Degenerate input never reaches a rule: without this, "\\x00" and "   "
