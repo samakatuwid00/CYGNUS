@@ -2168,7 +2168,9 @@ def delegate_to_hermes(task: str, timeout: int = 300, max_turns: int = 15,
             _PENDING_HERMES_CALL = dict(
                 task=task, timeout=timeout, max_turns=max_turns, raw_task=raw_task,
                 background=background, on_done=on_done, progress_cb=progress_cb, jid=jid,
-                ts=time.time(), grounded=grounded)
+                ts=time.time(), grounded=grounded,
+                # Whose question this is: only that device may answer it.
+                client=_current_client())
             _jobs.update(jid, state="waiting-on-confirm", note="needs confirm — say 'confirm' to run", summary=f"Waiting for confirm: {gate_target[:120]}")
             _audit_log("delegate_to_hermes", gate_target, "NEEDS_CONFIRM", confirm=False, extra={"jid": jid})
             return (f"[NEEDS_CONFIRM:{jid}] That task changes state or isn't on the pre-approved safe list. "
@@ -2179,7 +2181,9 @@ def delegate_to_hermes(task: str, timeout: int = 300, max_turns: int = 15,
             _PENDING_HERMES_CALL = dict(
                 task=task, timeout=timeout, max_turns=max_turns, raw_task=raw_task,
                 background=background, on_done=on_done, progress_cb=progress_cb, jid=jid,
-                ts=time.time(), grounded=grounded)
+                ts=time.time(), grounded=grounded,
+                # Whose question this is: only that device may answer it.
+                client=_current_client())
             _jobs.update(jid, state="waiting-on-confirm", note="latch mismatch — re-issue exact task then confirm")
             _audit_log("delegate_to_hermes", gate_target, "NEEDS_CONFIRM_latch_mismatch", confirm=True, extra={"jid": jid})
             return ("[NEEDS_CONFIRM] Please re-issue the exact task and then "
@@ -2234,10 +2238,32 @@ def delegate_to_hermes(task: str, timeout: int = 300, max_turns: int = 15,
     return result
 
 
+def _current_client() -> str:
+    """Which HUD this turn came from; safety.py owns the answer."""
+    from cygnus import safety
+    return safety.current_client()
+
+
 def pending_confirm_task() -> str | None:
-    """The raw user task currently latched awaiting confirm, or None."""
+    """The raw user task this device was asked to confirm, or None."""
     _expire_confirms()
-    return (_PENDING_HERMES_CALL or {}).get("raw_task")
+    kw = _PENDING_HERMES_CALL or {}
+    if kw.get("client", "default") != _current_client():
+        return None
+    return kw.get("raw_task")
+
+
+def pending_confirm_elsewhere() -> str | None:
+    """The task waiting on ANOTHER device, or None.
+
+    A "yes" here answers nothing, and saying so beats routing it as a fresh
+    request (2026-09-23: a desktop "yes" launched a delete held for the phone).
+    """
+    _expire_confirms()
+    kw = _PENDING_HERMES_CALL or {}
+    if not kw or kw.get("client", "default") == _current_client():
+        return None
+    return kw.get("raw_task") or kw.get("task")
 
 
 def decline_pending() -> str | None:
@@ -2251,6 +2277,8 @@ def decline_pending() -> str | None:
     global _PENDING_HERMES_CALL
     _expire_confirms()
     hermes = _PENDING_HERMES_CALL
+    if hermes and hermes.get("client", "default") != _current_client():
+        hermes = None            # another device's question, not this "no"
     goal = _PENDING_DESTRUCTIVE.get("autonomous")
     if not hermes and not goal:
         return None
@@ -2292,6 +2320,12 @@ def confirm_pending(on_done=None, progress_cb=None, background: bool | None = No
     kw = _PENDING_HERMES_CALL
     if not kw:
         return None
+    if kw.get("client", "default") != _current_client():
+        # Asked on another device; leave it held for that one.
+        _audit_log("delegate_to_hermes", (kw.get("raw_task") or "")[:200],
+                   "confirm_from_another_client", confirm=False,
+                   extra={"jid": kw.get("jid")})
+        return None
     if kw.get("cli"):                    # a CLI agent waited: its own card runs on
         _PENDING_HERMES_CALL = None
         _PENDING_DESTRUCTIVE["task"] = None
@@ -2313,7 +2347,8 @@ def confirm_pending(on_done=None, progress_cb=None, background: bool | None = No
         return _run_specialist_now(kw["task"], agent, kw.get("pi", False), kw.get("timeout", 300),
                                    bg, on_done or kw.get("on_done"))
     superseded_jid = kw.get("jid")
-    kw = {k: v for k, v in kw.items() if k not in ("jid", "ts")}
+    # "client" is bookkeeping about who was asked, not an argument of the call.
+    kw = {k: v for k, v in kw.items() if k not in ("jid", "ts", "client")}
     if on_done is not None:
         kw["on_done"] = on_done
     if progress_cb is not None:

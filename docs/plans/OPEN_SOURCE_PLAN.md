@@ -82,6 +82,15 @@ The harness for the first five rows can be automated. The labelled utterances
 and the stopwatch baseline need the owner: invented sentences do not measure
 this, and the time-saved number is what a public README has to show.
 
+**Concurrency (2026-09-23).** `scripts/bench/concurrency.py`: two clients on
+one server, five scenarios. It found the confirm latches were global - a "yes"
+on the desktop released a delete the phone had been asked about ("confirmed -
+launching Hermes" in the job's own progress). Every latch now records which
+client was asked, only that client can answer, and a stray "yes" is told where
+the question is waiting. Cross-talk, context isolation and ten interleaved
+turns were already clean. Voice and typed at the same moment is still
+untested: the bench drives two websocket clients, not a microphone.
+
 **Routing (2026-09-23).** `scripts/bench/routing.py` mines the real utterances
 out of `data/sessions/` (2018 turns, 1082 distinct, 749 groups), groups the
 phrasings that route the same way, and puts the 150 that matter most up for

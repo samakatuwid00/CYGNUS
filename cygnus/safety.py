@@ -172,12 +172,28 @@ def assess_ability(app: str, ability: dict) -> Decision:
 
 # ---------------------------------------------------------------- latch --
 
+def current_client() -> str:
+    """Which HUD this turn came from ("default" when nothing says).
+
+    Imported lazily: brain.core imports this module, not the other way round.
+    """
+    try:
+        from cygnus.brain.core import _client_key
+        return _client_key() or "default"
+    except Exception:
+        return "default"
+
+
 def hold(key: str, decision: Decision, run) -> str:
     """Keep `run` until the user answers; the reply to speak now."""
     global _pending
     with _lock:
         _pending = {"key": key, "question": decision.question, "reason": decision.reason,
-                    "run": run, "ts": time.time(), "turn": _turn}
+                    "run": run, "ts": time.time(), "turn": _turn,
+                    # The question was asked on one device. Only that device can
+                    # answer it: on 2026-09-23 a "yes" typed on the desktop
+                    # released a delete held for the phone (bench/concurrency).
+                    "client": current_client()}
     _audit("held", key, decision.reason)
     return f"[NEEDS_CONFIRM:safety] {decision.question}"
 
@@ -196,13 +212,29 @@ def pending_ts() -> float:
     return p["ts"] if p else 0.0
 
 
+def held_elsewhere() -> str | None:
+    """The question waiting on ANOTHER device, or None.
+
+    So a "yes" that answers nothing here can say why instead of being routed
+    as a fresh request.
+    """
+    p = pending()
+    return p["question"] if p and p.get("client", "default") != current_client() else None
+
+
 def confirm_pending():
     """The user said yes in a later turn: run the held action. None when
-    nothing is held (or it was held this same turn: not an answer)."""
+    nothing is held (or it was held this same turn: not an answer, or it was
+    asked on another device)."""
     global _pending
     with _lock:
         p = _pending
         if not p or time.time() - p["ts"] > CONFIRM_TTL_S or p["turn"] >= _turn:
+            return None
+        if p.get("client", "default") != current_client():
+            # Not this device's question to answer. Leave it held for the one
+            # that was asked.
+            _audit("confirm_from_another_client", p["key"], p["reason"])
             return None
         _pending = None
     _audit("confirmed", p["key"], p["reason"])
@@ -215,7 +247,10 @@ def confirm_pending():
 def decline_pending() -> str | None:
     global _pending
     with _lock:
-        p, _pending = _pending, None
+        p = _pending
+        if p and p.get("client", "default") != current_client():
+            return None          # someone else's question; not this device's "no"
+        _pending = None
     if not p:
         return None
     _audit("declined", p["key"], p["reason"])

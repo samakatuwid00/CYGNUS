@@ -1358,6 +1358,18 @@ class JarvisBrain:
                     self.last_backend = backend
                     self.last_stats = {"backend": backend, "intent": "confirm"}
                     return out
+                # A confirm for a question asked on ANOTHER device: say so.
+                # Without this the stray "yes" was routed as a fresh request
+                # (2026-09-23: a desktop "yes" launched a delete the phone had
+                # been asked about).
+                other = _sf.held_elsewhere() or _t.pending_confirm_elsewhere()
+                if other:
+                    msg = ("That confirm was asked on another device, sir - answer it "
+                           f"there: “{str(other)[:90]}”")
+                    self.conversation.append({"role": "assistant", "content": msg})
+                    self.last_backend = "instant"
+                    self.last_stats = {"backend": "instant", "intent": "confirm_other_client"}
+                    return msg
                 # A confirm for a question that already timed out: say so,
                 # rather than let the model guess what "yes" was about.
                 late = _t.expired_confirm_reply()
