@@ -42,7 +42,10 @@ Cygnus.
 **New here? [docs/SETUP.md](docs/SETUP.md)** walks a clean Windows laptop
 through it in about twenty minutes, and
 **[docs/WHAT_IT_CAN_DO.md](docs/WHAT_IT_CAN_DO.md)** says plainly what Cygnus
-can do to a machine, what it always asks about first, and what leaves it.
+can do to a machine and what it always asks about first.
+**[docs/PRIVACY.md](docs/PRIVACY.md)** answers the next question - what the
+microphone does, what leaves the machine, what is written down, and how to
+delete it - with the file and line for each answer.
 
 Requirements: Windows, Python 3.10+, Node.js (for the desktop app), a
 microphone (or `JARVIS_NO_VOICE=1` and type), and one model backend: your own

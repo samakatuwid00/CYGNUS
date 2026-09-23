@@ -59,11 +59,22 @@ Say "no" and it drops the action.
 - **Your speech does not.** It is transcribed on your laptop by Whisper.
 - **The words of a turn do**, with the context that turn needs (recent
   conversation, your profile if you keep one, the names of apps involved), to
-  whichever model endpoint you set in `.env`. With Ollama and
-  `JARVIS_PREFER_LOCAL=true`, nothing leaves at all.
+  whichever model endpoint you set in `.env`.
+- **The text of every spoken reply does too**, to Microsoft, because the
+  default voice is their cloud one (`edge-tts`). That includes anything Cygnus
+  reads back to you from your files. Install piper or kokoro and set
+  `JARVIS_TTS_ENGINE` for an offline voice; `JARVIS_LOCAL_ONLY=true` refuses
+  the cloud voice rather than quietly using it.
+- A local model alone is **not** enough to keep everything in: this page used
+  to say "with Ollama and `JARVIS_PREFER_LOCAL=true`, nothing leaves at all",
+  which was wrong while the voice was still Microsoft's. See
+  [PRIVACY.md](PRIVACY.md).
 - **A picture of a window** leaves only when you ask Cygnus to describe one,
   and it says so in its reply.
 - **Search terms** go to the search engine, as they would in a browser.
+
+For the whole picture - the microphone, the logs that hold your words, what
+is kept forever and how to delete it - see **[PRIVACY.md](PRIVACY.md)**.
 
 ## What it keeps, and where
 

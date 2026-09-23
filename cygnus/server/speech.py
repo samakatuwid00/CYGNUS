@@ -14,7 +14,10 @@ import time
 from cygnus import paths
 from cygnus.voice import ducking as voice_ducking
 from cygnus.voice import feedback as _vf
-from cygnus.server.app import wake_engine  # created before this module is imported
+# wake_engine lives in server/app, which imports this module: at module level
+# this only worked when app was imported first, so `import
+# cygnus.server.speech` on its own raised ImportError. Fetched at the one
+# call site instead (2026-09-23, same bug as brain/intents).
 
 
 # The anti-AI-ism filter (machine tics, em dashes) lives in plain_reply.tidy
@@ -125,6 +128,7 @@ async def tts_to_b64(text: str) -> str:
         return ""                      # typed turns only: nothing is spoken
     text = strip_ai_artifacts(text)
     try:
+        from cygnus.server.app import wake_engine
         wake_engine.note_spoken(text)   # a wake in its own voice is not the owner's
     except Exception:
         pass
@@ -167,8 +171,20 @@ async def tts_to_b64(text: str) -> str:
                 return b64
             except Exception as e:
                 print(f"[TTS] piper synth failed ({e}); falling back to edge-tts.")
+    # edge-tts is Microsoft's cloud voice: it opens a socket to their speech
+    # service and uploads the FULL TEXT of every reply - including anything
+    # read back from files, the vault or memory. That is fine when the user
+    # chose it, and a broken promise when they asked for local only, so
+    # JARVIS_LOCAL_ONLY refuses it rather than falling back to it silently
+    # (2026-09-23; docs/PRIVACY.md).
+    from cygnus.config import JARVIS_LOCAL_ONLY, TTS_VOICE, TTS_RATE, TTS_VOLUME
+    if JARVIS_LOCAL_ONLY:
+        print("[TTS] JARVIS_LOCAL_ONLY is on and the local voice is not available, "
+              "so there is no speech: edge-tts would send the reply text to Microsoft. "
+              "Install piper (~/.jarvis-tts) or kokoro (models/kokoro) for offline speech.",
+              flush=True)
+        return None
     import edge_tts
-    from cygnus.config import TTS_VOICE, TTS_RATE, TTS_VOLUME
 
     # rate/volume were previously dropped here, so the web UI always spoke at
     # +0% no matter what config said — only the CLI path honoured TTS_RATE.

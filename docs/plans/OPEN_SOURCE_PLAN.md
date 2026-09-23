@@ -58,9 +58,21 @@ Either way: never push `--all` or `--tags` from this repo, and never push the
       Windows laptop, a first five minutes, and what to do when it breaks) are
       done. **A licence is still missing, and which one is the owner's
       choice.**
-- [ ] **What it does with the microphone and the cloud, in writing.** Speech
-      is transcribed locally; turns and their context go to a cloud model. Say
-      so, and say what is kept on disk (sessions, memory, audit).
+- [x] **What it does with the microphone and the cloud, in writing**
+      (docs/PRIVACY.md, 2026-09-23). Written by auditing the code, with a
+      file:line for every claim. It found three things the docs had wrong or
+      silent about:
+      - the default voice (edge-tts) uploads the text of **every reply** to
+        Microsoft, so "nothing leaves with a local model" was false;
+        JARVIS_LOCAL_ONLY now refuses it instead of falling back to it.
+      - the HUD loaded `lucide@latest` from unpkg, unpinned and without SRI,
+        into the page that holds the assistant's socket. Vendored.
+      - the wake listener writes what it heard to data/logs/wake_debug.log;
+        harmless with the keyword spotter, a transcript of the room without it.
+- [ ] **Retention.** Nothing is ever deleted: sessions, audit, shadow and the
+      backend log (7.2 MB, verbatim speech) grow forever, and there is no
+      "forget everything" command. PRIVACY.md documents the gap and how to
+      delete by hand; it should be a setting and a command.
 
 ## 3. What "production ready" means, in numbers
 

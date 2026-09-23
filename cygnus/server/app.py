@@ -732,6 +732,27 @@ async def get_icon(size: int):
     return FileResponse(path, media_type="image/png")
 
 
+@app.get("/vendor/{name}")
+async def get_vendor_asset(name: str):
+    """Third-party front-end files, served from web/vendor/ instead of a CDN.
+
+    The HUD used to load lucide from unpkg at @latest, unpinned and without
+    SRI: whatever that URL served that day ran inside a page holding a live
+    socket to an assistant that can act on the machine. It also told unpkg the
+    IP of everyone who opened the HUD. Vendored, so neither is true, and the
+    HUD works with no internet at all.
+    """
+    import re
+    from fastapi.responses import FileResponse
+    if not re.fullmatch(r"[A-Za-z0-9._-]+\.(js|css)", name):
+        return JSONResponse({"error": "no such asset"}, status_code=404)
+    path = paths.WEB_DIR / "vendor" / name
+    if not path.is_file():
+        return JSONResponse({"error": "no such asset"}, status_code=404)
+    return FileResponse(str(path),
+                        media_type="application/javascript" if name.endswith(".js") else "text/css")
+
+
 @app.get("/hud.html")
 async def get_hud():
     # The untouched HUD artifact (served into an iframe)
