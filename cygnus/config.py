@@ -20,7 +20,7 @@ ROUTER_MODEL = os.getenv("ROUTER_MODEL", "oc/mimo-v2.5-free")
 ROUTER_API_KEY = os.getenv("ROUTER_API_KEY") or "dummy"
 # Free-tier 9router models tried (in order) when the primary is rate-limited
 # (429). They carry separate quotas, so a throttled primary hops to a fresh
-# model instead of dropping to demo mode. Last real fallback is Ollama (step 3).
+# model instead of giving up. The last real fallback is Ollama (step 3).
 ROUTER_FALLBACK_MODELS = [m.strip() for m in
     os.getenv("ROUTER_FALLBACK_MODELS",
               "ag/gemini-3.5-flash-low,ag/gemini-3-flash,antigrav,cx/gpt-5.6-sol").split(",") if m.strip()]
@@ -71,7 +71,7 @@ if not CEREBRAS_API_KEY:
             CEREBRAS_API_KEY = ""
 
 # --- Ollama (local, OpenAI-compatible) --------------------------------------
-# Last real backend before demo mode: runs on this machine, so it answers when
+# The last real backend: it runs on this machine, so it answers when
 # every cloud tier is quota-walled or the network is down. Measured 14.1 tok/s
 # on qwen3:4b-instruct (CPU only — Ollama has no ROCm path for this iGPU).
 # Set JARVIS_PREFER_LOCAL=true to try it FIRST instead of last (offline work,

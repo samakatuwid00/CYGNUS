@@ -325,15 +325,19 @@ def _fails(msg):
 
 
 def test_a_turn_no_model_answers_says_so():
+    # The reply names the way it failed (the last one tried), and nothing
+    # canned stands in for an answer.
     brain = _chain_brain(_fails("503 unavailable"), _fails("timed out"))
-    assert brain._answer_with_models("hi") == b._NO_MODEL_REPLY
-    assert brain.conversation[-1]["content"] == b._NO_MODEL_REPLY and brain.last_backend == "timeout"
+    out = brain._answer_with_models("hi")
+    assert "didn't answer in time" in out
+    assert brain.conversation[-1]["content"] == out and brain.last_backend == "no-model"
 
 
 def test_a_busy_local_model_is_not_queued_behind():
     ran = []
     brain = _chain_brain(_fails("503"), lambda u: ran.append(u) or "late answer", busy=1)
-    assert brain._answer_with_models("hi") == b._NO_MODEL_REPLY and ran == []
+    out = brain._answer_with_models("hi")
+    assert "503" in out and ran == []                # says why; the busy local model is left alone
 
 
 def test_an_answering_model_still_answers():

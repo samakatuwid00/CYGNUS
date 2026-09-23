@@ -103,9 +103,33 @@ WS_REMOTE = set()
 # connected, server wakes go to it alone, so a Chrome tab stays quiet.
 WS_DESKTOP = set()
 
+# JARVIS_NO_VOICE=1: no Whisper, no microphone, no speech - typed turns only.
+# For a machine with no microphone, a headless run, and the benchmark's second
+# instance, which must not take the mic or load Whisper twice.
+NO_VOICE = os.environ.get("JARVIS_NO_VOICE", "0").strip() == "1"
+
+
+class _NoVoice:
+    """Stands in for the voice and wake engines when NO_VOICE is set: every
+    call does nothing, and nothing can be transcribed."""
+
+    def transcribe_with_hint(self, *a, **k):
+        return "", "none", "", 0.0
+
+    def _transcribe_from_file(self, *a, **k):
+        return ""
+
+    def __getattr__(self, _name):
+        return lambda *a, **k: None
+
+
 # Global singletons (Whisper load is slow, do it once)
-print("[JARVIS Web] Loading VoiceEngine (Whisper)...", flush=True)
-voice_engine = VoiceEngine()
+if NO_VOICE:
+    print("[JARVIS Web] JARVIS_NO_VOICE=1: no Whisper, no microphone, typed turns only.", flush=True)
+    voice_engine = _NoVoice()
+else:
+    print("[JARVIS Web] Loading VoiceEngine (Whisper)...", flush=True)
+    voice_engine = VoiceEngine()
 print(f"[JARVIS Web] Loading Brain ({ROUTER_MODEL})...", flush=True)
 brain = JarvisBrain()
 # The semantic router loads in the background (~5 s); until then it neither
@@ -136,12 +160,13 @@ except ValueError:
 _wake_spotter = None
 try:
     from cygnus.config import JARVIS_WAKE_ENGINE
-    if JARVIS_WAKE_ENGINE == "sherpa":
+    if JARVIS_WAKE_ENGINE == "sherpa" and not NO_VOICE:
         from cygnus.voice import wake_kws
         _wake_spotter = wake_kws.load()
 except Exception as _e:
     print(f"[WakeEngine] spotter setup failed ({_e}); using Whisper", flush=True)
-wake_engine = WakeEngine(voice_engine, suspend_ms=_WAKE_SUSPEND_MS, spotter=_wake_spotter)
+wake_engine = _NoVoice() if NO_VOICE else WakeEngine(
+    voice_engine, suspend_ms=_WAKE_SUSPEND_MS, spotter=_wake_spotter)
 # Longest the wake fallback stays quiet for one browser capture.
 _WAKE_HOLD_MS = 30000
 
@@ -198,10 +223,11 @@ def broadcast_wake():
     return scheduled > 0
 
 
-wake_engine.set_callback(broadcast_wake)
-wake_engine.set_error_callback(
-    lambda msg: print(f"[WakeEngine] error: {msg}", flush=True))
-wake_engine.start()
+if not NO_VOICE:
+    wake_engine.set_callback(broadcast_wake)
+    wake_engine.set_error_callback(
+        lambda msg: print(f"[WakeEngine] error: {msg}", flush=True))
+    wake_engine.start()
 
 # The SERVER process runs Cygnus's jobs, so it alone may call a job the log
 # still shows running "interrupted by restart" (jobs.claim_ownership). That

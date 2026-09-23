@@ -162,6 +162,33 @@ _NO_MODEL_REPLY = ("I couldn't get an answer from my AI model in time, sir. The 
                    "may be down - please try again in a moment.")
 
 
+def _why_no_model(err) -> str:
+    """The reason the models gave, as a person would say it. Every failure
+    used to read the same, and a canned reply even answered as if it had
+    opened an app while nothing ran (bench/chaos.py, 2026-09-23)."""
+    text = f"{type(err).__name__}: {err}" if isinstance(err, BaseException) else str(err or "")
+    if not text:
+        return "No model answered, sir."
+    low = text.lower()
+    try:
+        from cygnus.brain import router_keeper
+        down = router_keeper.is_connection_error(text)
+    except Exception:
+        down = "connection error" in low
+    if down or "routerdown" in low or "is not running" in low:
+        return ("I couldn't reach the model endpoint, sir - it isn't answering. "
+                "Check that it is running and that ROUTER_BASE_URL is right.")
+    if "429" in text or "quota" in low or "usage limit" in low or "rate" in low:
+        m = re.search(r"reset after\s*([0-9hms \t]+)", text, re.I)
+        when = f" It resets in {m.group(1).strip()}." if m else ""
+        return f"My model is out of quota, sir.{when} I'll use another one as soon as it answers."
+    if "timed out" in low or "timeout" in low or "budget" in low:
+        return "My model didn't answer in time, sir. Please try again in a moment."
+    if "empty" in low:
+        return "My model answered with nothing, sir - that isn't an answer, so I didn't use it."
+    return f"No model could answer that, sir: {text.split(chr(10))[0][:120]}"
+
+
 class _OutOfTime(Exception):
     """The turn's budget is spent; no further model call starts."""
 
@@ -875,42 +902,6 @@ def _safe_json(raw) -> dict:
         return {}
 
 
-class MockJarvisBrain:
-    """Fallback brain for demo when API quota is exceeded."""
-
-    def __init__(self):
-        self.conversation = []
-
-    def think(self, user_input: str) -> str:
-        self.conversation.append({"role": "user", "content": user_input})
-
-        responses = {
-            "what is 2+2": "That's 4. Basic arithmetic, sir.",
-            "weather": "I would check the weather for you, but every live backend (9router, Groq, Cerebras and local Ollama) is unreachable right now, so I'm in offline demo mode.",
-            "open notepad": "Opening Notepad for you, sir. (Offline demo mode — can't launch notepad.exe without a live backend.)",
-            "files in": "In offline demo mode I'd list your files. Currently showing: Projects/, resume.pdf, notes.txt, Downloads/",
-            "create a python": "Creating hello.py with print('Hello from Cygnus!'). Done! Would you like me to run it?",
-            "hello": "Hello! I'm Cygnus. All live backends are down, so I'm in offline demo mode with canned replies.",
-            "help": "I can help with: weather, file operations, opening apps, web search, shell commands, and answering questions.",
-            "time": "I'd check the system time, but every backend is unreachable, so in offline demo mode I'll just say: it's presentation time!",
-            "status": "System: Windows 11, Python 3.11, Mode: OFFLINE DEMO (all live backends unreachable), Tools: available when a backend is up"
-        }
-
-        user_lower = user_input.lower()
-        for key, resp in responses.items():
-            if key in user_lower:
-                self.conversation.append({"role": "assistant", "content": resp})
-                return resp
-
-        default = (f"I heard: '{user_input}'. Every live backend — 9router, Groq, "
-                   f"Cerebras and local Ollama — was unreachable, so I'm in offline "
-                   f"demo mode with pre-scripted replies. Check your network or Ollama.")
-        self.conversation.append({"role": "assistant", "content": default})
-        return default
-
-    def reset(self):
-        self.conversation = []
-        return "Memory cleared. Ready for new commands."
 
 
 class JarvisBrain:
@@ -925,7 +916,7 @@ class JarvisBrain:
             self.client = genai.Client(api_key=GEMINI_API_KEY)
         self.model = GEMINI_MODEL
         self.conversation = []
-        self._use_mock = False
+        self._last_model_error = None
         self._use_router = (not JARVIS_LOCAL_ONLY) and (JARVIS_USE_9ROUTER)
         self._use_groq = (not JARVIS_LOCAL_ONLY) and (JARVIS_USE_GROQ and bool(GROQ_API_KEY))
         self._use_cerebras = (not JARVIS_LOCAL_ONLY) and (JARVIS_USE_CEREBRAS and bool(CEREBRAS_API_KEY))
@@ -945,7 +936,7 @@ class JarvisBrain:
         self._ollama_active = 0
         if self._use_ollama:
             where = ("LOCAL ONLY - no cloud fallback" if self._local_only
-                     else ("primary" if self._prefer_local else "last resort before demo mode"))
+                     else ("primary" if self._prefer_local else "last resort before \"no model answered\""))
             print(f"[JARVIS] Ollama backend enabled ({OLLAMA_MODEL}, {where}).", flush=True)
             # Preload only when the local model is the brain (or is kept warm
             # on purpose). As a last-resort fallback it stays cold: loading
@@ -1188,6 +1179,7 @@ class JarvisBrain:
         # yes in a later turn, and a tool's confirm flag counts only then.
         from cygnus import safety as _safety
         _safety.begin_turn()
+        self._last_model_error = None      # this turn's failure, not the last one's
         self.conversation.append({"role": "user", "content": user_input})
         self._cap_conversation()
 
@@ -1897,6 +1889,7 @@ class JarvisBrain:
                     self.last_stats["backend"] = "ollama"
                     return result
             except Exception as e:
+                self._last_model_error = e
                 # Do not claim a cloud fallback that local-only mode forbids —
                 # the log was the main reason it looked like JARVIS was still
                 # reaching for Claude or Gemini.
@@ -1915,6 +1908,7 @@ class JarvisBrain:
                     self.last_stats["backend"] = "cerebras"
                     return result
             except Exception as e:
+                self._last_model_error = e
                 err = str(e)
                 if "429" in err or "quota" in err.lower() or "rate" in err.lower():
                     print("[JARVIS] Cerebras rate-limited (429/quota); falling back to 9router...")
@@ -1930,13 +1924,14 @@ class JarvisBrain:
                     self.last_stats["backend"] = "router"
                     return result
             except Exception as e:
+                self._last_model_error = e
                 err = str(e)
                 if "429" in err or "quota" in err.lower() or "rate" in err.lower():
                     print("[JARVIS] 9router rate-limited; falling back to local Ollama...")
                 else:
                     print(f"[JARVIS] 9router/mimo unavailable ({e}); falling back to local Ollama...")
 
-        # 3) LOCAL: Ollama — final real backend before demo mode. A small local
+        # 3) LOCAL: Ollama — the last real backend. A small local
         #    model beats canned demo text, so it is kept as the last resort.
         # A second turn is not queued behind one already on the CPU model:
         # four stacked there each waited minutes (2026-09-12).
@@ -1947,20 +1942,19 @@ class JarvisBrain:
                     self.last_backend = "ollama"
                     return result
             except Exception as e:
-                print(f"[JARVIS] Ollama unavailable ({e}); switching to demo mode...")
+                self._last_model_error = e
+                print(f"[JARVIS] Ollama unavailable ({e}); no model left to try.")
 
-        # Out of time, or the local model busy with another turn or failing:
-        # say so plainly rather than answer with canned demo text.
-        if _time_left() < MIN_CALL_SECONDS or (self._use_ollama and not self._prefer_local):
-            print("[JARVIS] no model answered within the turn budget", flush=True)
-            self.conversation.append({"role": "assistant", "content": _NO_MODEL_REPLY})
-            self.last_backend = "timeout"
-            self.last_stats = {"backend": "timeout"}
-            return _NO_MODEL_REPLY
-        # 4) Demo mode fallback
-        print("[JARVIS] All backends exhausted, switching to demo mode...")
-        self._use_mock = True
-        self._mock_brain = MockJarvisBrain()
+        # No model answered. Say which way it failed - never a canned reply:
+        # the old "demo mode" replied as if it had opened an app while nothing
+        # ran at all (found by bench/chaos.py, 2026-09-23).
+        reply = (_NO_MODEL_REPLY if _time_left() < MIN_CALL_SECONDS and not self._last_model_error
+                 else _why_no_model(self._last_model_error))
+        print(f"[JARVIS] no model answered: {reply}", flush=True)
+        self.conversation.append({"role": "assistant", "content": reply})
+        self.last_backend = "no-model"
+        self.last_stats = {"backend": "no-model"}
+        return reply
         self._mock_brain.conversation = self.conversation.copy()
         self.last_backend = "mock"
         return self._mock_brain.think(user_input)
@@ -2017,7 +2011,7 @@ class JarvisBrain:
                         })
 
         # Retry across free-tier 9router models so a rate-limited (429) primary
-        # hops to a fresh model instead of dropping to demo mode. Separate
+        # hops to a fresh model instead of giving up on the turn. Separate
         # quotas mean throttling is usually per-model, not per-account.
         class _RateLimited(Exception):
             pass
@@ -2130,8 +2124,10 @@ class JarvisBrain:
                 failed = model
                 _report_unhealthy(model, last_err)
                 continue
-            except _RateLimited:
-                last_err = "rate-limited"
+            except _RateLimited as rl:
+                # Keep the provider's words: they carry the reset time, which
+                # is what the user wants to hear ("resets in 5m").
+                last_err = f"rate-limited: {rl}"
             except (_OutOfTime, _RouterDown):
                 raise
             except Exception as e:
@@ -2139,9 +2135,9 @@ class JarvisBrain:
             failed = model
             _report_unhealthy(model, last_err)
         # All 9router models failed (rate-limited or errored) -> caller falls
-        # back to Ollama, then demo mode only if Ollama also fails.
+        # back to Ollama, and says what went wrong if Ollama also fails.
         if last_err:
-            raise RuntimeError(f"all 9router models failed: {last_err}")
+            raise RuntimeError(f"all models failed: {last_err}")
         return None
 
     def _preload_ollama(self):
@@ -2704,7 +2700,7 @@ class JarvisBrain:
         if client:
             _progress_local.client = client
         self.conversation = []
-        self._use_mock = False
+        self._last_model_error = None
         # Re-enabling the router unconditionally here would have quietly undone
         # local-only mode the first time the context was cleared, putting the
         # cloud back in the chain without anything on screen saying so.

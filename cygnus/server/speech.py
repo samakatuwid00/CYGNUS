@@ -120,6 +120,9 @@ async def tts_to_b64(text: str) -> str:
     DEFAULT: edge-tts MP3 (the original JARVIS voice). Opt-in piper WAV via
     JARVIS_TTS_ENGINE=piper; falls back to edge automatically on any failure.
     """
+    from cygnus.server.app import NO_VOICE
+    if NO_VOICE:
+        return ""                      # typed turns only: nothing is spoken
     text = strip_ai_artifacts(text)
     try:
         wake_engine.note_spoken(text)   # a wake in its own voice is not the owner's
