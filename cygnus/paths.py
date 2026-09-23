@@ -44,8 +44,13 @@ MODELS_DIR = DATA_DIR / "models"
 APP_ALIASES = CONFIG_DIR / "app_aliases.json"
 CLI_AGENTS = CONFIG_DIR / "cli_agents.json"
 DELEGATE_REGISTRY = CONFIG_DIR / "delegate_registry.json"
-INTAKE_CORPUS = CONFIG_DIR / "intake_corpus.json"
-PROJECTS = CONFIG_DIR / "projects.json"
+# The names you say (projects, people, apps). Yours in data/, else the
+# small example in config/.
+INTAKE_CORPUS = DATA_DIR / "intake_corpus.json"
+INTAKE_CORPUS_EXAMPLE = CONFIG_DIR / "intake_corpus.json"
+# Yours live in data/; config/ ships the example copied on first use.
+PROJECTS = DATA_DIR / "projects.json"
+PROJECTS_EXAMPLE = CONFIG_DIR / "projects.example.json"
 MODELFILE = CONFIG_DIR / "Modelfile.jarvis"
 # OpenCode reads opencode.json from the project root itself: it stays there.
 OPENCODE_JSON = ROOT / "opencode.json"

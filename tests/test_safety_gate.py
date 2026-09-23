@@ -194,3 +194,21 @@ def test_a_bare_yes_releases_the_held_action_and_no_drops_it(monkeypatch):
     safety.begin_turn()
     safety.gate("y", safety.Decision("confirm", "why", "Force-close notepad?"), lambda: pytest.fail("ran"))
     assert b.think("no") == "Okay, I won't do that, sir."
+
+
+# ------------------------------- defaults for someone who is not the owner --
+
+def test_terminal_abilities_are_off_until_switched_on():
+    """Typing into a terminal is running commands. A new install has those
+    abilities present but off, so they cannot fire before the owner has
+    looked at them in the Apps panel."""
+    from cygnus.apps import abilities as app_abilities
+    typed = app_abilities._ab("powershell", "type", "Type a command", "type ...",
+                              [{"op": "type", "target": "input", "text": "{cmd}"}], verify=None)
+    assert typed["enabled"] is False and typed["level"] == "ask"
+    launch = app_abilities._ab("powershell", "open", "Open PowerShell", "open powershell",
+                               [{"op": "launch"}], verify=None)
+    assert launch["enabled"] is True                      # opening it is not typing in it
+    other = app_abilities._ab("notepad", "type", "Type", "type ...",
+                              [{"op": "type", "target": "Edit", "text": "{text}"}], verify=None)
+    assert other["enabled"] is True                       # only terminals start off

@@ -39,8 +39,14 @@ Cygnus.
 
 ## Running it
 
+**New here? [docs/SETUP.md](docs/SETUP.md)** walks a clean Windows laptop
+through it in about twenty minutes, and
+**[docs/WHAT_IT_CAN_DO.md](docs/WHAT_IT_CAN_DO.md)** says plainly what Cygnus
+can do to a machine, what it always asks about first, and what leaves it.
+
 Requirements: Windows, Python 3.10+, Node.js (for the desktop app), a
-microphone, and at least one model backend (9router or Ollama).
+microphone (or `JARVIS_NO_VOICE=1` and type), and one model backend: your own
+key on any OpenAI-compatible endpoint, or Ollama for local-only.
 
 ```bash
 python -m venv .venv
@@ -121,6 +127,8 @@ All settings live in `.env` (see `.env.example`). The ones most often changed:
 | `eval/` | The routing gate and evaluations |
 | `tests/` | pytest suite (`.venv\Scripts\python -m pytest`) |
 | `scripts/` | The routine check, smoke tests, dev tools, `checks/`, `windows/` (PowerShell helpers) |
+| `scripts/bench/` | What is measured: grounding, latency, chaos, the pages, a soak |
+| `data/` | Everything Cygnus writes (never committed): memory, sessions, logs, scans |
 | `docs/plans/`, `docs/reviews/` | Design notes and decisions for each feature; reviews |
 | `scripts/prod_check.py` | The routine check (see above) |
 

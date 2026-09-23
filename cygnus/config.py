@@ -35,10 +35,9 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 if not GROQ_API_KEY:
-    _GROQ_ENV_PATH = os.getenv(
-        "JARVIS_GROQ_KEY_PATH",
-        r"C:/Users/deped/Documents/schema-mapper-backup/July 08, 2026/schema_mapper/.env",
-    )
+    # JARVIS_GROQ_KEY_PATH: another .env to read the key from, when you keep
+    # it with a different project. Unset means "only this .env".
+    _GROQ_ENV_PATH = os.getenv("JARVIS_GROQ_KEY_PATH", "")
     from pathlib import Path as _Path
     _gp = _Path(_GROQ_ENV_PATH)
     if _gp.exists():
@@ -58,10 +57,7 @@ CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "")
 CEREBRAS_BASE_URL = os.getenv("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1")
 CEREBRAS_MODEL = os.getenv("CEREBRAS_MODEL", "gemma-4-31b")
 if not CEREBRAS_API_KEY:
-    _CEREBRAS_ENV_PATH = os.getenv(
-        "JARVIS_CEREBRAS_KEY_PATH",
-        r"C:/Users/deped/Documents/schema-mapper-backup/July 08, 2026/schema_mapper/.env",
-    )
+    _CEREBRAS_ENV_PATH = os.getenv("JARVIS_CEREBRAS_KEY_PATH", "")
     _cp = _Path(_CEREBRAS_ENV_PATH)
     if _cp.exists():
         try:
@@ -165,13 +161,11 @@ JARVIS_WAKE_ENGINE = os.getenv("JARVIS_WAKE_ENGINE", "sherpa").strip().lower()
 # Vocabulary bias so the wake word and domain terms decode cleanly.
 WHISPER_INITIAL_PROMPT = os.getenv(
     "WHISPER_INITIAL_PROMPT",
-    # The names the owner says to Cygnus. On the recorded test set this list
-    # took small.en from 15/20 commands right to 20/20 (2026-09-15).
-    "Cygnus, Stark, DepEd, Department of Education, iRIMS-V, iRIMS, "
-    "LRMIS, IRIMS, Haristay, Two Goals, Manila, Philippines, Philippine, "
-    "Naga City, Pasacao, Bicol, Docker, Visual Studio Code, VS Code, Notepad, Chrome, "
-    "Brave, Telegram, Spotify, Moira Dela Torre, Second Brain, Obsidian, Hermes, Claude, "
-    "HUD, full HUD, lo-fi, lofi, Sige, Hindi, Musubae, "
+    # The names you say to Cygnus: put your own in WHISPER_INITIAL_PROMPT in
+    # .env (your projects, your apps, the people you name). On the author's
+    # recorded test set his own list took small.en from 15/20 commands right
+    # to 20/20 (2026-09-15), so it is worth filling in.
+    "Cygnus, Notepad, Chrome, Brave, Spotify, Obsidian, Hermes, Claude, HUD, "
     "dashboard, report, project, vault, compose, play music, YouTube Music, "
     "browser, movie, movies, analysis, system, online, open, search, weather."
 )
@@ -200,6 +194,13 @@ VOICE_CUE_COOLDOWN_S = float(os.getenv("JARVIS_VOICE_CUE_COOLDOWN_S", "8"))
 MAX_HISTORY = int(os.getenv("MAX_HISTORY", "20"))
 
 # Debug
+# Reading the default browser's History database, to learn the sites you use
+# often. Off unless asked for: on a fresh install the registry is stale, so
+# this ran in the background at first start without anyone saying yes
+# (2026-09-23). The Apps panel's rescan button still works either way - that
+# is you asking.
+SCAN_BROWSER_HISTORY = os.getenv("JARVIS_SCAN_BROWSER_HISTORY", "0").strip() == "1"
+
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
 # Paths

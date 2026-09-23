@@ -73,27 +73,11 @@ SUBMIT_SELECTORS = [
 # Written on first use so the user has something real to edit rather than an
 # empty file. Paths that do not exist yet are reported, not guessed at.
 DEFAULT_REGISTRY = {
-    "my-app": {
-        "path": "C:/Users/deped/Documents/Portfolio/my-app",
+    "example-web-app": {
+        "path": str(Path.home() / "Documents" / "example-web-app"),
         "dev_cmd": "npm run dev",
         "url": "http://localhost:5173",
-    },
-    "lrmis-main": {
-        "path": "C:/Users/deped/Documents/lrmis-main",
-        "dev_cmd": "",
-        "url": "",
-    },
-    "sticky-brain": {
-        "path": "C:/Users/deped/Documents/sticky-brain",
-        "dev_cmd": "",
-        "url": "",
-    },
-    "irimsv": {
-        "path": "",
-        "dev_cmd": "npm run dev",
-        "url": "http://localhost:5173",
-        "vault_secret": "iRIMS-V",
-        "note": "Set path to the live Vite repo once you know where it lives.",
+        "note": "An example. Your own projects go in data/projects.json.",
     },
 }
 
@@ -196,8 +180,13 @@ def _first_visible(page, selectors, timeout=LOGIN_FIELD_TIMEOUT):
 def load_registry() -> dict:
     """Read projects.json, writing the template first if the file is missing."""
     if not REGISTRY_PATH.exists():
-        REGISTRY_PATH.write_text(json.dumps(DEFAULT_REGISTRY, indent=2) + "\n",
-                                 encoding="utf-8")
+        # config/projects.example.json if it is there, else the built-in one.
+        try:
+            seed = json.loads(paths.PROJECTS_EXAMPLE.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            seed = DEFAULT_REGISTRY
+        REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        REGISTRY_PATH.write_text(json.dumps(seed, indent=2) + "\n", encoding="utf-8")
     return json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
 
 

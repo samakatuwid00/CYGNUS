@@ -20,7 +20,13 @@ from pathlib import Path
 from cygnus import paths
 
 _PROFILE_PATH = paths.PROFILE
-_VAULT_HINT = "Second Brain vault at C:/Users/deped/Documents/Second Brain (semantic search via turbovec; read/write wiki/evergreen)."
+def _vault_hint() -> str:
+    """The vault, named only when the owner actually has one."""
+    from cygnus.tools import vault
+    if not vault.VAULT_ROOT.is_dir():
+        return ""
+    return (f"Second Brain vault at {vault.VAULT_ROOT} (semantic search via turbovec; "
+            "read/write wiki/evergreen).")
 
 def _load_profile() -> str:
     try:
@@ -126,7 +132,7 @@ def assemble_brief(task: str, delegate: str = "hermes") -> str:
             f"[RECENT SESSION]\n{recent}\n\n"
             f"{facts}"
             f"{recall}{vault}"
-            f"[KNOWLEDGE BASE] {_VAULT_HINT}\n"
+            f"[KNOWLEDGE BASE] {_vault_hint()}\n"
             "Ground factual answers in Second Brain vault and cite source note. If vault has nothing, say so. Respect [PROFILE] preferences.\n"
         )
         if appctx:

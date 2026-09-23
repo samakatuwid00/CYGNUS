@@ -35,22 +35,29 @@ Either way: never push `--all` or `--tags` from this repo, and never push the
 
 ## 2. Blockers before anyone else can run it
 
-- [ ] **Bring your own model.** The brain reaches a local 9router that proxies
+- [x] **Bring your own model** (done 2026-09-23). The brain reaches a local 9router that proxies
       the owner's personal Antigravity / Codex / Qoder accounts. Students
       cannot use that, and those providers' terms do not allow reselling the
       access. Cygnus needs a first-class path to: an OpenAI-compatible
       endpoint with the student's own key, or Ollama alone, with no 9router
       installed. 9router stays the owner's fast path.
-- [ ] **A machine that is not this one.** Hard-coded assumptions to remove or
-      make optional: `C:\Users\deped\...` in `config/opencode.json`, the
-      Second Brain vault path, Hermes, Tailscale, the Brave/Chrome profile
-      paths, `JARVIS_*` names in `.env`.
-- [ ] **Safety defaults for a stranger.** The safety gate is new
-      (`cygnus/safety.py`). For a public build: abilities that type into a
-      terminal off by default, the app scan opt-in, and one page that says
-      plainly what Cygnus can do to the machine and what always asks first.
-- [ ] **Install story.** `pyproject.toml`, a licence, a setup guide for a
-      clean Windows laptop, and a "first five minutes" walkthrough.
+- [x] **A machine that is not this one** (done 2026-09-23). The vault, the
+      reports folder, the Whisper word list, the Groq and Cerebras key paths
+      and the project list are settings or examples now; the owner's own
+      projects and spoken names moved to `data/`. Verified by starting Cygnus
+      with a fresh data folder, no vault and no microphone: it came up and
+      answered. Left: the `JARVIS_*` prefix on every setting, and Hermes and
+      Tailscale, which are optional already but not documented as such.
+- [x] **Safety defaults for a stranger** (done 2026-09-23): abilities that
+      type into a terminal arrive switched off and set to ask; reading the
+      browser history is opt-in (it ran unprompted on a fresh install, found
+      by starting Cygnus as a stranger would); docs/WHAT_IT_CAN_DO.md says
+      what Cygnus can do, what it always asks about, what it refuses, and
+      what leaves the machine.
+- [~] **Install story**: `pyproject.toml` and docs/SETUP.md (a clean
+      Windows laptop, a first five minutes, and what to do when it breaks) are
+      done. **A licence is still missing, and which one is the owner's
+      choice.**
 - [ ] **What it does with the microphone and the cloud, in writing.** Speech
       is transcribed locally; turns and their context go to a cloud model. Say
       so, and say what is kept on disk (sessions, memory, audit).

@@ -76,7 +76,8 @@ DEFAULT_CORPUS = {
     ],
 }
 
-CORPUS_PATH = str(paths.INTAKE_CORPUS)
+CORPUS_PATH = str(paths.INTAKE_CORPUS if paths.INTAKE_CORPUS.exists()
+                  else paths.INTAKE_CORPUS_EXAMPLE)
 
 
 def load_corpus(path: str = CORPUS_PATH) -> dict:

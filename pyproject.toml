@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cygnus-assistant"
+version = "0.1.0"
+description = "A voice assistant that drives the apps and websites already on your Windows laptop"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Roger Abay Jr" }]
+keywords = ["voice assistant", "windows", "automation", "whisper", "llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Win32 (MS Windows)",
+    "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+# Kept in step with requirements.txt, which stays the file the README tells
+# people to install from (it carries the comments explaining each one).
+dependencies = [
+    "sounddevice>=0.4.6",
+    "soundfile>=0.12.1",
+    "numpy>=1.24.0",
+    "faster-whisper>=0.10.0",
+    "psutil>=5.9",
+    "pillow>=10",
+    "edge-tts>=6.1.0",
+    "scipy>=1.18.1",
+    "google-genai>=2.10.0",
+    "openai>=2.53.0",
+    "playwright>=1.40.0",
+    "websockets>=13.0",
+    "fastapi>=0.139.0",
+    "uvicorn>=0.51.0",
+    "httpx>=0.27",
+    "python-dotenv>=1.0",
+    "pywinauto>=0.6.9; sys_platform == 'win32'",   # clicking and typing inside a window
+    "rich>=13",                  # the terminal output of the scripts
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+cygnus = "cygnus.server.app:main"
+
+[project.urls]
+Repository = "https://github.com/samakatuwid00/CYGNUS"
+
+[tool.setuptools]
+# The package, and the data it ships: the pages the server serves and the
+# example settings copied on first use. What Cygnus writes lives in data/.
+packages = [
+    "cygnus", "cygnus.apps", "cygnus.agents", "cygnus.brain", "cygnus.browser",
+    "cygnus.jobs", "cygnus.memory", "cygnus.rules", "cygnus.server", "cygnus.tools",
+]
+
+[tool.pytest.ini_options]
+# pytest.ini is the one that runs; this mirrors it for tools that read pyproject.
+testpaths = ["tests"]
+python_files = ["test_*.py"]

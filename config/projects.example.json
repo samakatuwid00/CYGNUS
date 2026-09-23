@@ -1,0 +1,8 @@
+{
+  "example-web-app": {
+    "path": "C:\\Users\\you\\Documents\\example-web-app",
+    "dev_cmd": "npm run dev",
+    "url": "http://localhost:5173",
+    "note": "An example. Copy this file to data/projects.json and put your own projects in it."
+  }
+}

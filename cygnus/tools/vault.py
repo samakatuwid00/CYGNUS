@@ -16,10 +16,15 @@ from cygnus.tools import SEARCH_TIME_BUDGET, _redact  # defined before this modu
 # READ-ONLY INTEGRATION. Nothing in this module may write, edit, delete, move or
 # rename anything under VAULT_ROOT. The vault is the user's personal knowledge
 # base; JARVIS may only read from it. Any future write path belongs elsewhere.
+# JARVIS_VAULT_ROOT in .env. Most people have no vault, and the tools say
+# so plainly rather than pointing into a stranger's Documents.
 VAULT_ROOT = Path(os.getenv("JARVIS_VAULT_ROOT",
-                            r"C:\Users\deped\Documents\Second Brain"))
+                            str(Path.home() / "Documents" / "Second Brain")))
 # Machine noise and staging areas: they bury real notes in the results.
 VAULT_SKIP_DIRS = {".obsidian", ".git", ".trash", "_scratch", "_to_delete"}
+# Having a vault is optional; say that rather than only naming a missing folder.
+NO_VAULT = (f"[Error] No notes vault at {VAULT_ROOT}, sir. A vault is optional: "
+            "set JARVIS_VAULT_ROOT in .env if you keep one.")
 VAULT_SKIP_PREFIXES = ("attachments/social-",)
 
 
@@ -55,7 +60,7 @@ def search_vault(query: str, limit: int = 10) -> str:
     """
     try:
         if not VAULT_ROOT.exists():
-            return f"[Error] Vault not found at {VAULT_ROOT}"
+            return NO_VAULT
 
         needle = query.lower()
         hits = []
@@ -267,7 +272,7 @@ def search_vault_semantic(query: str, limit: int = 10) -> str:
     """
     try:
         if not VAULT_ROOT.exists():
-            return f"[Error] Vault not found at {VAULT_ROOT}"
+            return NO_VAULT
 
         result = _load_turbovec_index(VAULT_ROOT)
         if result is None:
@@ -334,7 +339,7 @@ def read_vault_note(name: str) -> str:
     """
     try:
         if not VAULT_ROOT.exists():
-            return f"[Error] Vault not found at {VAULT_ROOT}"
+            return NO_VAULT
 
         needle = name.lower().removesuffix(".md")
         matches = [f for f in _vault_notes()

@@ -1,24 +1,65 @@
 {
   "apps": [
-    "notepad", "chrome", "brave", "spotify", "vlc", "word", "excel",
-    "powerpoint", "calculator", "file explorer", "explorer", "slack",
-    "discord", "telegram", "obsidian", "visual studio code", "code",
-    "terminal", "command prompt", "outlook", "onenote", "microsoft word",
-    "microsoft excel", "microsoft edge", "winword", "task manager",
-    "paint", "steam", "postman", "git hub", "github"
+    "notepad",
+    "chrome",
+    "brave",
+    "spotify",
+    "vlc",
+    "word",
+    "excel",
+    "powerpoint",
+    "calculator",
+    "file explorer",
+    "explorer",
+    "slack",
+    "discord",
+    "telegram",
+    "obsidian",
+    "visual studio code",
+    "code",
+    "terminal",
+    "command prompt",
+    "outlook",
+    "onenote",
+    "microsoft word",
+    "microsoft excel",
+    "microsoft edge",
+    "winword",
+    "task manager",
+    "paint",
+    "steam",
+    "postman",
+    "git hub",
+    "github"
   ],
   "artists": [
-    "taylor swift", "the beatles", "ed sheeran", "linkin park",
-    "coldplay", "adele", "bruno mars", "billie eilish", "bts",
-    "moira dela torre", "ben&ben", "erald mandanas"
+    "taylor swift",
+    "the beatles",
+    "ed sheeran",
+    "linkin park",
+    "coldplay",
+    "adele",
+    "bruno mars",
+    "billie eilish",
+    "bts",
+    "moira dela torre",
+    "ben&ben"
   ],
   "projects": [
-    "iRIMS-V", "iRIMS", "schema-mapper", "jarvis-demo", "Musubae",
-    "Second Brain", "my-app", "Portfolio", "LRMIS"
+    "example-web-app",
+    "Second Brain",
+    "Portfolio"
   ],
-  "contacts": ["Roger", "nikoo", "abay"],
+  "contacts": [],
   "genres": [
-    "pop", "rock", "jazz", "lofi", "classical", "hip hop", "rnb",
-    "opm", "ballad"
+    "pop",
+    "rock",
+    "jazz",
+    "lofi",
+    "classical",
+    "hip hop",
+    "rnb",
+    "opm",
+    "ballad"
   ]
 }

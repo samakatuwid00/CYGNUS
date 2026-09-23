@@ -52,7 +52,7 @@
       "description": "Resolves and opens/closes desktop apps and websites using JARVIS's app_registry.json and web_registry.json. Read-only on registries.",
       "model": "ninerouter/cx/gpt-5.4-mini",
       "tools": { "read": true, "grep": true, "bash": true, "write": false, "edit": false, "patch": false },
-      "prompt": "You are JARVIS's app launcher. Resolve app/site names against C:/Users/deped/Documents/CYGNUS/data/app_registry.json and data/web_registry.json (manual entries win ties). Launch via bash (start/powershell). NEVER edit any file. Report exactly what was launched with its path or URL as evidence."
+      "prompt": "You are JARVIS's app launcher. Resolve app/site names against data/app_registry.json and data/web_registry.json (relative to the project folder) (manual entries win ties). Launch via bash (start/powershell). NEVER edit any file. Report exactly what was launched with its path or URL as evidence."
     },
     "music-agent": {
       "description": "Plays or stops music on Spotify desktop / YouTube Music in Brave. Must confirm the actual playing track before reporting success.",
@@ -67,7 +67,7 @@
       "prompt": "You are JARVIS's browser specialist. Attach to Chrome over CDP at http://localhost:9223 (open NEW tabs only; NEVER close or navigate existing user tabs). For ChatGPT tasks use the signed-in session. Report page titles/URLs touched as evidence."
     },
     "project-runner": {
-      "description": "Starts/stops/verifies dev servers listed in projects.json (iRIMS-V, portfolio, etc.). Reads credentials from the vault read-only; NEVER logs or echoes them.",
+      "description": "Starts/stops/verifies dev servers listed in data/projects.json. Reads credentials from the vault read-only; NEVER logs or echoes them.",
       "model": "ninerouter/codex",
       "tools": { "bash": true, "read": true, "grep": true, "write": false, "edit": false, "patch": false },
       "prompt": "You are JARVIS's project runner. Use config/projects.json in this project for project definitions. Start dev servers detached, verify health by polling the port, report status. Credentials come from the vault strictly read-only - NEVER print, log, or include them in output. Report server URLs and health-check results as evidence."

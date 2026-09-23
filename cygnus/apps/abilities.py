@@ -98,9 +98,20 @@ def _display(key, entry):
     return name[:1].upper() + name[1:]
 
 
+# Ops that put keystrokes or clicks into the app's own window.
+_INPUT_OPS = {"type", "key", "click", "page_click"}
+
+
 def _ab(key, local_id, name, say, how, verify, level="safe", needs=None, source="template"):
+    """One ability. Typing or pressing keys in a terminal is running commands,
+    so those start switched off and set to ask: a new install cannot fire them
+    before the owner has seen them in the Apps panel (2026-09-23)."""
+    from cygnus import safety
+    risky_shell = (safety._is_terminal(key)
+                   and any(str(op.get("op")) in _INPUT_OPS for op in how or []))
     return {"id": f"{key}.{local_id}", "name": name, "say": say, "needs": needs or {},
-            "level": level, "how": how, "verify": verify, "source": source, "enabled": True}
+            "level": "ask" if risky_shell else level, "how": how, "verify": verify,
+            "source": source, "enabled": not risky_shell}
 
 
 # ---------------------------------------------------------------- abilities --

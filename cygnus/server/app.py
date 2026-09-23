@@ -255,9 +255,14 @@ threading.Thread(target=_prewarm_hermes, daemon=True).start()
 # days (policy C). One stat call when fresh; voice resolution uses the current
 # registry immediately either way.
 try:
-    from cygnus.apps import web_registry as _wr
-    if _wr.maybe_refresh_async():
-        print("[JARVIS Web] Web registry stale — background rescan started.", flush=True)
+    from cygnus.config import SCAN_BROWSER_HISTORY
+    if not SCAN_BROWSER_HISTORY:
+        print("[JARVIS Web] Browser-history scan off (JARVIS_SCAN_BROWSER_HISTORY=1 turns it on); "
+              "the Apps panel can still rescan on request.", flush=True)
+    else:
+        from cygnus.apps import web_registry as _wr
+        if _wr.maybe_refresh_async():
+            print("[JARVIS Web] Web registry stale — background rescan started.", flush=True)
 except Exception as _e:
     print(f"[JARVIS Web] Web registry check failed: {_e}", flush=True)
 

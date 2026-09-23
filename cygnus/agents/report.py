@@ -10,10 +10,11 @@ sees. The result is written as a real .docx through python-docx.
 """
 
 import datetime
+import os
 import re
 from pathlib import Path
 
-DEFAULT_DIR = Path(r"C:\Users\deped\Documents")
+DEFAULT_DIR = Path(os.getenv("CYGNUS_REPORTS_DIR") or (Path.home() / "Documents"))
 # How many past conversations to search for, and how many to actually read back.
 SEARCH_LIMIT = 5
 READ_LIMIT = 3
