@@ -9,10 +9,20 @@ One command runs every check in order and writes one report:
                healthy (a brain on the local model is a failure)
   5. smoke     scripts/cygnus_smoke.py against that server
 
+With --bench, the measurement suites too: the routing gold set, grounding
+(claims against what is true), latency percentiles, and the pages. With
+--chaos, the fallback suite as well.
+
   python scripts/prod_check.py                 safe smoke tier (nothing on the machine changes)
   python scripts/prod_check.py --tier live     also opens/closes Notepad and Calculator,
                                                opens two browser tabs, plays and pauses music
   python scripts/prod_check.py --no-server     only 1-3 (no running server needed)
+  python scripts/prod_check.py --bench         also measures, against the targets in
+                                               docs/plans/OPEN_SOURCE_PLAN.md: the routing gold
+                                               set, grounding, latency, and the pages
+  python scripts/prod_check.py --bench --chaos and the fallback suite, which starts and stops
+                                               its own Cygnus (minutes, and it takes the
+                                               machine's 9router down and back up)
 
 Exit code 0 only when every check that ran passed. The report goes to
 data/logs/prod-check-<time>.json. Run it before a push, after a restructure step,
@@ -106,11 +116,72 @@ def check_smoke(base, tier):
                                      "--tier", tier], 1800)
 
 
+def _bench(name, script, args, timeout):
+    return _run(name, [PY, os.path.join("scripts", "bench", script)] + args, timeout)
+
+
+def check_grounding(base):
+    """Claims in a reply against what is true on this machine (0 unsupported)."""
+    return _bench("grounding", "grounding.py", ["--url", base], 1800)
+
+
+def check_latency(base):
+    """Per-route percentiles: instant < 300 ms, agent p95 < 20 s."""
+    return _bench("latency", "latency.py", ["--url", base], 1800)
+
+
+def check_ui(base):
+    """The HUD and the Apps panel, measured: contrast, target size, names."""
+    return _bench("ui", "ui_audit.py", ["--url", base], 900)
+
+
+def check_gold_routing():
+    """classify_intent against data/routing_gold.jsonl, when there is one.
+
+    No gold set is not a failure - only the owner can make one (see
+    scripts/bench/routing.py). It is reported as skipped so the absence shows.
+    """
+    start = time.monotonic()
+    p = subprocess.run([PY, os.path.join("scripts", "bench", "routing.py"), "score"],
+                       cwd=REPO, capture_output=True, text=True, timeout=600,
+                       encoding="utf-8", errors="replace")
+    out = (p.stdout + p.stderr).strip()
+    seconds = round(time.monotonic() - start, 1)
+    if "No gold set" in out:
+        return {"check": "routing gold", "ok": True, "seconds": seconds,
+                "detail": "skipped: no data/routing_gold.jsonl "
+                          "(scripts/bench/routing.py mine, then accept)"}
+    acting = re.search(r"routes that act\s+([\d.]+)%", out)
+    confirmed = re.search(r"(\d+) of them confirmed by hand", out)
+    by_hand = int(confirmed.group(1)) if confirmed else 0
+    pct = float(acting.group(1)) if acting else 0.0
+    # Auto-accepted labels are the classifier's own answers, so failing on them
+    # would be the check marking its own homework. Only hand-confirmed rows can
+    # fail the run; without any, this reports and passes.
+    ok = pct >= 95.0 if by_hand else True
+    detail = f"{pct:.1f}% on routes that act, {by_hand} labels confirmed by hand"
+    if not by_hand:
+        detail += " (nothing confirmed yet, so this cannot fail)"
+    r = {"check": "routing gold", "ok": ok, "seconds": seconds, "detail": detail}
+    if not ok:
+        r["output"] = out
+    return r
+
+
+def check_chaos():
+    """Fallback behaviour: 9router down, 429, no network. Starts its own Cygnus."""
+    return _bench("chaos", "chaos.py", [], 2400)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--tier", choices=("safe", "live", "agent"), default="safe")
     ap.add_argument("--url", help="server base URL (default: JARVIS_PORT, then 8001, then 8000)")
     ap.add_argument("--no-server", action="store_true", help="skip the server and smoke checks")
+    ap.add_argument("--bench", action="store_true",
+                    help="also measure: grounding, latency, the pages, the routing gold set")
+    ap.add_argument("--chaos", action="store_true",
+                    help="also run the fallback suite (it starts and stops its own Cygnus)")
     args = ap.parse_args(argv)
     # Run by the daily scheduled task through pythonw: no console to print to.
     if sys.stdout is None:
@@ -134,11 +205,23 @@ def main(argv=None):
     record(check_compile())
     record(check_tests())
     record(check_routing())
+    base = None
     if not args.no_server:
         r, base = check_server(args.url)
         record(r)
         if base:
             record(check_smoke(base, args.tier))
+    if args.bench:
+        record(check_gold_routing())
+        if base:
+            record(check_grounding(base))
+            record(check_latency(base))
+            record(check_ui(base))
+        else:
+            record({"check": "bench", "ok": False, "seconds": 0.0,
+                    "detail": "grounding, latency and the page audit need a running server"})
+    if args.chaos:
+        record(check_chaos())
 
     os.makedirs(paths.LOG_DIR, exist_ok=True)
     path = paths.log(f"prod-check-{time.strftime('%Y%m%d-%H%M%S')}.json")

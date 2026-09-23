@@ -21,7 +21,11 @@ _TEXTS = {"play a song": ("music", 0.0), "put on some music": ("music", 0.1),
 def _fake_embed(texts):
     rows = []
     for t in texts:
-        axis, tilt = _TEXTS[t]
+        # A shadow-router thread from another test can land here while this
+        # stub is installed ("stop the music" raised KeyError mid-run). Unknown
+        # text embeds to the neutral direction instead of failing someone
+        # else's test.
+        axis, tilt = _TEXTS.get(t, (None, 0.0))
         v = np.array(_AXES[axis] if axis else [1, 1, 1], dtype=float) + tilt
         rows.append(v / np.linalg.norm(v))
     return np.array(rows)

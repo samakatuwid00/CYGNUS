@@ -8,6 +8,7 @@ tools ran from logs/audit.jsonl (the server runs on this machine).
 import asyncio
 import json
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass, field
@@ -37,10 +38,36 @@ def _configured_port():
     return port if port and port.isdigit() else None
 
 
+def _listening_ports():
+    """Ports a running `python -m cygnus` is listening on.
+
+    The configured port is not always the one in use: on 2026-09-23 a Laravel
+    dev server held 8001, Cygnus came up on 8002, and every bench script
+    reported "no Cygnus server" while one was answering turns.
+    """
+    try:
+        import psutil
+    except ImportError:
+        return ()
+    ports = []
+    for p in psutil.process_iter(["name", "cmdline"], ad_value=None):
+        try:
+            cmd = " ".join(p.info.get("cmdline") or [])
+            if not re.search(r"-m\s+cygnus(\s|$)", cmd) or "soak.py" in cmd:
+                continue
+            for c in p.net_connections(kind="inet"):
+                if c.status == psutil.CONN_LISTEN and c.laddr.port:
+                    ports.append(c.laddr.port)
+        except Exception:
+            continue
+    return tuple(dict.fromkeys(ports))
+
+
 def candidates():
     port = _configured_port()
     first = (f"http://127.0.0.1:{port}",) if port else ()
-    return tuple(dict.fromkeys(first + CANDIDATES))
+    found = tuple(f"http://127.0.0.1:{p}" for p in _listening_ports())
+    return tuple(dict.fromkeys(first + CANDIDATES + found))
 
 
 def _is_cygnus(base):

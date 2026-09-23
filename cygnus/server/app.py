@@ -1760,6 +1760,10 @@ async def get_status():
         "last_backend": brain.last_backend,
         "voice": f"whisper:{WHISPER_MODEL}",
         "tts": _TTS_ENGINE,
+        # The HUD's "Vault index" row read an em-dash forever outside demo mode
+        # (2026-09-23): nothing on /status answered it. Cheap to answer - a
+        # stat, no directory walk.
+        "vault": __import__("cygnus.tools.vault", fromlist=["_"]).index_state(),
         "feedback_mode": _vf.current_mode(),
         # Background job table (all tiers) for HUD/programmatic polling.
         "jobs_active": __import__("cygnus.jobs.registry", fromlist=["_"]).active(),

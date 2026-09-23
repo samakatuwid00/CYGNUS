@@ -42,27 +42,48 @@ RECALL = ["what do you remember about me?", "what sites do you know?", "what's t
 MODEL = ["in one sentence, what is TCP?", "can you visit websites?"]
 
 
-def backend_process():
-    """The Cygnus server process, or None."""
+def backend_process(port=None):
+    """The Cygnus server process, or None.
+
+    Whoever holds the port answered the turn, so ask the port first. Matching on
+    the command line has now failed twice: a fixed memory threshold missed the
+    server (Whisper loads lazily, so it idles near 50 MB), and then the
+    largest-match rule logged "server gone" at 10:42 on 2026-09-23 while the
+    same server was answering every turn - this script's own command line
+    contains "-m cygnus", so a wrapper process can win the match and a psutil
+    hiccup on one process can end the whole scan. The port cannot be wrong.
+    """
     try:
         import psutil
     except ImportError:
         return None
+
+    if port:
+        try:
+            for c in psutil.net_connections(kind="inet"):
+                if c.status == psutil.CONN_LISTEN and c.laddr.port == int(port) and c.pid:
+                    return psutil.Process(c.pid)
+        except (psutil.Error, OSError, ValueError):
+            pass       # no permission to see other processes' sockets: fall back
+
     found = []
-    for p in psutil.process_iter(["name", "cmdline"]):
+    # ad_value keeps one unreadable process from ending the scan.
+    for p in psutil.process_iter(["name", "cmdline"], ad_value=None):
         try:
             cmd = " ".join(p.info.get("cmdline") or [])
+            if not (re.search(r"-m\s+cygnus(\s|$)", cmd) or "jarvis_web.py" in cmd):
+                continue
+            if "soak.py" in cmd or "bash" in (p.info.get("name") or "").lower():
+                continue                      # a wrapper that merely mentions it
+            found.append((p.memory_info().rss, p))
         except Exception:
             continue
-        if re.search(r"-m\s+cygnus(\s|$)", cmd) or "jarvis_web.py" in cmd:
-            try:
-                found.append((p.memory_info().rss, p))
-            except Exception:
-                continue
-    # The venv's python.exe launcher shares the command line with the real
-    # server; the server is the one holding the memory. (A fixed threshold
-    # missed it: Whisper loads lazily, so it sits at ~50 MB until first use.)
     return max(found)[1] if found else None
+
+
+def _port_of(base):
+    m = re.search(r":(\d+)", base or "")
+    return int(m.group(1)) if m else None
 
 
 async def one_turn(base, say):
@@ -142,7 +163,7 @@ def main(argv=None):
                            healthy_models=len(st.get("router_models") or []))
             except Exception as e:
                 row["status_error"] = f"{type(e).__name__}: {e}"[:120]
-            p = backend_process()
+            p = backend_process(_port_of(base))
             if p is None:
                 row["server"] = "gone"
             else:

@@ -28,6 +28,24 @@ NO_VAULT = (f"[Error] No notes vault at {VAULT_ROOT}, sir. A vault is optional: 
 VAULT_SKIP_PREFIXES = ("attachments/social-",)
 
 
+def index_state() -> str:
+    """"none", "notes only" or "turbovec - <age>": what vault search can use.
+
+    For the HUD's "Vault index" row, which sat on an em-dash outside demo mode
+    because nothing answered it. A stat, never a directory walk.
+    """
+    try:
+        if not VAULT_ROOT.exists():
+            return "none"
+        index = VAULT_ROOT / "turbovec_index.tv"
+        if not index.exists():
+            return "notes only"
+        days = (time.time() - index.stat().st_mtime) / 86400
+        return f"turbovec · {'today' if days < 1 else f'{days:.0f}d old'}"
+    except OSError:
+        return "unknown"
+
+
 def _vault_notes():
     """Yield every eligible .md path under the vault. Read-only traversal."""
     for f in VAULT_ROOT.rglob("*.md"):

@@ -1042,14 +1042,14 @@
     <aside id="jv-col-left">
       <div id="jv-stats" class="jv-sec">
         <div class="jv-st-title">System Status</div>
-        <div class="jv-st-row"><span class="jv-st-k">Brain</span><span class="jv-st-v" id="st-brain">—</span></div>
-        <div class="jv-st-row"><span class="jv-st-k">STT</span><span class="jv-st-v" id="st-stt">—</span></div>
-        <div class="jv-st-row"><span class="jv-st-k">Route</span><span class="jv-st-v" id="st-route">—</span></div>
-        <div class="jv-st-row"><span class="jv-st-k">Vault index</span><span class="jv-st-v" id="st-vault">—</span></div>
+        <div class="jv-st-row"><span class="jv-st-k">Brain</span><span class="jv-st-v" id="st-brain">checking…</span></div>
+        <div class="jv-st-row"><span class="jv-st-k">STT</span><span class="jv-st-v" id="st-stt">checking…</span></div>
+        <div class="jv-st-row"><span class="jv-st-k">Route</span><span class="jv-st-v" id="st-route">checking…</span></div>
+        <div class="jv-st-row"><span class="jv-st-k">Vault index</span><span class="jv-st-v" id="st-vault">checking…</span></div>
         <div class="jv-st-row"><span class="jv-st-k">Voice in</span><span class="jv-st-v" id="st-mic">—</span></div>
         <div class="jv-st-row"><span class="jv-st-k">Link</span><span class="jv-st-v" id="st-link">—</span></div>
         <div class="jv-st-row"><span class="jv-st-k">State</span><span class="jv-st-v" id="st-state">—</span></div>
-        <div class="jv-st-row"><span class="jv-st-k">Wake</span><span class="jv-st-v" id="st-wake">—</span></div>
+        <div class="jv-st-row"><span class="jv-st-k">Wake</span><span class="jv-st-v" id="st-wake">checking…</span></div>
         <div class="jv-st-row"><span class="jv-st-k">Speed</span><span class="jv-st-v" id="st-speed">—</span></div>
         <div class="jv-st-meter"><i id="st-amp"></i></div>
       </div>
@@ -1508,7 +1508,8 @@
     var pill = document.getElementById('jv-pill-brain');
     if (!pill) return;
     var lbl = pill.querySelector('span');
-    if (stBrain && stBrain.textContent && stBrain.textContent.indexOf('—') !== 0) {
+    var placeholder = { '—': 1, 'checking…': 1 };
+    if (stBrain && stBrain.textContent && !placeholder[stBrain.textContent]) {
       if (lbl) lbl.textContent = 'BRAIN: ' + stBrain.textContent;
     }
   }
@@ -1626,8 +1627,13 @@
     // Same endpoint the status bar already exposes; no new server work.
     fetch('/status', { cache: 'no-store' }).then(function (r) { return r.json(); })
       .then(function (s) {
-        setVal(stBrain, s.brain_label || s.brain || '—');   // "Gemini 3.8 Flash", live
+        setVal(stBrain, s.brain_label || s.brain || 'unknown');   // "Gemini 3.8 Flash", live
         syncBrainPill();
+        // STT and the vault index used to be filled in demo mode only, so on a
+        // real page they stayed em-dashes for ever. /status answers both.
+        setVal(document.getElementById('st-stt'), s.voice || 'no mic');
+        setVal(document.getElementById('st-vault'), s.vault || 'unknown',
+               s.vault === 'none' ? '' : 'ok');
         var b = s.last_backend;
         setVal(stBackend, b ? b : 'awaiting first turn',
                b === 'mock' ? 'bad' : (b === 'ollama' ? 'ok' : (b ? 'warn' : '')));
@@ -1646,7 +1652,15 @@
         // had cut off (2026-09-13).
         if (!jobsLoaded && s.job_cards) { jobsLoaded = true; syncJobCards(s.job_cards); }
       })
-      .catch(function () { setVal(stBrain, 'unreachable', 'bad'); syncBrainPill(); });
+      .catch(function () {
+        // One row saying "unreachable" beside four saying "checking..." reads
+        // like a slow page, not a server that is down.
+        setVal(stBrain, 'unreachable', 'bad');
+        ['st-stt', 'st-route', 'st-vault', 'st-wake'].forEach(function (id) {
+          setVal(document.getElementById(id), 'unknown', 'bad');
+        });
+        syncBrainPill();
+      });
   }
 
   // ---------------------------------------------------------------- transcript

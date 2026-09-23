@@ -86,6 +86,21 @@ and the smoke test against it.
 .venv\Scripts\python scripts\prod_check.py              # safe: nothing on the machine changes
 .venv\Scripts\python scripts\prod_check.py --tier live  # also opens/closes apps, tabs, music
 .venv\Scripts\python scripts\prod_check.py --no-server  # code checks only
+.venv\Scripts\python scripts\prod_check.py --bench      # and the measurements, against their targets
+.venv\Scripts\python scripts\prod_check.py --bench --chaos   # and the fallback suite
+```
+
+`--bench` adds the routing gold set (`scripts/bench/routing.py`), grounding,
+latency and the page audit; `--chaos` adds the fallback suite, which starts and
+stops its own Cygnus. The targets are in `docs/plans/OPEN_SOURCE_PLAN.md`.
+
+A run that takes hours - the soak, say - should not be a background job of a
+terminal, because it dies with it:
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\windows\run_detached.ps1 `
+    -Name CygnusSoak -Script scripts\bench\soak.py -Args "--hours 24"
+schtasks /end /tn CygnusSoak     # stop it; then /delete /tn CygnusSoak /f
 ```
 
 Run it before a push and after each restructure step. Exit code 0 means
