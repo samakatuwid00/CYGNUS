@@ -48,6 +48,7 @@ def backend_process():
         import psutil
     except ImportError:
         return None
+    found = []
     for p in psutil.process_iter(["name", "cmdline"]):
         try:
             cmd = " ".join(p.info.get("cmdline") or [])
@@ -55,11 +56,13 @@ def backend_process():
             continue
         if re.search(r"-m\s+cygnus(\s|$)", cmd) or "jarvis_web.py" in cmd:
             try:
-                if p.memory_info().rss > 100 * 2 ** 20:      # the server, not its launcher
-                    return p
+                found.append((p.memory_info().rss, p))
             except Exception:
                 continue
-    return None
+    # The venv's python.exe launcher shares the command line with the real
+    # server; the server is the one holding the memory. (A fixed threshold
+    # missed it: Whisper loads lazily, so it sits at ~50 MB until first use.)
+    return max(found)[1] if found else None
 
 
 async def one_turn(base, say):
