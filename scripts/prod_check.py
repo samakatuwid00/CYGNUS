@@ -10,8 +10,8 @@ One command runs every check in order and writes one report:
   5. smoke     scripts/cygnus_smoke.py against that server
 
 With --bench, the measurement suites too: the routing gold set, grounding
-(claims against what is true), latency percentiles, and the pages. With
---chaos, the fallback suite as well.
+(claims against what is true), latency percentiles, two clients at once, and
+the pages. With --chaos, the fallback suite as well.
 
   python scripts/prod_check.py                 safe smoke tier (nothing on the machine changes)
   python scripts/prod_check.py --tier live     also opens/closes Notepad and Calculator,
@@ -19,7 +19,7 @@ With --bench, the measurement suites too: the routing gold set, grounding
   python scripts/prod_check.py --no-server     only 1-3 (no running server needed)
   python scripts/prod_check.py --bench         also measures, against the targets in
                                                docs/plans/OPEN_SOURCE_PLAN.md: the routing gold
-                                               set, grounding, latency, and the pages
+                                               set, grounding, latency, concurrency, the pages
   python scripts/prod_check.py --bench --chaos and the fallback suite, which starts and stops
                                                its own Cygnus (minutes, and it takes the
                                                machine's 9router down and back up)
@@ -130,6 +130,11 @@ def check_latency(base):
     return _bench("latency", "latency.py", ["--url", base], 1800)
 
 
+def check_concurrency(base):
+    """Two clients on one server: cross-talk, context, and whose confirm it is."""
+    return _bench("concurrency", "concurrency.py", ["--url", base], 900)
+
+
 def check_ui(base):
     """The HUD and the Apps panel, measured: contrast, target size, names."""
     return _bench("ui", "ui_audit.py", ["--url", base], 900)
@@ -216,6 +221,7 @@ def main(argv=None):
         if base:
             record(check_grounding(base))
             record(check_latency(base))
+            record(check_concurrency(base))
             record(check_ui(base))
         else:
             record({"check": "bench", "ok": False, "seconds": 0.0,

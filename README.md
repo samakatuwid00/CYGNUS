@@ -91,7 +91,7 @@ and the smoke test against it.
 ```
 
 `--bench` adds the routing gold set (`scripts/bench/routing.py`), grounding,
-latency and the page audit; `--chaos` adds the fallback suite, which starts and
+latency, two clients at once (`concurrency.py`) and the page audit; `--chaos` adds the fallback suite, which starts and
 stops its own Cygnus. The targets are in `docs/plans/OPEN_SOURCE_PLAN.md`.
 
 A run that takes hours - the soak, say - should not be a background job of a
