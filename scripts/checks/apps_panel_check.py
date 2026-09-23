@@ -2,7 +2,12 @@
 
 Runs without a live server: the FastAPI handlers are called directly against a
 temporary registry, and the panel HTML is checked as source.
-"""
+
+
+STALE (2026-09-23): this predates the current rule-setup flow and fails
+from "begin_rule_setup: ambiguous phrase asks for clarification" on. It was
+never part of the pytest suite (its filename did not match), and the rules
+are covered by tests/test_rules_*.py. Update it before trusting a run."""
 import os as _os
 import sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))   # the repository

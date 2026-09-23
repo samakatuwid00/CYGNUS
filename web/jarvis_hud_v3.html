@@ -1082,8 +1082,11 @@
         <div id="jv-side-head"><span id="jv-tx-label">Transcript</span>
           <button id="jv-tx-toggle" class="jv-tx-toggle" type="button" aria-controls="jv-side-log"
                   aria-expanded="false" hidden>Show all</button></div>
-        <div id="jv-side-log"></div>
-        <div id="jv-cues" style="margin-top:8px"></div>
+        <!-- role="log" + aria-live: a screen reader reads each new line as
+             it arrives, instead of saying nothing (ui_audit, 2026-09-23). -->
+        <div id="jv-side-log" role="log" aria-live="polite" aria-relevant="additions"
+             aria-label="Conversation"></div>
+        <div id="jv-cues" role="status" aria-live="polite" style="margin-top:8px"></div>
         <div id="jv-slash" role="listbox" aria-label="Slash commands" hidden></div>
         <div id="jv-input-wrap" style="margin-top:10px">
           <span class="jv-wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
@@ -1133,9 +1136,9 @@
         <div class="jv-st-title">Voice Feedback</div>
         <div class="jv-st-row"><span class="jv-st-k">Mode</span><span class="jv-st-v">Essential</span></div>
         <div class="vf-row">
-          <div class="vf-opt" data-mode="off">Off</div>
-          <div class="vf-opt active" data-mode="essential">Essential</div>
-          <div class="vf-opt" data-mode="full">Full</div>
+          <div class="vf-opt" data-mode="off" role="button" tabindex="0">Off</div>
+          <div class="vf-opt active" data-mode="essential" role="button" tabindex="0">Essential</div>
+          <div class="vf-opt" data-mode="full" role="button" tabindex="0">Full</div>
         </div>
         <div class="jv-st-row"><span class="jv-st-k">“Thinking, sir.”</span><span class="jv-st-v">4s</span></div>
         <div class="jv-st-row"><span class="jv-st-k">“Still working on it.”</span><span class="jv-st-v">12s</span></div>
@@ -3737,6 +3740,13 @@
   }
   vfChips.forEach(function (c) {
     c.addEventListener('click', function () { setVfMode(c.getAttribute('data-mode')); });
+    // They are divs with role="button": Enter and Space have to work too.
+    c.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        setVfMode(c.getAttribute('data-mode'));
+      }
+    });
   });
 
   // ---------------------------------------------------------------- now playing (live)

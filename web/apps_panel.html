@@ -15,7 +15,7 @@
     --border-strong: rgba(255, 255, 255, .12);
     --text: #ededf2;
     --text-2: #a3a3b0;
-    --text-3: #6c6c7a;
+    --text-3: #8b8b99;        /* 4.86:1 on the chips; #6c6c7a was 3.16:1 */
     --accent: #cfa236;                /* JARVIS gold (uniform) */
     --accent-deep: #8f7020;           /* deeper gold for pressed/hover */
     --accent-soft: rgba(207, 162, 54, .11);
@@ -409,6 +409,8 @@
   .link-btn {
     border: 0; background: transparent; padding: 0; cursor: pointer;
     font-size: 12px; font-weight: 500; color: var(--accent);
+    /* WCAG 2.2 asks for 24x24 on a target; the text alone was 18 high. */
+    min-height: 24px; display: inline-flex; align-items: center;
   }
   .link-btn:hover { color: color-mix(in srgb, var(--accent) 80%, #fff); text-decoration: underline; }
   .link-btn[hidden] { display: none; }
@@ -666,7 +668,8 @@
         </div>
         <div class="composer" id="v-compose">
           <span id="mic-ico"></span>
-          <input class="v-phrase" placeholder="e.g. search movies in brave browser" />
+          <input class="v-phrase" aria-label="What you would say to run this rule"
+                 placeholder="e.g. search movies in brave browser" />
           <button class="btn btn-sm btn-primary" id="v-begin">Propose Rules</button>
         </div>
       </section>
@@ -682,7 +685,8 @@
 
       <details class="sec" id="sec-drafts">
         <summary><h3>Rule drafts</h3><span class="sub">One rule per line</span><span id="drafts-chev"></span></summary>
-        <textarea class="drafts" id="drafts" spellcheck="false" placeholder="search movies in brave -> search hollymoviehd.cc for the name&#10;never play explicit tracks even if I ask"></textarea>
+        <textarea class="drafts" id="drafts" spellcheck="false"
+                  aria-label="Rules, one per line" placeholder="search movies in brave -> search hollymoviehd.cc for the name&#10;never play explicit tracks even if I ask"></textarea>
         <div class="btn-row">
           <button class="btn btn-sm" id="d-save">Save rules</button>
           <button class="btn btn-sm btn-quiet" id="d-compile">Compile with Cygnus</button>
