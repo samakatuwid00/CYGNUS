@@ -136,3 +136,58 @@ def test_intents_imports_on_its_own():
         cwd=ROOT, capture_output=True, text=True)
     assert out.returncode == 0, out.stderr[-500:]
     assert "app_reference" in out.stdout
+
+
+def test_review_records_an_answer_and_saves_on_quit(tmp_path, monkeypatch):
+    """Enter keeps the route, a number changes it, q writes what was answered."""
+    tool = _load_tool()
+    review = tmp_path / "review.jsonl"
+    review.write_text("\n".join(json.dumps(r) for r in [
+        {"rep": "stop the music", "proposed": "stop", "label": None, "count": 3,
+         "variants": 1, "agree": True, "routes": {"stop": 1},
+         "examples": ["stop the music"], "members": ["stop the music"]},
+        {"rep": "open notepad", "proposed": "general", "label": None, "count": 2,
+         "variants": 1, "agree": True, "routes": {"general": 1},
+         "examples": ["open notepad"], "members": ["open notepad"]},
+        {"rep": "play lofi", "proposed": "music", "label": None, "count": 1,
+         "variants": 1, "agree": True, "routes": {"music": 1},
+         "examples": ["play lofi"], "members": ["play lofi"]},
+    ]), encoding="utf-8")
+    monkeypatch.setattr(tool, "REVIEW", review)
+
+    answers = iter(["", "1", "q"])        # right, wrong->menu[0], stop
+    monkeypatch.setattr("builtins.input", lambda *a: next(answers))
+
+    class Args:
+        resume = False
+    assert tool.cmd_review(Args()) == 0
+
+    rows = [json.loads(l) for l in review.read_text(encoding="utf-8").splitlines()]
+    assert rows[0]["label"] == "stop"            # agreeing is recorded too
+    assert rows[1]["label"] == rows[1]["proposed"] or rows[1]["label"]
+    assert rows[2]["label"] is None              # never reached: q came first
+
+
+def test_review_resume_only_asks_what_is_unanswered(tmp_path, monkeypatch):
+    tool = _load_tool()
+    review = tmp_path / "review.jsonl"
+    review.write_text("\n".join(json.dumps(r) for r in [
+        {"rep": "done one", "proposed": "stop", "label": "stop", "count": 1,
+         "variants": 1, "agree": True, "routes": {"stop": 1},
+         "examples": [], "members": ["done one"]},
+        {"rep": "not yet", "proposed": "music", "label": None, "count": 1,
+         "variants": 1, "agree": True, "routes": {"music": 1},
+         "examples": [], "members": ["not yet"]},
+    ]), encoding="utf-8")
+    monkeypatch.setattr(tool, "REVIEW", review)
+    asked = []
+
+    def fake_input(*a):
+        asked.append(1)
+        return "q"
+    monkeypatch.setattr("builtins.input", fake_input)
+
+    class Args:
+        resume = True
+    tool.cmd_review(Args())
+    assert len(asked) == 1, "resume re-asked a group that already had an answer"

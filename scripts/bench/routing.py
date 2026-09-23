@@ -7,6 +7,7 @@ of data/sessions/, group the near-duplicates, and let the owner confirm a label
 per group.
 
     python scripts/bench/routing.py mine     # sessions  -> data/routing_review.jsonl
+    python scripts/bench/routing.py review   # answer them, one screen at a time
     python scripts/bench/routing.py accept   # review    -> data/routing_gold.jsonl
     python scripts/bench/routing.py score    # gold set  -> accuracy, and the misses
 
@@ -185,6 +186,132 @@ def cmd_mine(args) -> int:
     return 0
 
 
+# What each label means, in the words someone would use to decide. Shown by "?"
+# during a review: the label names are the classifier's, not plain English.
+LABEL_HELP = {
+    "app_reference": "open or use a program that is installed",
+    "launch": "start a program by its path or command",
+    "open_site": "open a website",
+    "web_browse": "read or summarise a page",
+    "close_app": "close or quit a program",
+    "music": "play, queue or change music",
+    "stop": "stop or pause what is playing",
+    "running_front": "bring a window to the front",
+    "running_describe": "say what is on a window",
+    "running_explain": "explain what a running program is",
+    "running_text": "read the text out of a window",
+    "running_stop": "kill a running process",
+    "report": "write a report or a document",
+    "rescan": "scan the machine for apps or sites again",
+    "add_site": "remember a website for later",
+    "list_sites": "list the sites it knows",
+    "list_installed": "list the programs it found",
+    "remember": "remember a fact about me",
+    "recall_memory": "what do you remember",
+    "job_status": "how is that background job going",
+    "job_stop": "stop that background job",
+    "time": "what time or date is it",
+    "math": "a sum",
+    "greeting": "hello",
+    "thanks": "thank you",
+    "help": "what can you do",
+    "general": "none of the above - let the model answer it",
+}
+
+
+def _print_group(row, n, total):
+    print()
+    print("=" * 72)
+    flag = "" if row["agree"] else "   [its phrasings route differently - one is wrong]"
+    print(f"[{n}/{total}]  said {row['count']}x, {row['variants']} phrasing(s){flag}")
+    for text in row["examples"]:
+        print(f'    "{text}"')
+    if row["variants"] > len(row["examples"]):
+        print(f"    ... and {row['variants'] - len(row['examples'])} more")
+    meaning = LABEL_HELP.get(row["proposed"], "")
+    print()
+    print(f"  Cygnus routes this as:  {row['proposed']}"
+          + (f"   ({meaning})" if meaning else ""))
+
+
+def _save_review(rows):
+    with REVIEW.open("w", encoding="utf-8") as fh:
+        for row in rows:
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def cmd_review(args) -> int:
+    """Walk the groups and ask. Enter keeps the proposal, a number changes it.
+
+    Hand-editing 150 JSON objects is a chore nobody finishes, and a review
+    nobody finishes measures nothing. Answers are saved when you stop, so
+    stopping early costs nothing.
+    """
+    if not REVIEW.exists():
+        print(f"No {REVIEW}. Run: python scripts/bench/routing.py mine")
+        return 1
+    rows = [json.loads(l) for l in REVIEW.read_text(encoding="utf-8").splitlines() if l.strip()]
+    todo = [r for r in rows if r.get("label") is None] if args.resume else rows
+    if not todo:
+        print("Every group already has an answer. "
+              "Next: python scripts/bench/routing.py accept")
+        return 0
+
+    # Offer the labels this batch actually proposes first; the rest behind "?".
+    common = [k for k, _ in Counter(r["proposed"] for r in rows).most_common()]
+    menu = common + [k for k in sorted(LABEL_HELP) if k not in common]
+
+    print(f"{len(todo)} group(s). Enter = the route is right, a number = it is wrong, "
+          f"s = skip, q = save and stop.")
+    print("Answers are written when you stop. Stopping after 20 is fine - "
+          "20 measured groups beat 150 unread ones.")
+    seen = 0
+    for i, row in enumerate(todo, 1):
+        _print_group(row, i, len(todo))
+        while True:
+            print("  [Enter] right   [1-%d] wrong, pick the route   [?] all routes   "
+                  "[s] skip   [q] save and stop" % len(menu))
+            print("   " + "   ".join(f"{j + 1}:{name}" for j, name in enumerate(menu[:8])))
+            try:
+                answer = input("  > ").strip()
+            except (EOFError, KeyboardInterrupt):
+                answer = "q"
+            if answer == "?":
+                for j, name in enumerate(menu, 1):
+                    print(f"   {j:>2}  {name:<18} {LABEL_HELP.get(name, '')}")
+                continue
+            if answer.lower() == "q":
+                _save_review(rows)
+                print()
+                print(f"Saved. {seen} group(s) answered this session.")
+                print("Carry on later with: python scripts/bench/routing.py review --resume")
+                return 0
+            if answer.lower() == "s":
+                break
+            if answer == "":
+                # Agreeing is a judgement too: recorded, so score() can count it
+                # as a person's answer rather than the classifier's own.
+                row["label"] = row["proposed"]
+                seen += 1
+                break
+            if answer.isdigit() and 1 <= int(answer) <= len(menu):
+                row["label"] = menu[int(answer) - 1]
+                print(f"  -> {row['label']}")
+                seen += 1
+                break
+            if answer in LABEL_HELP:
+                row["label"] = answer
+                seen += 1
+                break
+            print("  Not one of the choices. Enter, a number, ?, s, or q.")
+    _save_review(rows)
+    print()
+    print(f"All {seen} answered.")
+    print("Now: python scripts/bench/routing.py accept")
+    print("Then: python scripts/bench/routing.py score")
+    return 0
+
+
 def cmd_accept(args) -> int:
     if not REVIEW.exists():
         print(f"No {REVIEW}. Run: python scripts/bench/routing.py mine")
@@ -296,6 +423,11 @@ def main() -> int:
     m.add_argument("--limit", type=int, default=150,
                    help="how many groups to put up for review (0 = all)")
     m.set_defaults(func=cmd_mine)
+
+    r = sub.add_parser("review", help="walk the groups and answer (the easy way)")
+    r.add_argument("--resume", action="store_true",
+                   help="only the groups with no answer yet")
+    r.set_defaults(func=cmd_review)
 
     a = sub.add_parser("accept", help="fold the review file into the gold set")
     a.add_argument("--all-variants", action="store_true",
