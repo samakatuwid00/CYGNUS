@@ -210,21 +210,30 @@ def probe_once(models: list[str] | None = None) -> dict:
     from cygnus.config import ROUTER_BASE_URL, ROUTER_API_KEY
     try:
         from cygnus.brain import router_keeper
+    except ImportError:
+        router_keeper = None
+    if router_keeper is not None:
         if not router_keeper.port_open():
             # Every call would fail with "Connection error": that is the
-            # router, not the models. Start it; probe next round.
+            # endpoint, not the models. A local 9router is started here and
+            # probed next round.
             router_keeper.ensure_up(wait=0)
             return snapshot()
         if not router_keeper.responds(timeout=10):
             # Open but silent (hung): every model would time out and be
             # blamed for it. router_keeper restarts a router that stays so.
             return snapshot()
-    except ImportError:
-        pass
-    discover()
+    local = router_keeper is None or router_keeper.is_local()
+    if local:
+        discover()
     client = OpenAI(base_url=ROUTER_BASE_URL, api_key=ROUTER_API_KEY or "x",
                     max_retries=0, timeout=PROBE_TIMEOUT_S)
+    # Someone else's endpoint (their key, their bill): only their own models
+    # are asked, never the whole catalogue.
     todo = models or _due(time.time())
+    if not models and not local:
+        own = set(configured())
+        todo = [m for m in todo if m in own]
 
     def check(model):
         start = time.time()

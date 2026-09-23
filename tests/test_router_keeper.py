@@ -108,3 +108,30 @@ def test_an_answer_clears_the_count(hung):
 def test_a_shut_port_is_started_by_check(keeper):
     assert rk.check() == "started"
     assert len(keeper["spawned"]) == 1
+
+
+# ---- someone else's machine: an endpoint Cygnus does not run (BYO key) ----
+
+def test_a_remote_endpoint_is_never_started_or_stopped(keeper, monkeypatch):
+    monkeypatch.setattr(rk, "_address", lambda: ("api.openai.com", 443))
+    assert rk.is_local() is False
+    assert rk.ensure_up(wait=0) is False          # not reachable in this fake
+    assert keeper["spawned"] == []
+    keeper["open"] = True
+    assert rk.ensure_up() is True                 # reachable: nothing to do
+    assert keeper["spawned"] == []
+
+
+def test_a_remote_endpoint_that_goes_quiet_is_not_restarted(hung, monkeypatch):
+    monkeypatch.setattr(rk, "_address", lambda: ("openrouter.ai", 443))
+    for _ in range(rk.HUNG_AFTER + 1):
+        assert rk.check() in ("slow", "ok")
+    assert hung["stopped"] == [] and hung["spawned"] == []
+
+
+@pytest.mark.parametrize("host, local", [
+    ("localhost", True), ("127.0.0.1", True), ("::1", True), ("0.0.0.0", True),
+    ("api.openai.com", False), ("openrouter.ai", False), ("192.168.1.9", False)])
+def test_which_endpoints_cygnus_runs_itself(host, local, monkeypatch):
+    monkeypatch.setattr(rk, "_address", lambda: (host, 20128))
+    assert rk.is_local() is local

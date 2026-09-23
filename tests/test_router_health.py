@@ -207,3 +207,25 @@ def test_the_probe_does_not_blame_models_for_a_silent_router(monkeypatch):
     rh.mark_healthy("ag/claude-sonnet-4-6", 1.0)
     rh.probe_once()
     assert rh.healthy_models() == ["ag/claude-sonnet-4-6"]
+
+
+def test_a_paid_endpoint_is_probed_only_for_the_configured_models(monkeypatch, tmp_path):
+    """With someone else's key (not a local 9router), a probe of every model
+    9router offers would cost them money: only their own models are asked."""
+    import openai
+    from cygnus.brain import router_keeper
+    monkeypatch.setattr(router_keeper, "port_open", lambda timeout=0.5: True)
+    monkeypatch.setattr(router_keeper, "responds", lambda timeout=5.0: True)
+    monkeypatch.setattr(router_keeper, "is_local", lambda: False)
+    monkeypatch.setattr(rh, "configured", lambda: ["gpt-5.4-mini"])
+    # the autouse fixture pins candidates(); here the student's own model leads
+    monkeypatch.setattr(rh, "candidates", lambda: ["gpt-5.4-mini", "ag/claude-sonnet-4-6", "qd/qfmodel"])
+    monkeypatch.setattr(rh, "EXTRA_CANDIDATES", ["ag/claude-sonnet-4-6", "qd/qfmodel"])
+    monkeypatch.setattr(rh, "_discovered", [])
+    monkeypatch.setattr(rh, "CACHE_PATH", str(tmp_path / "rh.json"))
+    asked = []
+    monkeypatch.setattr(rh, "discover", lambda force=False: asked.append("discover") or [])
+    monkeypatch.setattr(openai, "OpenAI", lambda **kw: _Client({"gpt-5.4-mini": "tool"}))
+    rh.probe_once()
+    assert asked == []                                   # no model discovery on a paid endpoint
+    assert rh.healthy_models() == ["gpt-5.4-mini"]

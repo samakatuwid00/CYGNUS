@@ -54,6 +54,17 @@ def _address():
     return u.hostname or "localhost", u.port or 20128
 
 
+# Cygnus starts and restarts 9router only when the endpoint is on this
+# machine. With someone else's key (an OpenAI-compatible endpoint, OpenRouter,
+# a LAN server) there is nothing here to start, and nothing of theirs to kill.
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0", "[::1]"}
+
+
+def is_local() -> bool:
+    host, _ = _address()
+    return str(host or "").lower() in _LOCAL_HOSTS
+
+
 def port_open(timeout: float = 0.5) -> bool:
     host, port = _address()
     try:
@@ -127,8 +138,9 @@ def ensure_up(wait: float = START_WAIT_S) -> bool:
     if port_open():
         state.update(up=True, last_error="")
         return True
-    if not ENABLED:
-        state.update(up=False, last_error="9router is not running")
+    if not ENABLED or not is_local():
+        state.update(up=False, last_error=("the model endpoint is not answering"
+                                           if not is_local() else "9router is not running"))
         return False
     with _lock:
         if port_open():
@@ -155,11 +167,17 @@ def ensure_up(wait: float = START_WAIT_S) -> bool:
 
 
 def responds(timeout: float = 5.0) -> bool:
-    """9router answers its health check within `timeout`. /api/health takes
-    about 0.2 s; /v1/models took 1.6 to 6.7 s on an idle machine, too close to
-    any timeout to tell slow from hung (2026-09-22)."""
+    """The model endpoint answers within `timeout`. 9router's /api/health takes
+    about 0.2 s; its /v1/models took 1.6 to 6.7 s on an idle machine, too close
+    to any timeout to tell slow from hung (2026-09-22). Someone else's endpoint
+    is asked for its model list instead, since it has no /api/health."""
     try:
         import httpx
+        if not is_local():
+            from cygnus.config import ROUTER_API_KEY, ROUTER_BASE_URL
+            r = httpx.get(ROUTER_BASE_URL.rstrip("/") + "/models", timeout=timeout,
+                          headers={"Authorization": f"Bearer {ROUTER_API_KEY or 'x'}"})
+            return r.status_code < 500
         host, port = _address()
         r = httpx.get(f"http://{host}:{port}/api/health", timeout=timeout)
         return r.status_code < 500
@@ -200,7 +218,7 @@ def check() -> str:
         state.update(up=True, last_error="")
         return "ok"
     _misses += 1
-    if _misses < HUNG_AFTER or not ENABLED:
+    if _misses < HUNG_AFTER or not ENABLED or not is_local():
         return "slow"
     _misses = 0
     n = _stop_router()
