@@ -269,8 +269,9 @@ def cmd_review(args) -> int:
     for i, row in enumerate(todo, 1):
         _print_group(row, i, len(todo))
         while True:
-            print("  [Enter] right   [1-%d] wrong, pick the route   [?] all routes   "
-                  "[s] skip   [q] save and stop" % len(menu))
+            print("  [Enter] right   [1-%d] wrong, pick the route   [?] all routes" % len(menu))
+            print("  [n] none of these fit - say what you meant   [s] skip   "
+                  "[q] save and stop")
             print("   " + "   ".join(f"{j + 1}:{name}" for j, name in enumerate(menu[:8])))
             try:
                 answer = input("  > ").strip()
@@ -286,6 +287,23 @@ def cmd_review(args) -> int:
                 print(f"Saved. {seen} group(s) answered this session.")
                 print("Carry on later with: python scripts/bench/routing.py review --resume")
                 return 0
+            if answer.lower() == "n":
+                # None of the 27 labels is what they meant. The vocabulary is
+                # the classifier's, not the owner's, so a free-text note is
+                # worth more here than a forced choice: it says what SHOULD
+                # happen, and the route to carry that is a design question.
+                print("  In your own words: what should Cygnus have done?")
+                try:
+                    note = input("  note> ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    note = ""
+                if note:
+                    row["note"] = note
+                    row["label"] = None          # unanswered until it is decided
+                    print("  noted - left unlabelled, so it cannot be scored "
+                          "as agreement")
+                    seen += 1
+                break
             if answer.lower() == "s":
                 break
             if answer == "":
@@ -325,6 +343,7 @@ def cmd_accept(args) -> int:
                 gold[row["text"]] = row
 
     added = changed = confirmed = skipped = 0
+    notes = []
     for line in REVIEW.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
@@ -332,6 +351,9 @@ def cmd_accept(args) -> int:
         # A group whose own phrasings route differently has no proposal worth
         # auto-accepting: one of its answers is already wrong. Those wait for a
         # person.
+        if row.get("note") and not row.get("label"):
+            notes.append((row["rep"], row["note"]))
+            continue
         if not row["agree"] and not row.get("label"):
             skipped += 1
             continue
@@ -360,6 +382,12 @@ def cmd_accept(args) -> int:
           f"({added} new, {changed} relabelled)")
     print(f"  {n_conf} carry a label a person set; {len(gold) - n_conf} took the "
           f"classifier's own proposal")
+    if notes:
+        print(f"\n  {len(notes)} group(s) where no route fitted, in the owner's words "
+              f"- these need a decision, not a label:")
+        for rep, note in notes:
+            print(f'    "{rep}"')
+            print(f"        -> {note}")
     if skipped:
         print(f"  {skipped} groups whose phrasings route inconsistently are still "
               f"waiting for a label (they are first in the review file)")
