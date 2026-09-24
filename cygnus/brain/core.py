@@ -333,9 +333,21 @@ def _lead_llm(prompt):
     return rules_ai._ask_llm(prompt, local=False)
 
 
+# The client of the most recent turn, for threads that were not started by it.
+# _progress_local is thread-local, so a tool running on a worker thread sees
+# nothing, and a confirm latched there was recorded as "default" (2026-09-23:
+# the owner was told their own question belonged to another device).
+_LAST_CLIENT = "default"
+
+
 def _client_key():
-    """Whose conversation this thread's turn belongs to (think(client=...))."""
-    return getattr(_progress_local, "client", None) or "default"
+    """Whose conversation this thread's turn belongs to (think(client=...)).
+
+    This thread first; failing that, the last turn's client, which is right for
+    the worker threads a turn spawns and harmless elsewhere - safety.same_client
+    treats "default" as "nobody knows", never as "a different device".
+    """
+    return getattr(_progress_local, "client", None) or _LAST_CLIENT or "default"
 # Moved to intents.py (restructure phase 5); re-exported so
 # `tools.<name>` keeps working for callers and tests.
 from cygnus.brain.intents import (
@@ -1004,6 +1016,7 @@ class JarvisBrain:
         if not text:
             return
         _progress_local.client = client or "default"
+        globals()["_LAST_CLIENT"] = client or "default"
         self.conversation.append({"role": "assistant",
                                   "content": "[A task I handed off finished. Its answer:]\n" + str(text)[-3000:]})
         self._cap_conversation()
@@ -1029,6 +1042,7 @@ class JarvisBrain:
         after the reply - never in its way). `client` names whose conversation
         the turn belongs to; every thread sets it before touching history."""
         _progress_local.client = client or "default"
+        globals()["_LAST_CLIENT"] = client or "default"
         _progress_local.remote = bool(remote)        # the phone: it may look, not act
         _progress_local.user_text = user_input       # open_application reads "a new ..."
         started = None

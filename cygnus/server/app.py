@@ -249,7 +249,11 @@ def _prewarm_hermes():
     except Exception as e:
         print(f"[JARVIS Web] Hermes warm-up failed: {e}", flush=True)
 
-threading.Thread(target=_prewarm_hermes, daemon=True).start()
+# Not under pytest: importing this module from a test started a real Hermes
+# session in a thread, which then overwrote another test's monkeypatched
+# session id and failed it at random (2026-09-23, test_warm_fresh).
+if "PYTEST_CURRENT_TEST" not in os.environ:
+    threading.Thread(target=_prewarm_hermes, daemon=True).start()
 
 # Phase 8: refresh the web registry in the background ONLY if older than 7
 # days (policy C). One stat call when fresh; voice resolution uses the current

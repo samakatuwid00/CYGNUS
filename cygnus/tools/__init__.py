@@ -2244,11 +2244,17 @@ def _current_client() -> str:
     return safety.current_client()
 
 
+def _same_client(latched) -> str:
+    """May this turn answer a question held for `latched`? safety.same_client."""
+    from cygnus import safety
+    return safety.same_client(latched)
+
+
 def pending_confirm_task() -> str | None:
     """The raw user task this device was asked to confirm, or None."""
     _expire_confirms()
     kw = _PENDING_HERMES_CALL or {}
-    if kw.get("client", "default") != _current_client():
+    if not _same_client(kw.get("client")):
         return None
     return kw.get("raw_task")
 
@@ -2261,7 +2267,7 @@ def pending_confirm_elsewhere() -> str | None:
     """
     _expire_confirms()
     kw = _PENDING_HERMES_CALL or {}
-    if not kw or kw.get("client", "default") == _current_client():
+    if not kw or _same_client(kw.get("client")):
         return None
     return kw.get("raw_task") or kw.get("task")
 
@@ -2277,7 +2283,7 @@ def decline_pending() -> str | None:
     global _PENDING_HERMES_CALL
     _expire_confirms()
     hermes = _PENDING_HERMES_CALL
-    if hermes and hermes.get("client", "default") != _current_client():
+    if hermes and not _same_client(hermes.get("client")):
         hermes = None            # another device's question, not this "no"
     goal = _PENDING_DESTRUCTIVE.get("autonomous")
     if not hermes and not goal:
@@ -2320,7 +2326,7 @@ def confirm_pending(on_done=None, progress_cb=None, background: bool | None = No
     kw = _PENDING_HERMES_CALL
     if not kw:
         return None
-    if kw.get("client", "default") != _current_client():
+    if not _same_client(kw.get("client")):
         # Asked on another device; leave it held for that one.
         _audit_log("delegate_to_hermes", (kw.get("raw_task") or "")[:200],
                    "confirm_from_another_client", confirm=False,

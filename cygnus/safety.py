@@ -184,6 +184,21 @@ def current_client() -> str:
         return "default"
 
 
+def same_client(latched: str | None, current: str | None = None) -> bool:
+    """May `current` answer a question held for `latched`?
+
+    "default" means nobody recorded who asked. That happens whenever the latch
+    was made off the request thread - the client is a thread-local, so a worker
+    thread sees "default" - and it must not be read as "a different device".
+    On 2026-09-23 it was: the owner said "confirm" in the same window that had
+    just asked, and was told the question belonged to another device. An
+    unknown identity blocks nothing; two KNOWN and different ones do.
+    """
+    a = latched or "default"
+    b = (current if current is not None else current_client()) or "default"
+    return a == "default" or b == "default" or a == b
+
+
 def hold(key: str, decision: Decision, run) -> str:
     """Keep `run` until the user answers; the reply to speak now."""
     global _pending
@@ -219,7 +234,7 @@ def held_elsewhere() -> str | None:
     as a fresh request.
     """
     p = pending()
-    return p["question"] if p and p.get("client", "default") != current_client() else None
+    return p["question"] if p and not same_client(p.get("client")) else None
 
 
 def confirm_pending():
@@ -231,7 +246,7 @@ def confirm_pending():
         p = _pending
         if not p or time.time() - p["ts"] > CONFIRM_TTL_S or p["turn"] >= _turn:
             return None
-        if p.get("client", "default") != current_client():
+        if not same_client(p.get("client")):
             # Not this device's question to answer. Leave it held for the one
             # that was asked.
             _audit("confirm_from_another_client", p["key"], p["reason"])
@@ -248,7 +263,7 @@ def decline_pending() -> str | None:
     global _pending
     with _lock:
         p = _pending
-        if p and p.get("client", "default") != current_client():
+        if p and not same_client(p.get("client")):
             return None          # someone else's question; not this device's "no"
         _pending = None
     if not p:
