@@ -5,8 +5,8 @@ One command runs every check in order and writes one report:
   1. compile   every Python file under the repo compiles
   2. tests     the pytest suite
   3. routing   eval/gate_routing.py, the deterministic routing gate
-  4. server    a Cygnus server answers, 9router is up, and cloud models are
-               healthy (a brain on the local model is a failure)
+  4. server    a Cygnus server answers, 9router is up, and cloud models (9router's
+               or Google's) are healthy (a brain on the local model is a failure)
   5. smoke     scripts/cygnus_smoke.py against that server
 
 With --bench, the measurement suites too: the routing gold set, grounding
@@ -98,13 +98,18 @@ def check_server(url):
     elif not router_keeper.responds(timeout=10):
         # The port can be open while 9router answers nothing (2026-09-22).
         problems.append("9router's port is open but it does not answer")
+    # Google's models count too: when every 9router model is out of quota the
+    # agent loop answers on them (2026-09-29), not on the local model.
     models = st.get("router_models")
-    if models is not None and len(models) < MIN_HEALTHY_MODELS:
-        problems.append(f"only {len(models)} healthy 9router models ({', '.join(models) or 'none'})")
+    google = st.get("google_models") or []
+    if models is not None and len(models) + len(google) < MIN_HEALTHY_MODELS:
+        problems.append(f"only {len(models) + len(google)} healthy cloud models "
+                        f"({', '.join(models + google) or 'none'})")
     if "ollama" in str(st.get("last_backend") or "").lower():
         problems.append("the last turn was answered by the local model")
     detail = (f"{base}: brain {st.get('brain')}, router_up {st.get('router_up')}, "
-              f"{len(models or [])} healthy models, restarts {st.get('router_restarts')}")
+              f"{len(models or [])} healthy 9router + {len(google)} Google models, "
+              f"restarts {st.get('router_restarts')}")
     if problems:
         detail += " | " + "; ".join(problems)
     return {"check": "server", "ok": not problems, "seconds": round(time.monotonic() - start, 1),

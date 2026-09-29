@@ -1839,6 +1839,8 @@ async def get_status():
         "router_restarts": __import__("cygnus.brain.router_keeper", fromlist=["_"]).state.get("started", 0),
         "router_restarts_hung": __import__("cygnus.brain.router_keeper", fromlist=["_"]).state.get("restarts_hung", 0),
         "router_models": __import__("cygnus.brain.router_health", fromlist=["_"]).healthy_models()[:8],
+        # The agent loop's own Gemini key: the models not resting after a failure.
+        "google_models": __import__("cygnus.brain.google_ai", fromlist=["_"]).models()[:8],
         "last_backend": brain.last_backend,
         "voice": f"whisper:{WHISPER_MODEL}",
         "tts": _TTS_ENGINE,
