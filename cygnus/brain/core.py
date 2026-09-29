@@ -1047,6 +1047,22 @@ class JarvisBrain:
         the understand-first router decides in shadow (in the background,
         after the reply - never in its way). `client` names whose conversation
         the turn belongs to; every thread sets it before touching history."""
+        turn_t0 = time.monotonic()
+        try:
+            reply = self._think_observed(user_input, on_hermes_done, progress_cb, client, remote)
+        except Exception as e:
+            from cygnus import incidents
+            incidents.record_turn(user_input, None, getattr(self, "last_stats", None),
+                                  getattr(self, "last_backend", None),
+                                  time.monotonic() - turn_t0, client, error=e)
+            raise
+        # One line per turn for the incident watcher (scripts/watch_incidents.py).
+        from cygnus import incidents
+        incidents.record_turn(user_input, reply, getattr(self, "last_stats", None),
+                              getattr(self, "last_backend", None), time.monotonic() - turn_t0, client)
+        return reply
+
+    def _think_observed(self, user_input, on_hermes_done, progress_cb, client, remote):
         _progress_local.client = client or "default"
         globals()["_LAST_CLIENT"] = client or "default"
         _progress_local.remote = bool(remote)        # the phone: it may look, not act

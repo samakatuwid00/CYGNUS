@@ -64,6 +64,7 @@ you asked for, or asset CDNs.
 | Page fonts | `fonts.googleapis.com`, `fonts.gstatic.com` | every time the HUD loads |
 | One-off model downloads | `huggingface.co` | first use of vault or semantic search |
 | Your prompt, under your own logins | manus.im, chatgpt.com, claude.ai, copilot.microsoft.com | only via the opt-in browser-agent tools |
+| Your words and Cygnus's replies from the desktop app, browser tabs and the phone (600 characters each at most), with the backend and tools of each turn | **Anthropic**, through Claude Code (`claude -p`) under your own login (`scripts/review_incidents.py`) | every hour, only if you installed the review task (`scripts/windows/install_incident_tasks.ps1`; `-NoReview` leaves it out, `-Remove` takes it away) |
 
 **The voice is the surprising one.** The default TTS is Microsoft's cloud
 voice: the full text of every reply is uploaded to speak it - including
@@ -97,6 +98,8 @@ says otherwise. `CYGNUS_DATA_DIR` moves the lot somewhere else.
 | `data/logs/audit.jsonl` | Every tool call: what ran, the arguments, the result, whether you confirmed. **Contains what you said** |
 | `data/logs/shadow.jsonl` | Routing research: your utterance, the reply, and several previous turns |
 | `data/logs/jobs.jsonl` | Every background job and the goal you gave it |
+| `data/logs/turns.jsonl` | Every turn: what you said and the reply (first 600 characters each), which model answered, how long it took (`cygnus/incidents.py`) |
+| `data/logs/incidents.jsonl` | Turns and log lines the incident watcher and the hourly review found going wrong, with **what you said** and the log lines before it (`scripts/watch_incidents.py`, `scripts/review_incidents.py`) |
 | `data/logs/desktop-backend.log` | The backend's console output, which includes `[STT] raw: '<what you said>'` and tool arguments |
 | `data/logs/wake_debug.log` | What the wake listener heard (see above) |
 | `data/web_registry.json` | Sites you visit often - host, visit counts, **and your five most-visited URLs per site** |
@@ -106,8 +109,8 @@ says otherwise. `CYGNUS_DATA_DIR` moves the lot somewhere else.
 
 **There is no retention policy.** Only two things are bounded: the wake log
 (1 MB, one backup) and the remembered-facts list (40, the overflow archived
-rather than deleted). Sessions, the audit log, the shadow log and the backend
-log grow forever. On the author's machine after a month: 7.2 MB of backend log
+rather than deleted). Sessions, the audit log, the shadow log, the turn and
+incident logs and the backend log grow forever. On the author's machine after a month: 7.2 MB of backend log
 holding 139 lines of verbatim speech, 2 MB of shadow log, 1.5 MB of audit log.
 
 That is a real gap, not a design. It is
@@ -124,8 +127,8 @@ rm -rf data/sessions data/memory data/logs data/web_registry.json
 # Just the transcript of what you have said
 rm data/sessions/*.jsonl data/sessions/index.db
 
-# Just the log that holds your speech verbatim
-rm data/logs/desktop-backend.log data/logs/wake_debug.log
+# Just the logs that hold your speech verbatim
+rm data/logs/desktop-backend.log data/logs/wake_debug.log data/logs/turns.jsonl data/logs/incidents.jsonl
 
 # The browser profiles Cygnus drives
 rm -rf ~/.jarvis-chrome-profile ~/.jarvis-brave-profile

@@ -114,6 +114,29 @@ schtasks /end /tn CygnusSoak     # stop it; then /delete /tn CygnusSoak /f
 Run it before a push and after each restructure step. Exit code 0 means
 everything that ran passed.
 
+### Incident watcher
+
+`scripts/watch_incidents.py` follows every turn (`data/logs/turns.jsonl`) and
+the backend's log while Cygnus runs, and writes what goes wrong to
+`data/logs/incidents.jsonl`: a turn no model answered, a model that stopped
+mid-turn, an error shown as the reply, a crash, a slow turn, a backend that
+stopped answering. Errors also show a Windows notification.
+
+Rules cannot see a turn that went wrong while looking right ("play woman by
+harry styles" played another song and said it had played it). Once an hour,
+`scripts/review_incidents.py` gives the new turns to Claude through `claude -p`
+and adds what it finds to the same file, with one notification per review.
+That sends your words to Anthropic under your own login: see
+[docs/PRIVACY.md](docs/PRIVACY.md).
+
+```bash
+# The watcher at every logon and the hourly review (-NoReview: the watcher only)
+powershell -ExecutionPolicy Bypass -File scripts\windows\install_incident_tasks.ps1
+powershell -ExecutionPolicy Bypass -File scripts\windows\install_incident_tasks.ps1 -Remove
+.venv\Scripts\python scripts\watch_incidents.py --summary      # the last day, by kind
+.venv\Scripts\python scripts\review_incidents.py --dry-run     # what the next review would send
+```
+
 A Windows scheduled task, "Cygnus prod check", runs the safe tier every day
 at 09:00 (or at the next wake if the laptop was asleep). It runs hidden; the
 printout goes to `data/logs/prod-check-last.txt`, and a failed check keeps its

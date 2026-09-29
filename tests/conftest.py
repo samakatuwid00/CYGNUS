@@ -69,6 +69,10 @@ def offline_probe(monkeypatch, tmp_path_factory):
     monkeypatch.setattr(audit, "AUDIT_PATH", str(audit_dir / "audit.jsonl"))
     from cygnus.brain import intent_router
     monkeypatch.setattr(intent_router, "AUDIT_LOG", str(audit_dir / "audit.jsonl"))
+    # Every turn writes a line for the incident watcher; a test's turns go
+    # in its own file, not the one the watcher follows.
+    from cygnus import incidents
+    monkeypatch.setattr(incidents, "TURNS_PATH", str(audit_dir / "turns.jsonl"))
     # The task restater is one cloud-model call on a delegation's path; tests
     # get the words as spoken, and fake the model when they test the brief.
     from cygnus.brain import task_brief
