@@ -80,6 +80,11 @@ def read_utterances() -> Counter:
             if row.get("role") != "user":
                 continue
             text = (row.get("text") or "").strip()
+            # "/hermes ..." comes from the HUD's "/" menu and is carried out by
+            # the app-command path; classify_intent never sees it, so its
+            # label would measure nothing. It is logged like any turn.
+            if text.startswith("/"):
+                continue
             n = _norm(text)
             # One word is almost always a wake word, a filler or a mis-hear;
             # 200+ characters is dictation, which routes as "general" anyway.
@@ -155,6 +160,46 @@ def _review_order(row: dict):
     )
 
 
+def _read_review() -> list[dict]:
+    if not REVIEW.exists():
+        return []
+    return [json.loads(l) for l in REVIEW.read_text(encoding="utf-8").splitlines() if l.strip()]
+
+
+def _answered(row: dict) -> bool:
+    """A label or a note: either way the owner has looked at it."""
+    return bool(row.get("label")) or bool(row.get("note"))
+
+
+def carry_answers(new_rows: list[dict], old_rows: list[dict]) -> int:
+    """Copy the owner's labels and notes onto the re-mined groups.
+
+    `mine` rewrites the review file, and before 2026-09-24 that wiped every
+    answer in it: a second run after a review session threw the session
+    away. An answer follows any phrasing it was given for, since a group's
+    representative can change as more turns come in.
+    """
+    by_text: dict[str, dict] = {}
+    for old in old_rows:
+        if not _answered(old):
+            continue
+        for text in [old["rep"], *old.get("members", [])]:
+            by_text.setdefault(_norm(text), old)
+    carried = 0
+    for row in new_rows:
+        for text in [row["rep"], *row["members"]]:
+            old = by_text.get(_norm(text))
+            if old is None:
+                continue
+            if old.get("label"):
+                row["label"] = old["label"]
+            if old.get("note"):
+                row["note"] = old["note"]
+            carried += 1
+            break
+    return carried
+
+
 def cmd_mine(args) -> int:
     said = read_utterances()
     if not said:
@@ -162,6 +207,7 @@ def cmd_mine(args) -> int:
         return 1
     groups = cluster(said, ratio=args.ratio)
     kept = groups[:args.limit] if args.limit else groups
+    carried = carry_answers(kept, _read_review())
 
     REVIEW.parent.mkdir(parents=True, exist_ok=True)
     with REVIEW.open("w", encoding="utf-8") as fh:
@@ -178,6 +224,8 @@ def cmd_mine(args) -> int:
           f"(first in the file, read these)")
     print(f"  {sum(1 for r in kept if r['proposed'] in ACTING)} propose a route that acts")
     print("  proposals: " + ", ".join(f"{k} {v}" for k, v in split.most_common(6)))
+    if carried:
+        print(f"  {carried} answer(s) from the last review carried over")
     if args.limit and len(groups) > args.limit:
         print(f"  {len(groups) - args.limit} quieter groups left out; "
               f"--limit 0 writes all of them")
@@ -250,8 +298,9 @@ def cmd_review(args) -> int:
     if not REVIEW.exists():
         print(f"No {REVIEW}. Run: python scripts/bench/routing.py mine")
         return 1
-    rows = [json.loads(l) for l in REVIEW.read_text(encoding="utf-8").splitlines() if l.strip()]
-    todo = [r for r in rows if r.get("label") is None] if args.resume else rows
+    rows = _read_review()
+    # A noted group has an answer too; resume asked it again before 2026-09-24.
+    todo = [r for r in rows if not _answered(r)] if args.resume else rows
     if not todo:
         print("Every group already has an answer. "
               "Next: python scripts/bench/routing.py accept")
@@ -335,12 +384,17 @@ def cmd_accept(args) -> int:
         print(f"No {REVIEW}. Run: python scripts/bench/routing.py mine")
         return 1
 
+    # Only a person's labels carry over. A "proposed" row is the classifier's
+    # opinion when it was mined; kept, it outlived the fix it disagreed with,
+    # and `score` listed the fix as a miss (2026-09-24). Proposals are rebuilt
+    # from the review file each time.
     gold: dict[str, dict] = {}
     if GOLD.exists():
         for line in GOLD.read_text(encoding="utf-8").splitlines():
             if line.strip():
                 row = json.loads(line)
-                gold[row["text"]] = row
+                if row.get("source") == "confirmed":
+                    gold[row["text"]] = row
 
     added = changed = confirmed = skipped = 0
     notes = []

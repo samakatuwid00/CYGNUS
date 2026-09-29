@@ -126,6 +126,12 @@ class _Proc:
 def _fake_claude(monkeypatch):
     monkeypatch.setattr(tools.shutil, "which", lambda b: f"C:/bin/{b}.exe")
     monkeypatch.setattr(tools.subprocess, "Popen", _Proc)
+    # The job writes its brief on its own thread (profile, session, a vault
+    # search that loads an embedding model); under a full test run that took
+    # longer than _wait_done waits. The brief is test_task_brief's subject.
+    from cygnus.brain import context_assembler
+    monkeypatch.setattr(context_assembler, "compose_prompt",
+                        lambda task, delegate=None, raw_task=None: task)
 
 
 def _wait_done(jid, got):

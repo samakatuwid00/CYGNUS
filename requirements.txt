@@ -31,6 +31,15 @@ uvicorn>=0.51.0
 
 # Desktop app steps and deep window scans (desktop_driver, app_abilities)
 pywinauto>=0.6.9; sys_platform == "win32"
+# Windows' own OCR, on the device: reading a window's text when its app
+# describes nothing to UI Automation (cygnus/apps/screen_text.py).
+winrt-runtime>=3.2; sys_platform == "win32"
+winrt-Windows.Media.Ocr>=3.2; sys_platform == "win32"
+winrt-Windows.Graphics.Imaging>=3.2; sys_platform == "win32"
+winrt-Windows.Storage.Streams>=3.2; sys_platform == "win32"
+winrt-Windows.Foundation>=3.2; sys_platform == "win32"
+winrt-Windows.Foundation.Collections>=3.2; sys_platform == "win32"
+winrt-Windows.Globalization>=3.2; sys_platform == "win32"
 
 # Utilities
 python-dotenv>=1.0.0

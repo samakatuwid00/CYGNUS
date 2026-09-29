@@ -101,6 +101,8 @@ def describe(step: dict) -> str:
         return f'Open session "{step["name"]}"'
     if op == "send":
         return f'Send: "{step["text"]}"'
+    if op == "open_item":
+        return f'Open or click "{step["name"]}"'
     detail = ", ".join(str(v) for v in (step.get("args") or {}).values() if str(v).strip())
     return step.get("label", step.get("id", op)) + (f": {detail}" if detail else "")
 
@@ -140,7 +142,37 @@ def _driver_for(row: dict, apps: dict) -> str | None:
         entry = apps[key]
         if any(_usable(a) for a in entry.get("abilities") or []) or entry.get("compiled_rules"):
             return "abilities"
+    # Any other window can still open a chat, tab or list entry by name when
+    # the Cua driver is running (cua.py). Before it, most apps had no action.
+    from cygnus.apps import cua
+    if cua.available():
+        return "cua"
     return None
+
+
+# The Cua driver's action, offered to every app but Hermes (which opens its
+# sessions itself). The names a window shows are never listed for the model:
+# Telegram's include message text. The model passes on what the user said.
+# Where the app lists nothing by that name, the words are found in the
+# window's text, read by OCR on this PC (cua.CuaWindow.click_text).
+OPEN_ITEM = {"do": "open_item",
+             "does": "open or click something by its name: a chat, tab or list entry (Telegram chats, "
+                     "Windows Terminal tabs), or any words shown on the window (a menu, a link, a button)",
+             "args": {"name": "the name or words as the user said them"}}
+
+
+def consequential(name: str) -> bool:
+    """Words whose click changes or sends something ("Delete", "Send", "Pay"):
+    asked about first, the same list the Apps panel uses for scanned buttons."""
+    from cygnus.apps.abilities import _CONSEQUENTIAL_RE
+    return bool(_CONSEQUENTIAL_RE.search(name or ""))
+
+
+def _cua_on(target: dict) -> bool:
+    if target["driver"] in (None, "hermes-window"):
+        return False
+    from cygnus.apps import cua
+    return target["driver"] == "cua" or cua.available()
 
 
 def targets(rows=None, apps=None) -> list[dict]:
@@ -180,7 +212,7 @@ def actions(target: dict, row: dict, apps: dict, sessions=()) -> list[dict]:
                  "args": {"name": "the session's title"}, "choices": list(sessions)[:20]},
                 {"do": "send", "does": "send a message to Hermes in the current session and read its reply",
                  "args": {"text": "the message, in the user's words"}}]
-    out = []
+    out = [dict(OPEN_ITEM)] if _cua_on(target) else []
     for key in _registry_keys(row, apps):
         entry = apps[key]
         for a in entry.get("abilities") or []:
@@ -234,10 +266,30 @@ def _step_from(item: dict, by_do: dict) -> dict | None:
     if do == "open_session":
         name = str(args.get("name") or "").strip()
         return {"op": "open_session", "name": name} if name else None
+    if do == "open_item":
+        name = str(args.get("name") or "").strip()
+        if not name:
+            return None
+        step = {"op": "open_item", "name": name}
+        if consequential(name):
+            step["ask"] = True                      # the "/" path shows Run / Cancel first
+        return step
     kind, key, ident = do.split(":", 2)
     allowed = {k: str(v) for k, v in args.items() if k in (action.get("args") or {})}
     return {"op": kind, "app": key, "id": ident, "args": allowed, "label": action["does"],
             "ask": bool(action.get("ask"))}
+
+
+# With no model answering, "/telegram open cerebrum" and "/terminal switch to
+# the vault tab" still read: the verb, then the name.
+_OPEN_ITEM_RE = re.compile(
+    r"^\s*(?:please\s+)?(?:open|go\s+to|switch\s+to|select|show|click(?:\s+on)?)\s+(?:the\s+|my\s+)?"
+    r"(?P<name>.+?)(?:\s+(?:chat|tab|conversation|group|channel))?\s*[.!?]*$", re.I)
+
+
+def open_item_phrase(text: str) -> str | None:
+    m = _OPEN_ITEM_RE.match(text or "")
+    return m.group("name").strip() if m and m.group("name").strip() else None
 
 
 def understand(slug: str, text: str, rows=None, apps=None, sessions=None) -> dict:
@@ -260,6 +312,9 @@ def understand(slug: str, text: str, rows=None, apps=None, sessions=None) -> dic
         result["by"] = "phrases"
         if target["driver"] == "hermes-window":
             result["steps"] = plan(text)
+        elif _cua_on(target) and open_item_phrase(text):
+            result["steps"] = [_step_from({"do": "open_item", "args": {"name": open_item_phrase(text)}},
+                                          {"open_item": OPEN_ITEM})]
         else:
             result["missing"] = text
             result["no_model"] = True
@@ -525,7 +580,12 @@ class HermesWindow:
         return "\n".join(new).strip() + still
 
 
-DRIVERS = {"hermes-window": HermesWindow}
+def _cua_window(row):
+    from cygnus.apps.cua import CuaWindow
+    return CuaWindow(row)
+
+
+DRIVERS = {"hermes-window": HermesWindow, "cua": _cua_window}
 
 
 # -------------------------------------------------------------------- run --
@@ -545,9 +605,14 @@ def _run_app_step(step: dict, apps: dict) -> str:
     return reply
 
 
-def _run_step(driver, step: dict, apps: dict) -> str:
+def _run_step(driver, step: dict, apps: dict, row: dict | None = None) -> str:
     if step["op"] in ("ability", "rule"):
         return _run_app_step(step, apps)
+    if step["op"] == "open_item":
+        # Apps with abilities have no driver object of their own; the Cua
+        # driver serves them too.
+        cua_driver = driver if hasattr(driver, "open_item") else _cua_window(row or {})
+        return cua_driver.open_item(step["name"])
     if step["op"] == "new_session":
         return driver.new_session()
     if step["op"] == "open_session":
@@ -580,7 +645,7 @@ def _run(slug: str, steps: list[dict], rows=None, apps=None) -> str:
     done = []
     for step in steps:
         try:
-            done.append(_run_step(driver, step, apps))
+            done.append(_run_step(driver, step, apps, row))
         except DriveError as e:
             done.append(f"I stopped: {e}.")
             break

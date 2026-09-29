@@ -28,7 +28,8 @@ SHADOW_PATH = paths.log("agent_shadow.jsonl")
 INSTANT_INTENTS = {
     "math", "greeting", "thanks", "time", "help", "stop", "music", "job_status", "job_stop",
     "remember", "recall_memory", "running_stop", "rescan", "app_install", "app_uninstall",
-    "list_sites", "add_site", "report", "launch", "clarify_play", "clarify_search", "clarify_open"}
+    "list_sites", "add_site", "report", "launch", "clarify_play", "clarify_search", "clarify_open",
+    "view", "volume"}
 
 _current_app: dict = {}                 # client -> the app in play (slug)
 _records: dict = {}                     # client -> the last tasks' records, newest last
@@ -36,7 +37,8 @@ _last_stats: dict = {}
 _lock = threading.Lock()
 
 # Tools that change something; the rest only look.
-_ACTING = {"app_step", "show_window", "open_app", "open_site", "delegate", "remember", "slash"}
+_ACTING = {"app_step", "show_window", "open_app", "open_site", "delegate", "remember", "slash",
+           "prompt_claude"}
 
 
 def remember_slash(client: str, slug: str, said: str, result: str) -> None:
@@ -110,6 +112,7 @@ def report(ran: list, spoken: bool = False) -> str:
         else:
             looked.append({"whats_running": "what is running", "app_actions": f"{app.title()}'s actions",
                            "read_window": f"{app.title()}'s window", "describe_window": f"a picture of {app.title()}",
+                           "list_tabs": f"{app.title()}'s tabs",
                            "search_web": "the web", "read_file": "a file", "list_directory": "a folder",
                            "recall": "my memory"}.get(name, name))
     if not acted and not said and not looked:
@@ -213,15 +216,25 @@ TOOLS = [
     _p("app_actions", "The actions available in a running app, by its slug from whats_running "
        "(hermes, chrome, notepad, powerpoint...). Call this before app_step.", app="the app's slug"),
     _p("app_step", "Do one action in a running app: a 'do' from app_actions with its args. Hermes: "
-       "new_session; open_session (name); send (text). Other apps: their abilities and the user's rules.",
+       "new_session; open_session (name); send (text). Other apps: open_item (name) opens a chat, tab or "
+       "list entry by the name the user said, plus their abilities and the user's rules.",
        app="the app's slug", do="the action's do", args="JSON object of the action's args (optional)"),
     _p("show_window", "Bring a running program's window to the front.", app="its name or slug"),
     _p("read_window", "The text a running program's window shows (terminals and editors read well).",
        app="its name or slug"),
+    _p("list_tabs", "The tabs open in a running program, window by window, by title (Brave, Chrome, Edge, "
+       "Windows Terminal, Notepad). A window's title names only the tab in front, so use this for any "
+       "question about tabs.", app="its name or slug"),
     _p("describe_window", "A picture of the window described by a vision model; say the picture left the machine.",
        app="its name or slug"),
     _p("open_app", "Open an installed application (brings it forward if already open).", name="the app's name"),
     _p("open_site", "Open a website in the browser.", name="a site name or address like facebook.com"),
+    _p("prompt_claude", "Type a prompt into a Claude Code session already open in the terminal - the "
+       "owner's main way of working - and say Claude's answer when it finishes. For 'tell / ask Claude "
+       "(in <folder>) to ...'. It is read back and sent a few seconds later unless the owner says cancel. "
+       "Prefer it over delegate whenever whats_running shows a Claude Code session.",
+       session="the session's folder or title from whats_running, e.g. my-app (optional when only one is open)",
+       prompt="what to type to Claude, in the owner's own words"),
     _p("delegate", "Hand a bigger job to a coding agent as a background task; the user is asked to confirm "
        "when it may change files, and the answer comes later.",
        agent="claude, codex, gemini or hermes", task="the job, in full"),
@@ -232,11 +245,18 @@ TOOLS = [
     _p("remember", "Save a fact about the user.", fact="the fact"),
 ]
 
-_APP_TOOLS = {"app_actions", "app_step", "show_window", "read_window", "describe_window"}
+_APP_TOOLS = {"app_actions", "app_step", "show_window", "read_window", "describe_window", "list_tabs"}
 # Tools that do not pass through execute_tool, which audits the rest itself.
 # Without these lines the audit log (and the smoke test that reads it) never
 # saw a garbled sentence open a Hermes session and bring it forward (2026-09-22).
-_AUDITED = _APP_TOOLS | {"whats_running", "remember"}
+_AUDITED = _APP_TOOLS | {"whats_running", "remember", "prompt_claude"}
+
+
+# "tell Claude in my-app to" - the words before the prompt itself.
+_OWNER_PROMPT_RE = re.compile(
+    r"^\W*(?:(?:hey\s+)?cygnus\W+)?(?:please\s+)?(?:tell|ask|prompt|have|instruct)\s+(?:the\s+)?claude"
+    r"(?:\s+code)?(?:\s+(?:in|on|for|at)\s+(?:the\s+)?[\w.-]+(?:\s+(?:project|folder|session))?)?"
+    r"\s*(?:to\s+|that\s+|:\s*|,\s*)?", re.I)
 
 
 def _target(app: str):
@@ -267,7 +287,8 @@ def _run_tool(name: str, args: dict, ctx: dict) -> str:
         row = next(r for r in rows if r["id"] == target["row"])
         if name == "app_actions":
             if not target["driver"]:
-                return f"{target['name']} has no actions or rules yet; only show_window, read_window, describe_window."
+                return (f"{target['name']} has no actions or rules yet; only show_window, read_window, "
+                        "describe_window, list_tabs.")
             sessions = app_commands.HermesWindow(row).session_titles() if target["driver"] == "hermes-window" else ()
             acts = app_commands.actions(target, row, app_commands._apps(), sessions)
             return json.dumps({"app": target["name"], "slug": target["slug"], "actions": acts}, ensure_ascii=False)
@@ -285,7 +306,9 @@ def _run_tool(name: str, args: dict, ctx: dict) -> str:
             step = app_commands._step_from({"do": args.get("do"), "args": raw}, {a["do"]: a for a in acts})
             if not step:
                 return f"[Error] {args.get('do')!r} is not one of {target['name']}'s actions. Call app_actions."
-            if step.get("ask"):
+            # An ability marked "ask" waits in the dialogue; an open_item on
+            # words like "Delete" waits in the safety gate below instead.
+            if step.get("ask") and step.get("op") in ("ability", "rule"):
                 from cygnus.brain import dialogue_state
                 q = f"Should I {step['label'].lower()} in {target['name']}, sir?"
                 dialogue_state.ask("ability", q, payload={"app": step["app"], "id": step["id"], "args": step["args"]})
@@ -296,7 +319,9 @@ def _run_tool(name: str, args: dict, ctx: dict) -> str:
             decision = safety.assess_app_step(target["slug"], {**step, "do": args.get("do")})
             return safety.gate(f"app_step {target['slug']} {args.get('do')} {json.dumps(raw)[:160]}", decision,
                                lambda: app_commands.run(target["slug"], [step], rows=rows))
-        intent = {"show_window": "running_front", "read_window": "running_text",
+        if name == "list_tabs":
+            return running_apps.tabs_summary(target["name"], running_apps.window_tabs(row))
+        intent ={"show_window": "running_front", "read_window": "running_text",
                   "describe_window": "running_describe"}[name]
         phrase = {"running_front": f"show {target['name']}", "running_text": f"read the {target['name']} window",
                   "running_describe": f"describe the {target['name']} window"}[intent]
@@ -305,9 +330,37 @@ def _run_tool(name: str, args: dict, ctx: dict) -> str:
         return bg.execute_tool("open_application", {"app": args.get("name", "")}, user_text)
     if name == "open_site":
         return bg.execute_tool("open_site", {"name": args.get("name", "")}, user_text)
+    if name == "prompt_claude":
+        from cygnus.apps import claude_prompt
+        text = (args.get("prompt") or "").strip() or user_text
+        # As for delegate: the owner's words when the model's rewrite dropped
+        # a negation, file name or number from them.
+        if user_text and text != user_text:
+            from cygnus.brain import task_brief
+            if task_brief.dropped_constraints(user_text, text):
+                text = _OWNER_PROMPT_RE.sub("", user_text, count=1).strip() or user_text
+        try:
+            session = claude_prompt.pick(args.get("session"))
+            return claude_prompt.schedule(session, text, on_done=ctx.get("on_done"))
+        except claude_prompt.PromptError as e:
+            return f"[Error] {e}"
     if name == "delegate":
         agent = (args.get("agent") or "hermes").strip().lower()
         task = (args.get("task") or user_text).strip()
+        # The model's rewrite of the job is checked against the owner's words:
+        # a negation, file name, number or quoted string it dropped ("don't
+        # touch the tests") was gone for good before 2026-09-24. When one is
+        # missing the owner's own words go instead, minus "delegate this to X".
+        if user_text and task != user_text:
+            from cygnus.brain import task_brief
+            lost = task_brief.dropped_constraints(user_text, task)
+            if lost:
+                _, _, cleaned = tools._explicit_cli_agent(user_text)
+                print(f"[agent] delegate: the model's task dropped {lost!r}; using the owner's words", flush=True)
+                from cygnus import audit
+                audit.log_call("agent.delegate.dropped", {"model_task": task[:300], "lost": lost}, 0.0,
+                               (cleaned or user_text)[:300])
+                task = (cleaned or user_text).strip()
         if agent in ("claude", "codex", "gemini"):
             return tools._cli_delegate(task, agent, raw_task=user_text, on_done=ctx.get("on_done"))
         return tools.delegate_to_hermes(task, raw_task=user_text, background=ctx.get("on_done") is not None,
@@ -352,6 +405,7 @@ _SYSTEM = """You are Cygnus, a voice assistant on the owner's Windows laptop. Ad
 Work like an agent: read what the user means, use a tool, look at what it returned, then decide the next step. Check results; if something failed, try one other way, then say plainly what happened. Never say you did something no tool did. Ask only when a real choice is open.
 The words come from speech recognition and can be misheard. When they do not make a clear request (a fragment, words that do not fit together), use no tool: ask the user to say it again, in one short sentence.
 Running programs are addressed by slug (see whats_running). For a running app: app_actions first, then app_step with one of its actions. Hermes's actions are new_session, open_session (a title from the list), send (the user's words). Send in the session that is open unless the user asks for a new one or names another. An app with no action for the request: say what it can do and that a rule can be added in the Apps panel; do not improvise.
+Tabs are not windows: a browser window's title is only its front tab. For how many tabs, or which, call list_tabs; never count them from whats_running or a window title.
 Hand bigger jobs (code, files, research) to delegate; say the answer comes later.{extra}"""
 
 
@@ -404,14 +458,59 @@ def _make_client():
     return OpenAI(base_url=bg.ROUTER_BASE_URL, api_key=bg.ROUTER_API_KEY or "x", max_retries=0)
 
 
-# How many healthy 9router models a turn may walk. Three were not enough on
-# 2026-09-22: the first hung and the next two were out of quota.
-MAX_MODELS = 6
+# How many models a turn may walk. Three were not enough on 2026-09-22: the
+# first hung and the next two were out of quota. Eight since Google's free
+# tier joined (2026-09-27): its models refuse in well under a second once
+# their daily quota is spent, and each has its own.
+MAX_MODELS = 8
 
 
 def _models() -> list:
+    """9router's healthy models, then Google's; with no healthy 9router model,
+    Google's first: the configured 9router ones then are the ones that failed
+    (on 2026-09-26 all four answered 503 for days, ~2 s each, every turn)."""
     from cygnus.brain import core as bg
-    return bg._router_models()[:MAX_MODELS]
+    from cygnus.brain import google_ai
+    google = google_ai.models()
+    health = bg._router_health()
+    try:
+        healthy = [m for m in (health.healthy_models() if health else []) if m]
+    except Exception:
+        healthy = []
+    order = healthy + google if healthy else google + bg._router_models()
+    return order[:MAX_MODELS]
+
+
+def _client_for(model: str, router_client):
+    """The client that serves `model`, and the name to send it."""
+    from cygnus.brain import google_ai
+    if google_ai.owns(model):
+        return google_ai.client(), google_ai.wire_name(model)
+    return router_client, model
+
+
+def _call_echo(tc) -> dict:
+    """A tool call as it goes back to the model on the next round. Gemini 3
+    puts a thought signature in extra_content and refuses the next round
+    without it ("Function call is missing a thought_signature", 2026-09-26);
+    whatever extra the reply carried goes back as it came."""
+    call = {"id": tc.id, "type": "function",
+            "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+    extra = (getattr(tc, "model_extra", None) or {}).get("extra_content")
+    if extra:
+        call["extra_content"] = extra
+    return call
+
+
+def _failed(model: str, e: Exception) -> None:
+    """A failed call rests the model where it lives: Google's here, 9router's
+    in router_health (which probes by name through 9router)."""
+    from cygnus.brain import core as bg
+    from cygnus.brain import google_ai
+    if google_ai.owns(model):
+        google_ai.mark_failed(model, str(e))
+    else:
+        bg._report_unhealthy(model, str(e))
 
 
 def run(brain, text: str, ctx: dict) -> str | None:
@@ -443,20 +542,31 @@ def run(brain, text: str, ctx: dict) -> str | None:
         _last_stats = {"model": None, "tools": [], "rounds": 0, "seconds": 0.0, "from": "record"}
         brain.conversation.append({"role": "assistant", "content": final})
         return final
+    from cygnus.brain import google_ai
+    router_down = False
     try:
         bg._router_ready()                  # starts a 9router that is down, bounded wait
     except bg._RouterDown as e:
-        print(f"[agent] {e}; old routing", flush=True)
-        bg._progress_local.deadline = saved_deadline
-        _lock.release()
-        return None
+        if not google_ai.models():
+            print(f"[agent] {e}; old routing", flush=True)
+            bg._progress_local.deadline = saved_deadline
+            _lock.release()
+            return None
+        print(f"[agent] {e}; Google AI only", flush=True)
+        router_down = True
     system = _system(ctx)
     tools_arg = TOOLS
     base = [{"role": "system", "content": system}] + _history(brain) + [{"role": "user", "content": text}]
     ran, acked, final, used, broke, waiting = [], False, None, None, None, False
     try:
+        carry = None        # a turn a Google model began and hit its limit in
         for model in _models():
-            messages = list(base)
+            if router_down and not google_ai.owns(model):
+                continue                        # 9router is down: only Google can answer
+            if carry is not None and not google_ai.owns(model):
+                continue                        # a half-done turn passes only between Google models
+            messages = carry if carry is not None else list(base)
+            api, wire = _client_for(model, client)
             try:
                 for _round in range(MAX_ROUNDS):
                     left = deadline - time.monotonic()
@@ -465,7 +575,7 @@ def run(brain, text: str, ctx: dict) -> str | None:
                     # The first call gets bg.FIRST_CALL_S: a model that has not
                     # answered by then hands over to the next one.
                     cap = bg.FIRST_CALL_S if _round == 0 else CALL_CAP_S
-                    r = client.chat.completions.create(model=model, messages=messages, tools=tools_arg,
+                    r = api.chat.completions.create(model=wire, messages=messages, tools=tools_arg,
                                                        tool_choice="auto" if tools_arg else None, max_tokens=700,
                                                        timeout=min(cap, left))
                     if not r.choices:
@@ -473,9 +583,7 @@ def run(brain, text: str, ctx: dict) -> str | None:
                     msg = r.choices[0].message
                     if msg.tool_calls:
                         messages.append({"role": "assistant", "content": msg.content or "", "tool_calls": [
-                            {"id": tc.id, "type": "function",
-                             "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
-                            for tc in msg.tool_calls]})
+                            _call_echo(tc) for tc in msg.tool_calls]})
                         stop = None
                         for tc in msg.tool_calls:
                             args = bg._safe_json(tc.function.arguments)
@@ -524,13 +632,21 @@ def run(brain, text: str, ctx: dict) -> str | None:
                 break
             except Exception as e:
                 print(f"[agent] {model} failed: {type(e).__name__}: {str(e)[:120]}", flush=True)
-                bg._report_unhealthy(model, str(e))
+                _failed(model, e)
                 broke = type(e).__name__
+                if ran and google_ai.owns(model) and google_ai.is_limit(e):
+                    # Work was done and the free quota ran out mid-turn: the
+                    # next Google model finishes the same conversation, tool
+                    # results and all, so nothing is done twice (2026-09-27:
+                    # "Then my model stopped answering" after it had opened
+                    # ChatGPT). Other Gemini models accept each other's turns.
+                    carry = messages
+                    continue
                 if ran:                         # work was done: the record says so, not a next model
                     break
                 from cygnus.brain import router_keeper
-                if router_keeper.is_connection_error(e):
-                    break                       # the router went down: no other model can answer
+                if not google_ai.owns(model) and router_keeper.is_connection_error(e):
+                    router_down = True          # the router went down: only Google can still answer
                 continue
     finally:
         bg._progress_local.deadline = saved_deadline
@@ -570,7 +686,8 @@ def shadow(brain, text: str, ctx: dict) -> None:
             client = _make_client()
             for model in _models():
                 try:
-                    r = client.chat.completions.create(model=model, messages=base, tools=TOOLS,
+                    api, wire = _client_for(model, client)
+                    r = api.chat.completions.create(model=wire, messages=base, tools=TOOLS,
                                                        tool_choice="auto", max_tokens=300, timeout=30)
                     msg = r.choices[0].message
                     rec["model"] = model

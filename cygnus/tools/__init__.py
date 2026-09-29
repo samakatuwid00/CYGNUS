@@ -2472,9 +2472,11 @@ def delegate_to_hermes_grounded(task: str, timeout: int = 300, max_turns: int = 
         return delegate_to_hermes(task, timeout=timeout, max_turns=max_turns, confirm=False,
                                   raw_task=task, background=background, on_done=on_done,
                                   progress_cb=progress_cb, grounded=True)
+    # The task restated and first, the words as spoken next, the background
+    # last (context_assembler.compose_prompt, 2026-09-24).
     try:
         from cygnus.brain import context_assembler as ca
-        prefix = ca.assemble_brief(task, delegate="hermes")
+        prompt = ca.compose_prompt(task, delegate="hermes", raw_task=task)
     except Exception:
         # fallback to legacy assembly if assembler missing
         from cygnus.memory.session_store import recent_summary
@@ -2491,12 +2493,12 @@ def delegate_to_hermes_grounded(task: str, timeout: int = 300, max_turns: int = 
         )
         if appctx:
             prefix += appctx + "\n"
-        prefix += "TASK:\n"
+        prompt = prefix + "TASK:\n" + task
     if confirm and _PENDING_DESTRUCTIVE.get("task") == task:
         # The user confirmed this exact task: the latch now holds the briefed
         # text that is about to run, so the confirm releases it.
-        _PENDING_DESTRUCTIVE["task"] = prefix + task
-    return delegate_to_hermes(prefix + task, timeout=timeout, max_turns=max_turns,
+        _PENDING_DESTRUCTIVE["task"] = prompt
+    return delegate_to_hermes(prompt, timeout=timeout, max_turns=max_turns,
                               confirm=confirm, raw_task=task,
                               background=background, on_done=on_done,
                               progress_cb=progress_cb, jid=jid)
@@ -2747,6 +2749,10 @@ def _explicit_cli_agent(task: str):
            (key == "claude" and spoken == "claude code"):
             tail = re.sub(r"^\s*to\s+", " ", task[m.end():], flags=re.I)
             cleaned = re.sub(r"\s+", " ", task[:m.start()] + " " + tail).strip(" ,.()")
+            # "okay jarvis, delegate this to claude: fix the mic" handed Claude
+            # "okay jarvis, fix the mic" (2026-09-24). The lead-in is not the task.
+            from cygnus.tools.phrases import strip_correction_prefix, strip_fillers
+            cleaned = strip_fillers(strip_correction_prefix(cleaned.strip(" ,.:;()"))).strip(" ,.:;()")
             return True, key, (cleaned or task)
     return False, None, task
 
@@ -2820,6 +2826,11 @@ def _not_a_task_reply(task: str) -> str:
 
 def _cli_label(name: str) -> str:
     return (_cli_registry().get(name) or {}).get("label") or name
+
+
+def _cli_installed(name: str) -> bool:
+    spec = _cli_registry().get(name) or {}
+    return bool(_direct_launcher(spec.get("bin", "")))
 
 
 def _cli_command(task: str, name: str) -> list | None:
@@ -2900,27 +2911,41 @@ def _start_cli_job(task: str, name: str, raw_task: str = None, on_done=None,
     from cygnus.jobs import registry as jobreg
     label = _cli_label(name)
     asked = f"{raw_task or ''}\n{task}"          # "... and open it in Chrome" is read at the end
-    try:
-        from cygnus.brain import context_assembler as ca
-        prompt = ca.assemble_brief(task, delegate=name) + task
-    except Exception:
-        prompt = task
-    cmd = _cli_command(prompt, name)
-    if cmd is None:
+    if not _cli_installed(name):
         if jid:
             jobreg.update(jid, state="error", error=f"{label} is not installed")
         return f"[Error] {label} is not installed on this computer, so I can't hand it this."
     jid = jid or jobreg.create((raw_task or task)[:200], tier="cli", agent=label, background=True)
-    try:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                                encoding="utf-8", errors="replace", cwd=_REPO_DIR)
-    except Exception as e:
-        jobreg.update(jid, state="error", error=f"could not start {label}: {e}"[:300])
-        return f"[Error] I couldn't start {label}: {e}"
-    jobreg.update(jid, state="running", note=f"handed to {label}")
+    jobreg.update(jid, state="running", note="writing the brief")
     _audit_log(f"delegate:{name}", (raw_task or task)[:200], "started", extra={"jid": jid})
 
+    def _fail(result: str) -> None:
+        jobreg.update(jid, state="error", error=result[:500], summary=result[:200])
+        if on_done:
+            try:
+                on_done(result)
+            except Exception as e:
+                print(f"[CLI] on_done raised: {e}", flush=True)
+
     def _watch():
+        # The brief is written here, off the turn: the task restated by a
+        # model (15-30 s) and put first, the words as spoken under it, the
+        # background last (context_assembler.compose_prompt, 2026-09-24).
+        try:
+            from cygnus.brain import context_assembler as ca
+            prompt = ca.compose_prompt(task, delegate=name, raw_task=raw_task)
+        except Exception as e:
+            print(f"[CLI] brief failed ({e}); sending the task as given", flush=True)
+            prompt = task
+        cmd = _cli_command(prompt, name)
+        if cmd is None:
+            return _fail(f"[Error] {label} is not installed on this computer, so I can't hand it this.")
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                    encoding="utf-8", errors="replace", cwd=_REPO_DIR)
+        except Exception as e:
+            return _fail(f"[Error] I couldn't start {label}: {e}"[:300])
+        jobreg.update(jid, state="running", note=f"handed to {label}")
         try:
             out, err = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -4958,6 +4983,8 @@ TOOL_MAP = {
     "stop_music": lambda **kw: _stop_last_player(),
     "play_spotify": lambda **kw: _played("spotify", play_spotify(kw["query"])),
     "stop_spotify": lambda **kw: stop_spotify(),
+    "set_volume": lambda **kw: __import__("cygnus.apps.volume", fromlist=["_"]).control(
+        kw.get("action", ""), kw.get("percent")),
     "get_credentials": _get_credentials_tool,
     "launch_project": lambda **kw: __import__("cygnus.agents.project", fromlist=["_"]).launch_project(kw["name"]),
     "compose_report": lambda **kw: __import__("cygnus.agents.report", fromlist=["_"]).compose_report(

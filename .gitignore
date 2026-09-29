@@ -50,6 +50,8 @@ sessions/
 eval/routing_gold.jsonl
 # The owner's voice test set (scripts/voice_testset_record.py)
 eval/voice_testset/
+# ...and the wake-word set with the owner's voiceprint source (voice_testset_record.py --set wake)
+eval/voice_wakeset/
 # Capability manifest (leaks installed software inventory)
 capabilities.json
 # Local-only Manus cookie handoff (PRIVACY: never commit — like .env)

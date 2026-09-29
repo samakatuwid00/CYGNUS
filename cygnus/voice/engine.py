@@ -170,7 +170,8 @@ class VoiceEngine:
             vad_filter=True,
             vad_parameters=VAD_PARAMETERS,
             initial_prompt=WHISPER_INITIAL_PROMPT,
-            condition_on_previous_text=False
+            condition_on_previous_text=False,
+            without_timestamps=True     # see _decode
         )
 
         text = " ".join(segment.text for segment in segments)
@@ -232,8 +233,16 @@ class VoiceEngine:
             audio_float = audio_float / 32768.0
         return self._normalize(audio_float)
 
-    def _decode(self, audio, prompt):
-        """(text, mean segment log-prob); a log-prob near 0 means confident."""
+    def _decode(self, audio, prompt, timestamps=True):
+        """(text, mean segment log-prob); a log-prob near 0 means confident.
+
+        timestamps=False: no timestamp tokens. With them, Whisper often ended
+        the transcript at the first pause: "Hey Cygnus … pause the music on
+        Spotify" came out as "Pacing us." in 8 of 30 clips, 1 of 30 without
+        (2026-09-26). Log-probs run higher then (about -0.15 where -0.43 was),
+        so transcript_pick, whose thresholds were measured with timestamps,
+        keeps them.
+        """
         segments, _ = self.whisper.transcribe(
             audio,
             language="en",
@@ -241,7 +250,8 @@ class VoiceEngine:
             vad_filter=True,
             vad_parameters=VAD_PARAMETERS,
             initial_prompt=prompt,
-            condition_on_previous_text=False
+            condition_on_previous_text=False,
+            without_timestamps=not timestamps
         )
         segs = list(segments)
         text = " ".join(s.text for s in segs).strip()
@@ -250,21 +260,25 @@ class VoiceEngine:
 
     def _transcribe_from_file(self, file_path):
         """Transcribe audio from a file using Whisper."""
-        return self._decode(self._load_audio(file_path), WHISPER_INITIAL_PROMPT)[0]
+        return self._decode(self._load_audio(file_path), WHISPER_INITIAL_PROMPT, timestamps=False)[0]
 
-    def transcribe_with_hint(self, file_path, hint, known=()):
+    def transcribe_with_hint(self, file_path, hint, known=(), clean=None):
         """Whisper's transcript checked against the browser's live one.
 
         Returns (chosen text, source, Whisper's text, Whisper's confidence);
         see transcript_pick for how the two are compared. `known`: the
         user's app and site names, so the transcript that names one wins.
+        `clean`: applied to Whisper's text before the comparison (a pre-rolled
+        clip holds words from before the wake that the live text does not).
         """
         from cygnus.voice import transcript_pick
+        clean = clean or (lambda t: t)
         audio = self._load_audio(file_path)
         heard, conf = self._decode(audio, WHISPER_INITIAL_PROMPT)
+        heard = clean(heard)
         # Whisper keeps only the prompt's last ~223 tokens: cap the hint so the
         # vocabulary bias ahead of it survives.
-        redecode = lambda h: self._decode(audio, f"{WHISPER_INITIAL_PROMPT} {h[:200]}")[0]
+        redecode = lambda h: clean(self._decode(audio, f"{WHISPER_INITIAL_PROMPT} {h[:200]}")[0])
         text, source = transcript_pick.pick(heard, conf, hint, redecode, known=known)
         return text, source, heard, conf
 

@@ -397,3 +397,77 @@ def test_routing_seeing_and_acting(text, intent):
 def test_routing(text, intent):
     from cygnus.brain import core as brain_gemini
     assert brain_gemini.classify_intent(text) == intent
+
+
+# ------------------------------------------------------------------- tabs --
+
+class _Info:
+    def __init__(self, control_type, name="", parent=None):
+        self.control_type, self.name, self.parent = control_type, name, parent
+
+
+class _Elem:
+    def __init__(self, info):
+        self.element_info = info
+
+
+def _fake_desktop(monkeypatch, by_hwnd):
+    """pywinauto's Desktop, answering descendants(control_type="TabItem")
+    from {hwnd: [element infos]}."""
+    import sys
+    import types
+
+    class Win:
+        def __init__(self, hwnd):
+            self.hwnd = hwnd
+
+        def descendants(self, control_type=None):
+            return [_Elem(i) for i in by_hwnd[self.hwnd] if i.control_type == control_type]
+
+    class Desktop:
+        def __init__(self, backend=None):
+            pass
+
+        def window(self, handle=None):
+            return Win(handle)
+
+    monkeypatch.setitem(sys.modules, "pywinauto", types.SimpleNamespace(Desktop=Desktop))
+
+
+def test_a_browser_s_tabs_are_read_from_its_tab_strip_not_its_title(monkeypatch):
+    """Brave titles its one window with the tab in front ("YouTube Music"),
+    so Cygnus said one tab while three were open (owner, 2026-09-26)."""
+    window = _Info("Window", "YouTube Music - Brave")
+    strip = _Info("Tab", "", parent=_Info("Pane", parent=window))
+    page = _Info("Document", "YouTube Music", parent=_Info("Pane", parent=window))
+    _fake_desktop(monkeypatch, {7: [_Info("TabItem", "YouTube Music - Audio playing", strip),
+                                    _Info("TabItem", "GitHub", strip), _Info("TabItem", "Gmail", strip),
+                                    _Info("TabItem", "Library", _Info("List", parent=page)),   # the page's own tab
+                                    _Info("TabItem", "  ", strip)]})
+    row = {"name": "Brave", "windows": [{"hwnd": 7, "title": "YouTube Music - Brave"}]}
+    windows = ra._window_tabs(row)
+    assert windows == [{"window": "YouTube Music - Brave",
+                        "tabs": ["YouTube Music - Audio playing", "GitHub", "Gmail"]}]
+    assert ra.tabs_summary("Brave", windows) == \
+        "Brave has three tabs open: YouTube Music - Audio playing, GitHub and Gmail."
+
+
+def test_tabs_in_two_windows_are_said_window_by_window():
+    windows = [{"window": "a", "tabs": ["Gmail", "GitHub"]}, {"window": "b", "tabs": ["Docs"]}]
+    assert ra.tabs_summary("Chrome", windows) == \
+        "Chrome has three tabs open in two windows. Window 1: Gmail and GitHub; window 2: Docs."
+
+
+def test_many_tabs_are_counted_past_the_first_ten():
+    said = ra.tabs_summary("Brave", [{"window": "a", "tabs": [f"Page {i}" for i in range(13)]}])
+    assert said.startswith("Brave has 13 tabs open: Page 0, ") and said.endswith("Page 9, and three more.")
+
+
+def test_no_readable_tabs_says_so_instead_of_guessing_one():
+    said = ra.tabs_summary("Brave", [{"window": "YouTube Music - Brave", "tabs": []}])
+    assert said == ("I couldn't read any tabs in Brave, sir. Its window title shows only the tab in front: "
+                    "YouTube Music - Brave.")
+
+
+def test_a_row_with_no_window_has_no_tabs():
+    assert ra._window_tabs({"name": "x", "windows": []}) == []

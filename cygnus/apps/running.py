@@ -30,11 +30,6 @@ BUSY_S = 120            # Hermes counts as working this long after a model call 
 LEFTOVER_S = 86400      # a background program running over a day...
 LEFTOVER_CPU = 0.001    # ...that used under 0.1% of that time on the CPU
 MAX_SERVERS_SAID = 4
-# Models that read images, through the local router, tried in order for
-# "describe that window": these read a test image on 2026-09-13, when the
-# router's default (a Gemini model) was out of quota for three days.
-VISION_MODELS = [m.strip() for m in os.getenv("JARVIS_VISION_MODELS",
-                                              "cx/gpt-5.6-luna,cx/gpt-5.5,cx/gpt-5.6-terra").split(",") if m.strip()]
 TEXT_LINES = 40         # a window's text: this many last lines
 SPOKEN_LINES = 6        # of which Cygnus reads out this many
 GROUPS = ("agents", "servers", "apps", "background")
@@ -338,7 +333,8 @@ def _claude_sessions(claude_procs, now):
         matched = match_transcripts([(p["pid"], p["started"]) for p in ps], files)
         for p in ps:
             if p["pid"] in matched:
-                out[p["pid"]] = dict(claude_session(_tail(matched[p["pid"]]), now), folder=folder, matched=True)
+                out[p["pid"]] = dict(claude_session(_tail(matched[p["pid"]]), now), folder=folder, matched=True,
+                                    transcript=matched[p["pid"]])
             else:
                 out[p["pid"]] = {"folder": folder, "status": "idle", "doing": "no session activity yet",
                                  "detail": [], "matched": False}
@@ -485,6 +481,7 @@ def build_rows(procs, windows, ports, now, jobs=()):
         p = procs[root]
         titles = [t for m in pids for t in windows.get(m, [])]
         status, detail = "running", []
+        session = None                  # a Claude Code session: its folder, title and transcript
         by_cygnus = any(_is_cygnus_backend(procs[a]) for a in ancestors(root)) and not _is_cygnus_backend(p)
         if group == "agents":
             name = _agent_name(p)
@@ -493,6 +490,8 @@ def build_rows(procs, windows, ports, now, jobs=()):
                 if s.get("folder"):
                     name = f"Claude Code in {s['folder']}"
                 status, doing, detail = s["status"], s["doing"], list(s["detail"])
+                if s.get("transcript"):
+                    session = {"folder": s.get("folder"), "title": s.get("title"), "transcript": s["transcript"]}
             elif name == "Claude one-off run":
                 cmd = p["cmdline"]
                 model = next((cmd[i + 1] for i, a in enumerate(cmd[:-1]) if a == "--model"), "")
@@ -535,7 +534,8 @@ def build_rows(procs, windows, ports, now, jobs=()):
                                      for m in pids}),
                      "started": p["started"],
                      "uptime": now - p["started"], "cpu_s": cpu,
-                     "key": (group, name, " ".join(p["cmdline"][1:]).lower())})
+                     "key": (group, name, " ".join(p["cmdline"][1:]).lower()),
+                     **({"session": session} if session else {})})
 
     counts = {}
     for r in rows:
@@ -703,6 +703,82 @@ def _window_text(row, lines=TEXT_LINES):
     return ""
 
 
+MAX_TAB_WINDOWS = 8     # windows of one program whose tabs are read
+MAX_TABS_SAID = 10      # tab titles said out loud; the rest are counted
+TAB_TITLE_CHARS = 60
+
+
+def window_tabs(row):
+    return ui_call(_window_tabs, row)
+
+
+def _in_page(info, depth=40):
+    """Whether a UI Automation element sits inside a web page (a Document):
+    a page's own tabs (role=tab) are page content, not the browser's tabs."""
+    p = info.parent
+    while p is not None and depth:
+        if p.control_type == "Document":
+            return True
+        p = p.parent
+        depth -= 1
+    return False
+
+
+def _window_tabs(row):
+    """The tabs of a row's windows, window by window: [{"window": title,
+    "tabs": [tab titles]}], through Windows UI Automation's TabItems.
+
+    Tabs are not windows. A Chromium browser (Brave, Chrome, Edge) has one
+    top-level window per browser window, titled with the tab in front, so the
+    window list alone made Brave's three tabs one "YouTube Music" (owner,
+    2026-09-26). The tab strip is browser UI, not the page: a page's own tabs
+    are left out. Windows Terminal and Notepad tabs are TabItems too."""
+    if not row or not row.get("windows"):
+        return []
+    from pywinauto import Desktop
+    out = []
+    for w in row["windows"][:MAX_TAB_WINDOWS]:
+        try:
+            win = Desktop(backend="uia").window(handle=w["hwnd"])
+            names = []
+            for item in win.descendants(control_type="TabItem"):
+                info = item.element_info
+                if (info.name or "").strip() and not _in_page(info):
+                    names.append(info.name.strip())
+        except Exception:
+            continue
+        out.append({"window": w.get("title") or "", "tabs": names})
+    return out
+
+
+def tabs_summary(name, windows):
+    """What Cygnus says about a program's tabs, from window_tabs()."""
+    tabs = [t for w in windows for t in w["tabs"]]
+    if not tabs:
+        return (f"I couldn't read any tabs in {name}, sir. Its window title shows only the tab in front"
+                + (f": {windows[0]['window']}." if windows and windows[0]["window"] else "."))
+
+    def said(titles):
+        cut = [t if len(t) <= TAB_TITLE_CHARS else t[:TAB_TITLE_CHARS - 1] + "…" for t in titles]
+        return _join(cut)
+
+    n = len(tabs)
+    head = f"{name} has {_count(n)} tab{'s' if n != 1 else ''} open"
+    shown = [w for w in windows if w["tabs"]]
+    if len(shown) == 1:
+        more = n - MAX_TABS_SAID
+        return (f"{head}: {said(tabs[:MAX_TABS_SAID])}"
+                + (f", and {_count(more)} more." if more > 0 else "."))
+    parts, left = [], MAX_TABS_SAID
+    for i, w in enumerate(shown, 1):
+        part = f"window {i}: {said(w['tabs'][:left])}" if left > 0 else f"window {i}: {_count(len(w['tabs']))} tabs"
+        if 0 < left < len(w["tabs"]):
+            part += f" and {_count(len(w['tabs']) - left)} more"
+        left -= len(w["tabs"])
+        parts.append(part)
+    return f"{head} in {_count(len(shown))} windows. " + _cap("; ".join(parts)) + "."
+
+
 def capture_window(hwnd, max_side=1280, fmt="PNG"):
     """Image bytes (PNG, or JPEG for the phone's thumbnails) of a window,
     drawn by the window itself (PrintWindow), so it works when other windows
@@ -749,6 +825,19 @@ def capture_window(hwnd, max_side=1280, fmt="PNG"):
     return out.getvalue()
 
 
+def _vision_models():
+    """Models that read images, through the local router, tried in order for
+    "describe that window". JARVIS_VISION_MODELS names them; unset, the
+    router's own models are tried, then two that read a test image on
+    2026-09-13. Read per call, so a changed .env needs no fixed list here."""
+    env = os.getenv("JARVIS_VISION_MODELS", "")
+    if env.strip():
+        return [m.strip() for m in env.split(",") if m.strip()]
+    from cygnus.config import ROUTER_MODEL, ROUTER_FALLBACK_MODELS
+    return list(dict.fromkeys(m for m in [ROUTER_MODEL, *ROUTER_FALLBACK_MODELS,
+                                          "cx/gpt-5.6-luna", "cx/gpt-5.5"] if m))
+
+
 def describe_window(row, question=None):
     """What a row's window shows, in plain words, from a picture of it sent to
     a model that reads images, through the local router (allowed on request).
@@ -765,7 +854,7 @@ def describe_window(row, question=None):
     ask = question or ("Describe what this window shows and what the program seems to be doing, in two or "
                        "three short spoken sentences. No markup, no lists.")
     picture = {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(png).decode()}}
-    for model in VISION_MODELS:
+    for model in _vision_models():
         try:
             reply = client.chat.completions.create(model=model, max_tokens=300, messages=[
                 {"role": "user", "content": [{"type": "text", "text": ask}, picture]}])
@@ -1001,12 +1090,15 @@ def app_window(names, exe=None, rows=None):
     return None
 
 
+# "display notepad in the screen, JARVIS" and "Display, open code in the
+# screen." named "notepad in the screen" and nothing (2026-09-24): "in" for
+# "on", a dictation comma after the verb, and the address at the end.
 _FRONT_RE = re.compile(
     r"^(?:(?:please|hey|ok(?:ay)?|jarvis|cygnus|can\s+you|could\s+you)[,\s]+)*"
-    r"(?:bring\s+up|pull\s+up|switch\s+to|show|display|put|bring|pull)\s+(?:me\s+)?"
-    r"(?:on(?:to)?\s+(?:the\s+|my\s+)?screen\s+)?(?:the\s+|my\s+)?(?P<app>.+?)"
-    r"(?:\s+window)?(?:\s+(?:(?:on(?:to)?|to)\s+(?:the\s+|my\s+)?(?:screen|front|foreground)|forward|up))?"
-    r"(?:\s+(?:for\s+me|please))?\s*[.!?]*$", re.I)
+    r"(?:bring\s+up|pull\s+up|switch\s+to|show|display|put|bring|pull)[,\s]+(?:me\s+)?"
+    r"(?:(?:on(?:to)?|in)\s+(?:the\s+|my\s+)?screen[,\s]+)?(?:the\s+|my\s+)?(?P<app>.+?)"
+    r"(?:\s+window)?(?:\s+(?:(?:on(?:to)?|in|to)\s+(?:the\s+|my\s+)?(?:screen|front|foreground)|forward|up))?"
+    r"(?:[,\s]+(?:for\s+me|please|jarvis|cygnus|sir))*[,\s]*[.!?]*$", re.I)
 
 
 def app_phrase(text):

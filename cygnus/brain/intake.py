@@ -94,6 +94,29 @@ def load_corpus(path: str = CORPUS_PATH) -> dict:
         return dict(DEFAULT_CORPUS)
 
 
+_GENERIC_NAME_WORDS = {"music", "desktop", "app", "control", "panel"}
+
+
+def with_names(corpus: dict, names) -> dict:
+    """The corpus with the user's own app and site names added to its apps.
+
+    The corpus file is hand-kept and went stale: it had no claude, hermes,
+    docker or github, so a misheard "open the clock" was offered slack and
+    rock (2026-09-26). The registries are what the user actually opens.
+    """
+    have = {a.lower() for a in corpus.get("apps", [])}
+    # "youtube music" as a name made "stop the music" a did-you-mean for it:
+    # a generic word adds nothing to a name, so it is added without one.
+    heads = {" ".join(w for w in n.lower().split() if w not in _GENERIC_NAME_WORDS)
+             for n in names if n}
+    extra = sorted({h for h in heads if h} - have)
+    if not extra:
+        return corpus
+    merged = dict(corpus)
+    merged["apps"] = list(corpus.get("apps", [])) + extra
+    return merged
+
+
 # ---------------------------------------------------------------------------
 # Text normalization (grammar / Taglish resilient)
 # ---------------------------------------------------------------------------

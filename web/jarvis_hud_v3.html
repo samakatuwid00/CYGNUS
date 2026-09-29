@@ -1197,14 +1197,27 @@
   var WAKE_WORD = '[cs][iy]gn[aeiu][sz]{1,2}e?';
   var WAKE_RE = new RegExp('(^|[\\s,])(hey)?' + WAKE_WORD + '(?=$|[\\s.,!?;:])', 'i');
   var TARGET_RATE   = 16000;   // what we ship to Whisper
-  var PREROLL_MS    = 900;     // audio kept before speech onset so the wake word is never clipped
-  var CMD_HANG_MS   = 1000;    // silence that ends a command clip (sentences breathe; 800 clipped mid-thought)
+  // Audio kept from before a wake. A wake reaches the HUD up to ~1.5 s after
+  // "Cygnus" was said (the server spotter decodes 2.5 s windows once a second),
+  // and whatever was said in between used to be lost: capturing 550 ms late
+  // made 61% of the owner's words wrong (2026-09-26). The clip now starts
+  // before the wake and the server keeps what follows the wake word.
+  var PREROLL_MS    = 3000;
+  // Silence that ends a command clip. Sentences breathe: 800 clipped mid-thought,
+  // and at 1000 "open spotify … play a song" (a 1.1 s pause) came through as
+  // "Open Spotify." with the rest dropped (2026-09-26).
+  var CMD_HANG_MS   = 1500;
   // R3b: when the Web Speech interim text has stopped changing, the sentence is
   // finished and the rest of CMD_HANG_MS is dead air. Ending at CMD_HANG_MIN_MS
   // in that case saves ~400ms per turn. Falls back to the full CMD_HANG_MS
   // whenever there is no interim signal (no Web Speech, or nothing recognized),
   // so behaviour is unchanged on browsers without the recognizer.
-  var CMD_HANG_MIN_MS = 600;   // earliest end, only with a stable interim
+  var CMD_HANG_MIN_MS = 900;   // earliest end, only with a stable interim (a pause is stable too)
+  var SEED_CMD_MS   = 1000;    // pre-roll speech longer than a bare "hey Cygnus" (owner: at most 768 ms)...
+  // ...and this long quiet since: the command was in it. 3 s, not 2: the owner
+  // says "Hey Cygnus", waits for the tick and speaks up to 2.5 s later, and a
+  // long "Hey Cygnus" can pass for a command (2026-09-26).
+  var SEED_WAIT_MS  = 3000;
   var STABLE_MS       = 300;   // interim text unchanged this long = settled
   var CMD_MAX_MS    = 12000;   // room for a long command rather than truncating it
   var CMD_WAIT_MS   = 7000;    // no speech after wake word -> back to idle
@@ -2352,6 +2365,17 @@
       return;
     }
 
+    // "Go full HUD", "mini orb", "minimize yourself" (window_view.py): sent
+    // after the reply, so the window switches as Cygnus says it does. A
+    // browser tab or the phone has no views to switch.
+    if (m.type === 'view') {
+      if (!IS_DESKTOP || !window.jarvisDesktop) return;
+      if (m.view === 'minimize') jarvisDesktop.minimize();
+      else if (m.view === 'fullscreen') { if (jarvisDesktop.fullScreen) jarvisDesktop.fullScreen(true); else jarvisDesktop.setMode('expanded'); }
+      else if (m.view === 'sticky' || m.view === 'expanded' || m.view === 'mini') jarvisDesktop.setMode(m.view);
+      return;
+    }
+
     if (m.type === 'cleared') {
       pendingReply = false;
       notice(m.text || 'CONTEXT CLEARED');
@@ -2362,6 +2386,12 @@
     // Server-synthesized session cue (wake / close). Play it, but preserve the
     // active capture while the clip plays so an opening cue doesn't drop the
     // just-opened listening window when it ends.
+    // A pre-rolled clip held only the wake word: the command is still to come.
+    if (m.type === 'relisten') {
+      if (mode === 'busy') { beginCapture('command', true); playTick(880, TICK_MS, 0.18); }
+      return;
+    }
+
     if (m.type === 'cue') {
       if (m.audio) { speak(m.audio, mode === 'command' || mode === 'off'); }
       else if (m.text) { notice(m.text); }
@@ -3238,8 +3268,8 @@
         if (wakeWordIn(txt)) {
           console.log('[wake] detected: ' + txt);
           wordsHeard = wakeWordIndex(heardWords);
-          beginCapture('command', false);
-          cue('What is it, sir?');
+          beginCapture('command', true);     // pre-roll + tick: see wakeOpen()
+          playTick(880, TICK_MS, 0.18);
           return;
         }
       }
@@ -3306,6 +3336,8 @@
   var micOk = false;            // false -> nothing to listen with; park in 'nomic'
   var ring = [], ringLen = 0, ringCap = 0;
   var cap = null, capLen = 0, capHeard = false, capWaited = 0;
+  var capSeedLen = 0;           // samples of pre-roll at the head of this clip
+  var capSeedSpeechMs = 0;      // ...and how much of it was speech
   var noiseFloor = 0.004, speechMs = 0, silenceMs = 0;
   var busySince = 0, lastLevel = 0;
   // User may end the voice session by saying "...jarvis" at the end of a command.
@@ -3394,7 +3426,17 @@
     // The WakeListener already confirmed the wake word, so every capture here is a
     // command. capHeard starts false; the VAD (below) flips it once real speech lands.
     capHeard = false;
-    if (seed) { for (var i = 0; i < ring.length; i++) { cap.push(ring[i]); capLen += ring[i].length; } }
+    capSeedSpeechMs = 0;
+    if (seed) {
+      var gate = Math.max(noiseFloor * SPEECH_MARGIN, ABS_MIN_RMS);
+      for (var i = 0; i < ring.length; i++) {
+        cap.push(ring[i]); capLen += ring[i].length;
+        var b = ring[i], s2 = 0;
+        for (var k = 0; k < b.length; k++) s2 += b[k] * b[k];
+        if (Math.sqrt(s2 / b.length) > gate) capSeedSpeechMs += b.length / srcRate * 1000;
+      }
+    }
+    capSeedLen = capLen;
     ring = []; ringLen = 0;
     capWordsBefore = wordsHeard;       // earlier commands are not this one
     setState('listening', 'LISTENING…');
@@ -3420,13 +3462,17 @@
       await startMic();
       if (!micOk) { wakeAck('could not start the mic', 'nomic'); return; }   // startMic said why
     }
-    beginCapture('command', false);
-    cue('What is it, sir?');
+    // Pre-roll: the wake word and anything said right after it are already in
+    // the ring. A tick, not "What is it, sir?": the spoken cue took 1.1 s, the
+    // mic was muted while it played, and a command said in one breath with the
+    // wake word lost its middle (no key word survived that, 2026-09-26).
+    beginCapture('command', true);
+    playTick(880, TICK_MS, 0.18);
   }
 
   function endCapture() {
-    var kind = mode, blocks = cap, len = capLen;
-    cap = null;
+    var kind = mode, blocks = cap, len = capLen, seeded = capSeedLen > 0;
+    cap = null; capSeedLen = 0;
     var ms = (len / srcRate) * 1000;
     if (!capHeard || ms < MIN_CLIP_MS) { goIdle(); return; }
 
@@ -3439,7 +3485,7 @@
     // The browser's own live transcript rides along: the server compares it
     // with Whisper's and keeps the better one (Whisper alone misheard
     // commands the live text had right).
-    if (!send({ type: 'audio', data: data, hint: interimText })) goIdle();
+    if (!send({ type: 'audio', data: data, hint: interimText, preroll: seeded })) goIdle();
     // The hint belongs to this clip only: if the next command's live text never
     // arrives, this one must not be sent again as its hint. (The provisional
     // bubble stays; commitInterim swaps in the final text.)
@@ -3450,12 +3496,14 @@
   // decision (is this speech? is the utterance over?) belongs to vadTick().
   function onAudio(e) {
     var input = e.inputBuffer.getChannelData(0);
-    if (mode === 'busy' || mode === 'speaking' || mode === 'nomic' || mode === 'boot') {
+    if (mode === 'speaking' || mode === 'nomic' || mode === 'boot') {
       ring = []; ringLen = 0;            // never let JARVIS hear itself
       return;
     }
     var block = new Float32Array(input); // copy, the buffer is reused
-    if (mode === 'idle') { pushRing(block); return; }
+    // 'busy' keeps a ring too (nothing of Cygnus's plays then): a 'relisten'
+    // seeds its capture with what the owner said while the clip was out.
+    if (mode === 'idle' || mode === 'busy') { pushRing(block); return; }
     if (cap) { cap.push(block); capLen += block.length; }
   }
 
@@ -3501,12 +3549,20 @@
     if (voice) { capHeard = true; capWaited = 0; }
     else if (!capHeard) { capWaited += VAD_TICK_MS; }
 
-    var ms = (capLen / srcRate) * 1000;
+    var ms = ((capLen - capSeedLen) / srcRate) * 1000;   // the pre-roll is not the command's time
     // R3b: a settled interim means the sentence is done — no need to sit out the
     // remaining silence. Without that signal this is exactly the old behaviour.
     var hang = interimStable() ? CMD_HANG_MIN_MS : CMD_HANG_MS;
     var max = CMD_MAX_MS;
     if ((capHeard && silenceMs >= hang) || ms >= max) { endCapture(); return; }
+    // "Cygnus, open spotify" said quickly is over before the wake reaches us:
+    // the whole command is in the pre-roll and no speech follows. More speech
+    // there than a bare wake word, and quiet since the last of it: send it.
+    // (A bare wake that slips through comes back as 'relisten', and what was
+    // said meanwhile is in the busy ring.)
+    if (!capHeard && capSeedSpeechMs >= SEED_CMD_MS && silenceMs >= SEED_WAIT_MS) {
+      capHeard = true; endCapture(); return;
+    }
     if (!capHeard && capWaited >= ((mode === 'command') ? CMD_WAIT_MS : 1200)) goIdle();
   }
 

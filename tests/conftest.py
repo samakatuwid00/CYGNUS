@@ -39,6 +39,11 @@ def offline_probe(monkeypatch, tmp_path_factory):
     from cygnus.memory import preferences
     dialogue_state.reset()
     monkeypatch.setattr(preferences, "_PATH", str(tmp_path_factory.mktemp("prefs") / "p.json"))
+    # Never the owner's real voiceprint: with one enrolled, every synthetic
+    # "Hey Cygnus" in a test is a stranger's voice.
+    from cygnus.voice import voiceprint
+    monkeypatch.setattr(voiceprint, "VOICEPRINT", tmp_path_factory.mktemp("voiceprint") / "voiceprint.json")
+    monkeypatch.setattr(voiceprint, "_enrolled", None)
     # The semantic router's model is ~0.5 GB; tests that need it fake it.
     from cygnus.brain import semantic_route
     monkeypatch.setattr(semantic_route, "MODE", "off")
@@ -64,3 +69,15 @@ def offline_probe(monkeypatch, tmp_path_factory):
     monkeypatch.setattr(audit, "AUDIT_PATH", str(audit_dir / "audit.jsonl"))
     from cygnus.brain import intent_router
     monkeypatch.setattr(intent_router, "AUDIT_LOG", str(audit_dir / "audit.jsonl"))
+    # The task restater is one cloud-model call on a delegation's path; tests
+    # get the words as spoken, and fake the model when they test the brief.
+    from cygnus.brain import task_brief
+    monkeypatch.setattr(task_brief, "_ask", lambda prompt: (None, "test: no model"))
+    # The Cua driver acts on real windows; no test may reach it. Tests of it
+    # fake the driver's answers (tests/test_cua.py).
+    from cygnus.apps import cua
+    monkeypatch.setattr(cua, "available", lambda: False)
+    monkeypatch.setattr(cua, "_run", lambda *a, **k: (_ for _ in ()).throw(cua.CuaError("test: no driver")))
+    # Nor may a test read the screen; OCR tests fake it (tests/test_screen_text.py).
+    from cygnus.apps import screen_text
+    monkeypatch.setattr(screen_text, "available", lambda: False)

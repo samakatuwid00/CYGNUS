@@ -19,8 +19,8 @@ def hermes(monkeypatch, tmp_path):
     monkeypatch.setitem(tools._PENDING_DESTRUCTIVE, "autonomous", None)
     from cygnus.brain import context_assembler
     calls = {"brief": [], "ran": []}
-    monkeypatch.setattr(context_assembler, "assemble_brief",
-                        lambda task, delegate=None: calls["brief"].append(task) or "BRIEF\n")
+    monkeypatch.setattr(context_assembler, "compose_prompt",
+                        lambda task, delegate=None, raw_task=None: calls["brief"].append(task) or "BRIEF\n" + task)
     monkeypatch.setattr(tools, "_run_hermes_sync",
                         lambda task, *a, **k: calls["ran"].append(task) or "Deleted it.")
     return calls
@@ -48,8 +48,8 @@ def test_a_background_confirm_answers_at_once(hermes):
     import threading, time
     gate = threading.Event()
     from cygnus.brain import context_assembler
-    slow = context_assembler.assemble_brief
-    context_assembler.assemble_brief = lambda task, delegate=None: (gate.wait(5), slow(task))[1]
+    slow = context_assembler.compose_prompt
+    context_assembler.compose_prompt = lambda task, delegate=None, raw_task=None: (gate.wait(5), slow(task))[1]
     try:
         tools.delegate_to_hermes_grounded("delete the file C:/tmp/old.txt")
         got = []
@@ -64,7 +64,7 @@ def test_a_background_confirm_answers_at_once(hermes):
             time.sleep(.02)
         assert got == ["Deleted it."] and jobs.recent(5)[0]["state"] == "done"
     finally:
-        context_assembler.assemble_brief = slow
+        context_assembler.compose_prompt = slow
 
 
 def test_no_releases_it_without_building_anything(hermes):

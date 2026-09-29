@@ -25,6 +25,20 @@ ROUTER_FALLBACK_MODELS = [m.strip() for m in
     os.getenv("ROUTER_FALLBACK_MODELS",
               "ag/gemini-3.5-flash-low,ag/gemini-3-flash,antigrav,cx/gpt-5.6-sol").split(",") if m.strip()]
 
+# --- Google AI (Gemini API, Cygnus's own key) --------------------------------
+# A key of Cygnus's own, separate from GEMINI_API_KEY (reserved for portfolio
+# work). The agent loop calls Google's OpenAI-compatible endpoint directly,
+# not through 9router. Empty: never used. Models are tried in order; measured
+# 2026-09-26 with a tool call: gemini-3.6-flash 2.8 s, gemini-3-flash-preview
+# 1.7 s, gemini-2.5-flash 1.6 s, all calling the tool right. The free tier
+# allows 20 requests a day per model and a turn makes 2-4, so the more models
+# the more turns a day (2026-09-27: two models spent by morning). 3.8 and 3.7
+# go late: overloaded (503) or 4-9 s for a one-word reply that morning.
+GOOGLE_AI_API_KEY = os.getenv("GOOGLE_AI_API_KEY", "").strip()
+GOOGLE_AI_BASE_URL = os.getenv("GOOGLE_AI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
+GOOGLE_AI_MODELS = [m.strip() for m in
+    os.getenv("GOOGLE_AI_MODELS", "gemini-3.6-flash,gemini-3-flash-preview,gemini-3.5-flash,gemini-3.1-flash-lite,gemini-3.8-flash,gemini-3.7-flash,gemini-2.5-flash").split(",") if m.strip()]
+
 # --- Groq (OpenAI-compatible free tier) -------------------------------------
 # Lets JARVIS use a free Groq model so the Gemini quota isn't burned by JARVIS.
 # Set JARVIS_USE_GROQ=true in .env to enable. The key is read from the

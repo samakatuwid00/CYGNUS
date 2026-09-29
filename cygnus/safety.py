@@ -153,8 +153,22 @@ def assess_app_step(slug: str, step: dict) -> Decision:
         if not safe:
             return Decision("confirm", "Hermes is an agent and the request may change things",
                             f"Send this to Hermes: \u201c{text[:160]}\u201d? It may change files, sir.")
+    # Opening or clicking by name (the Cua driver): a click on "Delete",
+    # "Send" or "Pay" changes something, whichever app it is in.
+    if do == "open_item" or step.get("op") == "open_item":
+        name = str(step.get("name") or args.get("name") or "")
+        try:
+            from cygnus.apps.commands import consequential
+            risky = consequential(name)
+        except Exception:
+            risky = True
+        if risky:
+            return Decision("confirm", "the click may change or send something",
+                            f"Click “{name[:80]}”, sir? That may change or send something.")
+        return ACT
     if _is_terminal(slug) or _is_terminal(str(step.get("app") or "")):
-        if do not in ("new_session", "open_session") and not do.endswith((".open", ":open", "focus")):
+        # Opening a tab by name (the Cua driver's open_item) types nothing.
+        if do not in ("new_session", "open_session", "open_item") and not do.endswith((".open", ":open", "focus")):
             return Decision("confirm", "typing or pressing keys in a terminal runs commands",
                             f"Do \u201c{step.get('label') or do}\u201d in the terminal, sir? That can run commands.")
     return ACT

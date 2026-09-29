@@ -60,6 +60,7 @@ if (isDev) app.setPath('userData', app.getPath('userData') + ' (dev)')
 let win = null
 let tray = null
 let mode = 'sticky'
+let fullScreen = false     // the full HUD over the whole display, taskbar too
 let stickyBounds = null
 let dragOrigin = null
 let hotkeyOk = false
@@ -366,6 +367,11 @@ function createWindow () {
   })
   win.setAlwaysOnTop(true, 'floating')
   guardWindow()
+  // Escape leaves full screen, as it does in any app. Not prevented: the
+  // page still gets the key.
+  win.webContents.on('before-input-event', (_e, input) => {
+    if (fullScreen && input.type === 'keyDown' && input.key === 'Escape') setFullScreenView(false)
+  })
   // A reload rebuilds the page laid out for the default mode; tell it again.
   win.webContents.on('did-finish-load', () => win.webContents.send('desk:mode', mode))
   // Closing (Alt+F4) shrinks to the orb, as Sticky Brain's close shrinks to its
@@ -399,6 +405,7 @@ function setMode (next) {
   if (!win || win.isDestroyed() || !MODES.includes(next)) return
   if (mode === 'sticky') stickyBounds = win.getBounds()
   mode = next
+  fullScreen = false
   win.webContents.send('desk:mode', mode)
   const { workArea } = screen.getDisplayMatching(stickyBounds)
   if (mode === 'mini') {
@@ -428,6 +435,8 @@ function setMode (next) {
 
 function showMode (next, focus = true) {
   setMode(next)
+  if (win.isMinimized()) win.restore()        // a minimized full HUD, asked back
+
   if (focus) { win.show(); win.focus() } else if (!win.isVisible()) win.showInactive()
 }
 
@@ -439,9 +448,34 @@ function onHotkey () {
 
 ipcMain.on('desk:setMode', (_e, next) => showMode(next, next !== 'mini'))
 
-// Native minimize, only meaningful in expanded mode where the window has a
-// taskbar entry to fall back to (see setSkipTaskbar in setMode).
-ipcMain.on('desk:minimize', () => { if (win && !win.isDestroyed()) win.minimize() })
+// "Full screen yourself": the full HUD over the whole display, taskbar
+// included. The display's bounds, not setFullScreen: a frameless transparent
+// window is not reliably fullscreened by Windows, and every other view is
+// placed with setBounds already. 'screen-saver' is the level that sits above
+// the taskbar. Escape, or any view asked for, leaves it.
+function setFullScreenView (on) {
+  if (!win || win.isDestroyed()) return
+  if (mode !== 'expanded') setMode('expanded')
+  fullScreen = !!on
+  const display = screen.getDisplayMatching(win.getBounds())
+  win.setBounds(fullScreen ? display.bounds : display.workArea)
+  win.setAlwaysOnTop(fullScreen, 'screen-saver')
+  if (win.isMinimized()) win.restore()
+  win.show(); win.focus()
+  buildTrayMenu()
+}
+
+ipcMain.on('desk:fullScreen', (_e, on) => setFullScreenView(on !== false))
+
+// Native minimize in expanded mode, where the window has a taskbar entry to
+// fall back to (see setSkipTaskbar in setMode). The panel and the orb have
+// none, so "minimize yourself" said there hides to the tray instead; the
+// wake word, the hotkey and the tray bring it back (desk:surface).
+ipcMain.on('desk:minimize', () => {
+  if (!win || win.isDestroyed()) return
+  if (mode === 'expanded') win.minimize()
+  else win.hide()
+})
 
 // A wake word heard while JARVIS is an orb or hidden brings the panel back
 // without taking focus from whatever the owner is typing in.
@@ -502,7 +536,8 @@ function buildTrayMenu () {
     ...(hotkeyOk ? [] : [{ label: 'Ctrl+Alt+J is taken by another app', enabled: false }]),
     { type: 'separator' },
     { label: 'Panel', type: 'radio', checked: mode === 'sticky', click: () => showMode('sticky') },
-    { label: 'Full HUD', type: 'radio', checked: mode === 'expanded', click: () => showMode('expanded') },
+    { label: 'Full HUD', type: 'radio', checked: mode === 'expanded' && !fullScreen, click: () => showMode('expanded') },
+    { label: 'Full screen', type: 'radio', checked: fullScreen, click: () => setFullScreenView(true) },
     { label: 'Mini orb', type: 'radio', checked: mode === 'mini', click: () => showMode('mini', false) },
     { label: 'Hide', click: () => win.hide() },
     { type: 'separator' },

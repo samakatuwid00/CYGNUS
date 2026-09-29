@@ -26,13 +26,25 @@ than you would hope, it says so.
     raises, one `.wav` of your voice can be left behind in `%TEMP%`.
 - **The wake listener writes down what it hears**, as text, to
   `data/logs/wake_debug.log` (`cygnus/voice/wake.py:374`), on by default.
-  With the keyword spotter it logs `''` unless the wake word hits. If the
+  With the keyword spotter it logs only what the spotter hears (a wake, or
+  one it ignored), not the empty windows. If the
   spotter fails to load, Whisper transcribes each window instead and **every
   2.5 seconds of speech near the mic is written to that file**. It stays on
   your disk, it rotates at 1 MB with one backup - and it is still a running
   transcript of your room. Turn it off with `JARVIS_WAKE_DEBUG=0`.
 - `scripts/voice_testset_record.py` records permanent `.wav` files of your
-  voice under `eval/voice_testset/`. It only runs when you run it.
+  voice under `eval/voice_testset/` (and, with `--set wake`, under
+  `eval/voice_wakeset/`, where the music clips also keep a recording of what
+  your speakers played). It only runs when you run it. Both folders are
+  git-ignored.
+- **Your voiceprint.** `scripts/voiceprint_enroll.py` turns your enrollment
+  recordings into a voiceprint: a list of 192 numbers describing your voice,
+  not audio, in `data/voiceprint.json` (git-ignored, never uploaded). With it,
+  the wake listener compares each "Cygnus" it hears with it and ignores other
+  voices (`cygnus/voice/voiceprint.py`). It is biometric data about you: delete
+  it with `python scripts/voiceprint_enroll.py --delete`, or turn the check off
+  with `JARVIS_VOICEPRINT=off`. It is not security: a recording of your voice
+  passes it.
 
 ## What leaves your machine
 

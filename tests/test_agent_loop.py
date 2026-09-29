@@ -199,6 +199,23 @@ def test_the_app_in_play_is_remembered_and_told_to_the_model(monkeypatch):
     assert "The app in play from the last turns: chrome." in al._system({"client": "phone"})
 
 
+def test_list_tabs_reads_the_app_s_tabs(monkeypatch):
+    """"How many tabs are open on Brave?" was answered from the window title,
+    which names only the tab in front (2026-09-26)."""
+    from cygnus.apps import commands as app_commands
+    from cygnus.apps import running as running_apps
+    monkeypatch.setattr(app_commands, "targets", lambda rows=None, apps=None: [
+        {"slug": "brave", "name": "Brave", "row": "5", "driver": "cua", "kind": "window", "doing": ""}])
+    monkeypatch.setattr(running_apps, "inventory", lambda use_cache=True: [
+        {"id": "5", "name": "Brave", "group": "apps", "windows": [{"hwnd": 5, "title": "YouTube Music - Brave"}]}])
+    monkeypatch.setattr(running_apps, "window_tabs", lambda row: [
+        {"window": "YouTube Music - Brave", "tabs": ["YouTube Music", "GitHub", "Gmail"]}])
+    out = al._run_tool("list_tabs", {"app": "brave"}, {"client": "c"})
+    assert out == "Brave has three tabs open: YouTube Music, GitHub and Gmail."
+    assert "list_tabs" in {t["function"]["name"] for t in al.TOOLS}
+    assert al.report([("list_tabs", {"app": "brave"}, out)]) == "I looked at Brave's tabs."
+
+
 def test_an_ability_marked_ask_is_asked_not_run(monkeypatch):
     from cygnus.apps import commands as app_commands
     from cygnus.brain import dialogue_state

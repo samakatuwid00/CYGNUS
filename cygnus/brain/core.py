@@ -64,7 +64,7 @@ import datetime
 
 # Intents that can NEVER need a tool. Used by both the fast path (P1) and the
 # tool-gating in _think_router (P3): a "simple" intent skips the tool schema.
-SIMPLE_INTENTS = {"math", "greeting", "thanks", "time", "help",
+SIMPLE_INTENTS = {"math", "greeting", "thanks", "time", "help", "view",
                   "clarify_play", "clarify_search", "clarify_open"}
 
 # Bare "open" names neither an app nor a site. Asked verbatim so the follow-up
@@ -396,6 +396,7 @@ from cygnus.brain.intents import (
     parse_open_site,
     parse_report_topic,
     play_favorites,
+    requested_view,
     SPOTIFY_ROUTE_BUDGET,
 )
 
@@ -681,6 +682,9 @@ def fast_path_answer(text: str):
     if intent == "help":
         return ("I can answer questions, do quick math, tell you the time, "
                 "search the web, write reports, and more, sir."), intent
+    if intent == "view":
+        from cygnus.brain import window_view
+        return window_view.answer(requested_view(t)), intent
     if intent == "clarify_play":
         return "Which song, sir? Name a track or an artist.", intent
     if intent == "clarify_search":
@@ -1259,7 +1263,9 @@ class JarvisBrain:
                 from cygnus import tools as _td
                 if not _rs.active() and not _td._PENDING_RULE_SLOT:
                     from cygnus import safety as _sf
-                    _declined = _sf.decline_pending() or _td.decline_pending()
+                    from cygnus.apps import claude_prompt as _cp
+                    # a prompt waiting to go to Claude Code first: its window is seconds long
+                    _declined = _cp.decline_pending() or _sf.decline_pending() or _td.decline_pending()
                     if _declined is not None:
                         self.conversation.append({"role": "assistant", "content": _declined})
                         self.last_backend = "instant"
@@ -1453,6 +1459,8 @@ class JarvisBrain:
             self.conversation.append({"role": "assistant", "content": ans})
             self.last_backend = "instant"
             self.last_stats = {"backend": "instant", "intent": intent}
+            if intent == "view":                    # the server moves the window
+                self.last_stats["view"] = requested_view(user_input)
             return ans
         if _check_in:
             reply = _check_in
@@ -1901,6 +1909,19 @@ class JarvisBrain:
                 return res
             except Exception as e:
                 print(f"[JARVIS] stop failed ({e}); falling back to cloud brain...")
+        # VOLUME: the computer's master volume, local and instant (apps/volume.py).
+        if intent == "volume":
+            try:
+                from cygnus.brain.intents import parse_volume
+                from cygnus import tools as _tools_mod
+                _tools_mod.set_progress_cb(_progress_local.cb)
+                res = execute_tool("set_volume", parse_volume(user_input), user_input)
+                self.conversation.append({"role": "assistant", "content": res})
+                self.last_backend = "instant"
+                self.last_stats = {"backend": "instant", "intent": "volume"}
+                return res
+            except Exception as e:
+                print(f"[JARVIS] volume failed ({e}); falling back to cloud brain...")
 
         return self._answer_with_models(user_input)
 

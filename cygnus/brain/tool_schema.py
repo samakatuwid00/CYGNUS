@@ -203,6 +203,15 @@ TOOL_DECLARATIONS = [
         "Stop the music that play_music started.",
         {"type": "object", "properties": {}}),
 
+    _make_tool("set_volume",
+        "Change or read the computer's own (master) speaker volume. Use for any "
+        "request to turn the volume up or down, set it to a level, make it louder "
+        "or quieter, mute, unmute, or say what the volume is.",
+        {"type": "object", "properties": {
+            "action": {"type": "STRING", "description": "set | up | down | mute | unmute | get"},
+            "percent": {"type": "INTEGER", "description": "For set: the level, 0-100. For up/down: how much to change it (default 10)."}
+        }, "required": ["action"]}),
+
     _make_tool("get_credentials",
         "Look up the saved username and password for a project from the credential "
         "notes in the user's vault. Use it whenever a login for one of their own "

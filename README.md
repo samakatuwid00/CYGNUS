@@ -73,6 +73,11 @@ npm run unpack-electron    # only if node_modules/electron/dist has no electron.
 npm run dev
 ```
 
+Cygnus switches between them when asked: "go full HUD", "full screen
+yourself" (the full HUD over the taskbar too; Escape leaves it), "mini orb",
+"back to the panel", "minimize yourself" (the full HUD minimizes to the
+taskbar, the panel and the orb hide to the tray).
+
 If a backend is already running, the app attaches to it; otherwise it starts
 one from `.venv`, restarts it if it crashes, and stops it on quit. Do not run
 `scripts/watch_and_restart.py` while the app owns the backend: both would

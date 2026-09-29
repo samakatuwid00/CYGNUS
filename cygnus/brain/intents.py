@@ -9,6 +9,8 @@ import datetime
 import os
 import re
 
+from cygnus.brain import window_view
+
 # parse_add_site lives in brain/core, which imports this module: importing it at
 # module level only worked when core was imported first, so `import
 # cygnus.brain.intents` on its own raised ImportError. Imported at the call site.
@@ -86,8 +88,10 @@ _APP_WORDS = (r"ffmpeg|blender|vlc|photoshop|premiere|obs|gimp|audacity|"
               r"spotify|discord|telegram|libreoffice|excel|word|powerpoint|"
               r"7z|winrar")
 _OPEN_SITE_RE = re.compile(
-    r"^(?:please\s+|(?:jarvis|cygnus)[,!]?\s+)*"
-    r"(?P<verb>visit|go\s+to|take\s+me\s+to|open|launch)\s+"
+    # "Can you visit the Harley HD movies on Chrome?" is a visit too; without
+    # the "can you" lead it went to app_reference for its browser (2026-09-24).
+    r"^(?:please\s+|(?:jarvis|cygnus)[,!]?\s+|(?:can|could|would|will)\s+you\s+)*"
+    r"(?P<verb>visit|go\s+to|take\s+me\s+to|open|launch|try)\s+"
     r"(?:the\s+|my\s+)?(?P<target>.+?)"
     r"(?:\s+(?:on|in|with)\s+(?:the\s+)?(?:chrome|brave|edge|firefox|browser)"
     r"(?:\s+browser)?)?\s*[.!?]*$", re.I)
@@ -98,22 +102,52 @@ _SITE_LIKE_RE = re.compile(
 _CHAINED_RE = re.compile(r"\b(?:and|then|also)\b|[,;]", re.I)
 
 
+# "word" is also a word. "In one word, what colour is the sky?" and "files
+# that reference the word 'delegate'" went to app_reference as Microsoft Word
+# (mined 2026-09-24). Bare "word" names the app only as what is opened, used
+# or written in; "microsoft word" / "ms word" always does.
+_APP_WORDS_BUT_WORD = "|".join(w for w in _APP_WORDS.split("|") if w != "word")
+_WORD_THE_APP = re.compile(
+    r"\b(?:microsoft|ms)\s+word\b"
+    r"|\b(?:open|launch|start|close|use|in|on|into|with)\s+(?:the\s+|my\s+|a\s+)?word\b", re.I)
+
+
+def _names_an_app(t: str) -> bool:
+    return bool(re.search(r"\b(?:" + _APP_WORDS_BUT_WORD + r")\b", t, re.I) or _WORD_THE_APP.search(t))
+
+
 def parse_open_site(text: str):
     """Site target of a visit/open request, or None when it is not site-like."""
     m = _OPEN_SITE_RE.match((text or "").strip())
     if not m:
         return None
     target = m.group("target").strip()
+    # "Can you go to the link, iRIMSV.net?": the address is what is visited
+    # (owner's review, 2026-09-25). It went to the page reader.
+    named = re.sub(r"^(?:the\s+)?(?:link|url|address|web\s*site|site|page)\b[,:]?\s*", "", target, flags=re.I)
+    if named != target and _SITE_LIKE_RE.match(named):
+        return named
     if _SITE_LIKE_RE.match(target):
         return target
+    # "try facebook.com" is a visit (owner's review, 2026-09-25); "try again"
+    # and "try it" are not, so "try" takes an address and nothing else.
+    if m.group("verb").lower() == "try":
+        return None
     # "visit HD movies on Brave": a visit / go-to / take-me-to with a bare
     # multi-word name is still a site request, even with no dot. open_site
     # answers honestly when nothing matches; Hermes would burn 300s on it.
     # "open X" stays app-first, and chained asks or app names are left alone.
     n_words = len(target.split())
-    if not m.group("verb").lower().startswith("open") and \
-            not m.group("verb").lower().startswith("launch") and \
-            2 <= n_words <= 5 and not _CHAINED_RE.search(target) and \
+    verb = m.group("verb").lower()
+    # "visit" only ever means a site, so one word is enough ("visit
+    # hollyhdmovies in chrome", 2026-09-24). "go to" needs two: "go to sleep".
+    fewest = 1 if verb == "visit" else 2
+    # "can you visit websites?" asks what Cygnus can do; it names no site.
+    if re.fullmatch(r"(?:web\s*)?(?:sites?|pages?|links?|urls?)|websites?|internet|web|online|places",
+                    target, re.I):
+        return None
+    if not verb.startswith("open") and not verb.startswith("launch") and \
+            fewest <= n_words <= 5 and not _CHAINED_RE.search(target) and \
             not re.search(r"\b(?:" + _APP_WORDS + r")\b", target, re.I):
         return target
     return None
@@ -249,8 +283,32 @@ def _referent_object(text, verb_pattern):
 # the user wrote ("play music brave") may well be what they meant.
 NO_RULE_GUESS_INTENTS = {
     "math", "greeting", "thanks", "time", "help", "stop", "job_status", "job_stop",
-    "recall_memory", "remember", "list_sites", "running_stop",
+    "recall_memory", "remember", "list_sites", "running_stop", "view", "volume",
     "clarify_play", "clarify_search", "clarify_open"}
+
+
+def requested_view(text: str):
+    """The window view a "view" turn asks for (window_view.parse), read from
+    the same cleaned-up words classify_intent reads."""
+    if _is_blank(text):
+        return None
+    return window_view.parse(_destaccato(_outer(_scrub(_strip_correction(text))).strip().lower()))
+
+
+def _parse_volume_normalized(t: str):
+    if _names_an_app(t) or _is_chained_command(t):
+        return None
+    from cygnus.apps import volume
+    return volume.parse(t)
+
+
+def parse_volume(text: str):
+    """The set_volume arguments for a spoken volume command, read from the same
+    normalized text classify_intent saw, or None."""
+    if _is_blank(text):
+        return None
+    return _parse_volume_normalized(
+        _destaccato(_outer(_scrub(_strip_correction(text))).strip().lower()))
 
 
 def classify_intent(text: str) -> str:
@@ -266,6 +324,12 @@ def classify_intent(text: str) -> str:
     stripped = t.rstrip("= ").strip()
     if re.fullmatch(r"[\d\s\.\+\-\*/\(\)\%\^]+", stripped) and re.search(r"\d", stripped):
         return "math"
+    # view: Cygnus's own window ("go full HUD", "mini orb", "minimize
+    # yourself"), read by window_view. Ahead of the greeting ("hey, go mini"
+    # is short and says hey) and of the open gates ("open the panel" is a
+    # view of Cygnus, not an app called "the panel").
+    if window_view.parse(t):
+        return "view"
     # greeting: only when the utterance is ESSENTIALLY just a greeting — short
     # and no action verb/filename present. "create hello.txt" must NOT land here.
     if len(t.split()) <= 4 and \
@@ -351,8 +415,12 @@ def classify_intent(text: str) -> str:
     # report / launch: JARVIS-specific side-routes (compose_report, launch_project).
     # These run on JARVIS's local brain + signed-in browser, NOT Hermes, so they
     # must NOT be classified as `general` (which routes to the Hermes harness).
+    # Asking for one, not mentioning one: "That is the report for now on most
+    # of the business" was sent to compose_report (mined 2026-09-24).
     if re.search(r"\b(report|compose|recap|summary\s+doc|write\s+(me\s+)?a\s+report)\b", t) and \
-       re.search(r"\b(about|on|for|of)\b", t):
+       re.search(r"\b(about|on|for|of)\b", t) and \
+       (re.search(r"\b(write|compose|create|make|give|generate|prepare|draft|produce|build|"
+                  r"research|recap|need|want|send)\b", t) or re.match(r"^(?:an?\s+)?(report|recap)\b", t)):
         return "report"
     # ...and the preposition-less phrasing of the same request: "research WebGPU
     # and write me a short report". Without this it landed in `general`, the
@@ -362,8 +430,11 @@ def classify_intent(text: str) -> str:
         return "report"
     # Not "app": "open the spotify app" is an app, and was sent to
     # launch_project (2026-09-12).
-    if re.search(r"\b(launch|start|open|run|boot)\b", t) and \
-       re.search(r"\b(project|server|dev)\b", t):
+    # The project has to be what is opened, not a word further on: "open chat
+    # GPT and search in history, iRIMS-V project report" launched a project
+    # (owner's review, 2026-09-25: it opens ChatGPT).
+    if re.search(r"\b(launch|start|open|run|boot)\s+(?:up\s+)?(?:the\s+|my\s+|a\s+)?"
+                 r"(?:[\w.-]+\s+){0,2}(project|server|dev)\b", t):
         return "launch"
     # rescan: JARVIS-local side-route — rescan installed software, no cloud needed.
     if re.search(r"\b(rescan|refresh|scan)\b", t) and \
@@ -407,11 +478,14 @@ def classify_intent(text: str) -> str:
     # PowerPoint", "bring up chrome": the running window comes forward (it is
     # opened only if it isn't running). As app_reference it went to
     # open_application and a second PowerPoint opened (2026-09-14).
+    # "Display, open code in the screen" (dictation comma, "in" for "on") is the
+    # same request; it went to app_reference and opened a second window
+    # (2026-09-24).
     _show = re.match(r"^(?:(?:please|hey|ok(?:ay)?|jarvis|cygnus|can\s+you|could\s+you)[,\s]+)*"
-                     r"(?:show|display|put|bring\s+up|pull\s+up)\s+(?:me\s+)?(?P<rest>.+?)\s*[.!?]*$", t, re.I)
+                     r"(?:show|display|put|bring\s+up|pull\s+up)[,\s]+(?:me\s+)?(?P<rest>.+?)\s*[.!?]*$", t, re.I)
     if _show and not _handoff and not re.search(r"\b(what'?s|apps|programs|processes|running|installed)\b", t, re.I):
         rest = _show.group("rest")
-        if re.search(r"\bon(?:to)?\s+(?:the\s+|my\s+)?screen\b", rest, re.I) \
+        if re.search(r"\b(?:on(?:to)?|in)\s+(?:the\s+|my\s+)?screen\b", rest, re.I) \
                 or (len(rest.split()) <= 3 and re.search(r"\b(" + _APP_WORDS + r")\b", rest, re.I)):
             return "running_front"
     if not _handoff and re.search(r"\b(stop|kill|end|terminate|shut\s+down)\b.{0,40}\b(duplicates?|leftovers?|servers?|watchers?"
@@ -467,6 +541,13 @@ def classify_intent(text: str) -> str:
     # never hijack here — those are RECALL and stay on the session-search path.
     if re.match(r"^(please\s+)?(remember|note that|keep in mind( that)?|don'?t forget( that)?)\b", t):
         return "remember"
+    # volume: the computer's own volume (apps/volume.py), a local instant
+    # action. "Turn the volume up to 100%" had no route: the model told the
+    # owner to use the keyboard keys (2026-09-24). Ahead of the stop check, so
+    # "mute the sound" mutes. A named app's volume ("turn the spotify volume
+    # down") stays with that app's abilities, and a chain stays a chain.
+    if _parse_volume_normalized(t):
+        return "volume"
     # close_app: JARVIS-local side-route — close a NAMED application via
     # close_application (registry lookup + graceful taskkill). Detect BEFORE
     # the music-stop check so 'close spotify' closes the app, not its music.
@@ -501,6 +582,17 @@ def classify_intent(text: str) -> str:
     if re.search(r"\b(stop|pause|turn off|shut (off|up)|kill|end|quit|cut)\b", t) and \
        re.search(r"\b(music|song|track|playing|playback|spotify|ytmusic|youtube music|sound|audio)\b", t):
         return "stop"
+    # Whisper hears "pause the music" as "post the music"; it went to
+    # app_reference, which has no pause (mined 2026-09-24, and the owner
+    # confirmed "Post the music on Spotify" is a pause). Only with the music as
+    # the object, and never toward a social site. "Pass the music on Brave" is
+    # the other way round: the owner meant play it there (review note,
+    # 2026-09-25), so it is music.
+    _social = re.search(r"\b(facebook|twitter|instagram|tiktok|reddit|threads|discord|telegram|messenger)\b", t)
+    if re.search(r"\bpost\s+(?:the\s+|my\s+|this\s+)?(music|song|track|playback)\b", t) and not _social:
+        return "stop"
+    if re.search(r"\bpass\s+(?:the\s+|my\s+|this\s+)?(music|song|track)\b", t) and not _social:
+        return "music"
     # Continuation: pause/unpause/stop/it when context shows music is active.
     # These are bare pronouns that only make sense as music transport follow-ups.
     if re.fullmatch(r"\b(pause|unpause|stop)\b\s+it\b", t):
@@ -528,8 +620,7 @@ def classify_intent(text: str) -> str:
     # Phrasing like "use X", "open X", "with X", "in X", "on X", "via X", or a
     # known capability name. These route to the Hermes harness (which resolves
     # the app from the capability manifest) instead of the cloud brain.
-    if re.search(r"\b(use|open|launch|run|with|via|in|on)\s+[\w .\-]+", t) and \
-       re.search(r"\b(" + _APP_WORDS + r")\b", t):
+    if re.search(r"\b(use|open|launch|run|with|via|in|on)\s+[\w .\-]+", t) and _names_an_app(t):
         return "app_reference"
     if re.search(r"\b(use|open|launch|run|with|via|in)\s+\w+", t) and \
        re.search(r"\b(app|application|software|tool|program)\b", t):
@@ -549,9 +640,13 @@ def classify_intent(text: str) -> str:
         return "web_browse"
     if re.search(r"\b(go\s+back|scroll\s+(up|down))\b", t):
         return "web_browse"
-    if (re.search(r"\b(scrape|read|browse|extract|summari[sz]e|summary of|get (the )?content|fetch)\b", t)
-            or re.search(r"https?://\S+", t)
-            or re.search(r"\b\w[\w-]*\.(com|org|net|io|dev|edu|gov|ph)\b", t)) and \
+    # A read with no address is not a page read: "summarize what JARVIS can
+    # do", "read my note called ...", "read out loud the latest conversation"
+    # went to the page reader, whose tool refuses anything but an address
+    # ("isn't a web address"), and only then to Hermes (mined 2026-09-24).
+    _address = (re.search(r"https?://\S+", t)
+                or re.search(r"\b\w[\w-]*\.(com|org|net|io|dev|edu|gov|ph)\b", t))
+    if _address and \
        not re.search(r"\b(search|open site|open the site|google)\b", t) and \
        re.search(r"\b(scrape|read|browse|extract|summari[sz]e|content|fetch|https?://|\.(com|org|net|io|dev|edu|gov|ph)\b)", t):
         return "web_browse"

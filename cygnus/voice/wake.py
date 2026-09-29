@@ -69,7 +69,33 @@ WAKE_BARE_RE = re.compile(r"^(?:hey[\s,]*)?(?:signals?|sign\s*us|seagmus|sicknes
 # window, so the whole-window mean diluted soft voices under the floor. Steady
 # room tone has no loud slice, so it is still skipped.
 SILENCE_FLOOR = float(os.environ.get("JARVIS_WAKE_SILENCE_FLOOR", "0.002"))
+# The keyword spotter costs almost nothing per window, so its floor sits just
+# over room tone instead: at 0.002 the owner's own "Hey Cygnus" at normal voice
+# fell under the gate in 4 of 14 clips and every one said from two metres away
+# (loudest slices 0.0007-0.0016; room tone 0.0001-0.0002, 2026-09-26).
+SPOTTER_SILENCE_FLOOR = float(os.environ.get("JARVIS_WAKE_KWS_SILENCE_FLOOR", "0.0004"))
 BURST_S = 0.5
+# Quiet speech is brought up before the spotter hears it: the loudest half
+# second to WAKE_GAIN_TARGET RMS, never more than WAKE_GAIN_MAX times louder,
+# never quieter. On the owner's wake set it caught 37 of 37 quiet-room wakes,
+# not 33, for one more false wake ("sign us up") in 7 minutes of sound-alikes.
+WAKE_GAIN_TARGET = 0.05
+WAKE_GAIN_MAX = 8.0
+
+
+def wake_gain(window, sr=16000):
+    """The window made louder so a quiet voice reaches the spotter's level."""
+    w = max(1, int(sr * BURST_S))
+    if window.shape[0] < w:
+        return window
+    energy = np.convolve(np.square(window, dtype=np.float64), np.ones(w) / w, mode="valid")
+    loud = float(np.sqrt(energy.max()))
+    if loud <= 1e-6:
+        return window
+    gain = min(WAKE_GAIN_MAX, WAKE_GAIN_TARGET / loud)
+    if gain <= 1.0:
+        return window
+    return np.clip(window * gain, -1.0, 1.0).astype(np.float32)
 # No audio for this long means the stream died (sleep, a device unplugged or
 # taken), and a dead stream is reopened at most this often.
 SILENT_STREAM_S = 5.0
@@ -110,6 +136,58 @@ def wake_word_in(text):
         return False
     t = text.strip()
     return bool(WAKE_RE.search(t) or WAKE_BARE_RE.match(re.sub(r"[^\w\s]", "", t).strip()))
+
+
+# Whisper's rarer spellings of the wake word at the head of a pre-rolled clip
+# ("Sigeonos, open Spotify.", "Sigeoness, ...", 2026-09-26): close to cygnus/signus, at least six
+# letters (so "signs" and "sinus" never count), and not a real word it resembles.
+_FUZZY_WAKE_MIN = 0.66     # "Sigeoness" scores 0.67
+# How Whisper wrote the owner's own "Hey Cygnus" (the voice test set's wake
+# clips, 2026-09-26), and "Sige-ness" for a TTS "Cygnus". Real words, so they count only at the head of a
+# pre-rolled clip, where a wake word is known to be.
+_PREROLL_WAKE_RE = re.compile(
+    r"(?:^|[\s,.])(?:pacing\s*(?:us|ness|this)|pay\s+(?:signals?|signus|cygnus)|a\s?sygnus|sige-(?:ness|nus))(?=$|[\s.,!?;:])", re.I)
+_NOT_WAKE = {"signal", "signals", "signed", "signer", "signet", "signets", "signing", "signage",
+             "signups", "signees", "sigmas", "sinuses", "census", "cygnet", "cygnets", "sickness",
+             "science", "seconds", "sydney"}
+
+
+def _fuzzy_wake_end(text):
+    """End offset of the first word that reads as a misspelled wake word, or None."""
+    import difflib
+    for m in re.finditer(r"[A-Za-z]+", text):
+        w = m.group(0).lower()
+        if len(w) < 6 or w in _NOT_WAKE or w[0] not in "cs":
+            continue
+        if max(difflib.SequenceMatcher(None, w, t).ratio() for t in ("cygnus", "signus")) >= _FUZZY_WAKE_MIN:
+            return m.end()
+    return None
+
+
+# One more wake word at the start of what is left: "Cygnus, Cygnus, what is..."
+_LEADING_WAKE_RE = re.compile(
+    r"^[\s,.!?;:]*(?:(?:hey|ok(?:ay)?|hi)[\s,]*)?[cs][iy]gn[aeiu][sz]{1,2}e?(?=$|[\s.,!?;:])", re.I)
+
+
+def after_wake(text):
+    """The command in a clip that starts before the wake word.
+
+    A wake-opened capture carries the few seconds heard before the wake
+    (the HUD's pre-roll), so the command is never clipped; whatever was said
+    before "Cygnus" is not the command. No wake word: the text unchanged.
+    """
+    text = (text or "").strip()
+    m = WAKE_RE.search(text) or _PREROLL_WAKE_RE.search(text)
+    end = m.end() if m else _fuzzy_wake_end(text)
+    if end is None:
+        return text
+    rest = text[end:]
+    while True:
+        lead = _LEADING_WAKE_RE.match(rest)
+        if not lead:
+            break
+        rest = rest[lead.end():]
+    return rest.lstrip(" ,.!?;:").strip()
 
 
 def wake_targets(clients, remote, desktop):
@@ -352,12 +430,12 @@ class WakeEngine:
         means = np.abs(window[:n * blk]).reshape(n, blk).mean(axis=1)
         k = max(1, min(n, int(round(BURST_S / 0.1))))
         level = np.convolve(means, np.ones(k) / k, mode='valid').max()
-        if level < SILENCE_FLOOR:
+        if level < (SPOTTER_SILENCE_FLOOR if self.spotter is not None else SILENCE_FLOOR):
             return False
         self._last_decode = now
         try:
             if self.spotter is not None:
-                text = self.spotter.hears(window, self.sr)
+                text = self.spotter.hears(wake_gain(window, self.sr), self.sr)
             else:
                 # Cheap wake-only model, not the command model — see
                 # VoiceEngine.transcribe_wake() and WAKE_WHISPER_MODEL.
@@ -370,10 +448,26 @@ class WakeEngine:
             return True
         hit = wake_word_in(text)
         echo = hit and self._own_voice(now)
-        via = f" via {self.spotter.name}" if self.spotter is not None else ""
-        self._log(f"heard {text!r} (level {level:.4f}){via}"
-                  + (" -> ignored: its own reply says the wake word" if echo else " -> WAKE" if hit else ""))
+        # Only the owner's voice wakes Cygnus once a voiceprint is enrolled
+        # (voiceprint.py; no voiceprint: every voice, as before).
+        stranger, score = False, None
         if hit and not echo:
+            try:
+                from cygnus.voice import voiceprint
+                owner, score = voiceprint.check(window, self.sr)
+                stranger = not owner
+            except Exception as e:
+                self._log(f"voiceprint check failed ({type(e).__name__}: {e}); waking anyway")
+        via = f" via {self.spotter.name}" if self.spotter is not None else ""
+        voice = f", voice {score:.2f}" if score is not None else ""
+        # The spotter hears '' about once a second since its gate sits just over
+        # room tone; logging each one rotated the 1 MB log every few hours and
+        # took the day's wakes with it (2026-09-27). Anything heard still goes in.
+        if text or self.spotter is None:
+            self._log(f"heard {text!r} (level {level:.4f}{voice}){via}"
+                      + (" -> ignored: its own reply says the wake word" if echo else
+                         " -> ignored: not the owner's voice" if stranger else " -> WAKE" if hit else ""))
+        if hit and not echo and not stranger:
             print(f"[WakeEngine] wake word detected: {text!r}", flush=True)
             delivered = True
             if self._callback:

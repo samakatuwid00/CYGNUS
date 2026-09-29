@@ -37,6 +37,14 @@ dependencies = [
     "httpx>=0.27",
     "python-dotenv>=1.0",
     "pywinauto>=0.6.9; sys_platform == 'win32'",   # clicking and typing inside a window
+    # Windows' own OCR, on the device (cygnus/apps/screen_text.py)
+    "winrt-runtime>=3.2; sys_platform == 'win32'",
+    "winrt-Windows.Media.Ocr>=3.2; sys_platform == 'win32'",
+    "winrt-Windows.Graphics.Imaging>=3.2; sys_platform == 'win32'",
+    "winrt-Windows.Storage.Streams>=3.2; sys_platform == 'win32'",
+    "winrt-Windows.Foundation>=3.2; sys_platform == 'win32'",
+    "winrt-Windows.Foundation.Collections>=3.2; sys_platform == 'win32'",
+    "winrt-Windows.Globalization>=3.2; sys_platform == 'win32'",
     "rich>=13",                  # the terminal output of the scripts
 ]
 

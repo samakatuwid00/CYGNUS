@@ -31,11 +31,11 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
 from cygnus.voice.engine import VoiceEngine
-from cygnus.voice.wake import WakeEngine, wake_targets
+from cygnus.voice.wake import WakeEngine, after_wake, wake_targets
 from cygnus.brain.core import JarvisBrain
 from cygnus.memory.session_store import log as sstore_log
 from cygnus.brain import intake
-from cygnus.brain.intake import load_corpus, resolve_intent
+from cygnus.brain.intake import load_corpus, resolve_intent, with_names
 
 # Layer 1 (Intake) corpus — portable data, reloaded once at boot.
 INTAKE_CORPUS = load_corpus()
@@ -102,6 +102,22 @@ WS_REMOTE = set()
 # The desktop app's window (it says hello on connect). While one is
 # connected, server wakes go to it alone, so a Chrome tab stays quiet.
 WS_DESKTOP = set()
+# "Go full HUD" said from anywhere moves the desktop window (window_view.py);
+# with no window open, Cygnus says so instead of promising.
+from cygnus.brain import window_view
+window_view.desktop_open = lambda: bool(WS_DESKTOP)
+
+
+async def _send_view(view) -> None:
+    """After a "view" turn's reply: the desktop window switches itself."""
+    if view not in window_view.VIEWS:
+        return
+    payload = json.dumps({"type": "view", "view": view})
+    for ws in list(WS_DESKTOP):
+        try:
+            await ws.send_text(payload)
+        except Exception as e:
+            print(f"[WS] view {view} not sent: {e}", flush=True)
 
 # JARVIS_NO_VOICE=1: no Whisper, no microphone, no speech - typed turns only.
 # For a machine with no microphone, a headless run, and the benchmark's second
@@ -1097,6 +1113,17 @@ async def websocket_endpoint(websocket: WebSocket):
                         wake_engine.release()
                 except Exception:
                     pass
+                # Music down while the owner talks, browsers included: music at
+                # full volume was the loudest thing in the clip. A phone listens
+                # somewhere else, so the PC's music stays as it is.
+                if not _ws_is_remote(websocket):
+                    try:
+                        if message.get("state") == "start":
+                            await asyncio.to_thread(voice_ducking.duck, True)
+                        else:
+                            await asyncio.to_thread(voice_ducking.unduck)
+                    except Exception as e:
+                        print(f"[DUCK] listening {message.get('state')} failed: {e}", flush=True)
 
             elif mtype == "wake_ack":
                 # What the HUD did with a server wake, next to what the wake
@@ -1129,6 +1156,12 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 if not scan:
                     await websocket.send_text(json.dumps({"type": "status", "state": "transcribing"}))
+                    # The clip is in: the music the listening duck lowered comes
+                    # back now, before any reply (which ducks it again for itself).
+                    try:
+                        await asyncio.to_thread(voice_ducking.unduck)
+                    except Exception:
+                        pass
 
                 # Stage timing. Without this the only way to find out where a
                 # turn goes is to stop the server and benchmark by hand.
@@ -1152,13 +1185,30 @@ async def websocket_endpoint(websocket: WebSocket):
                     # transcript when the HUD sent one (transcript_pick).
                     hint = "" if scan else " ".join(str(message.get("hint") or "").split())[:300]
                     source = "whisper"
+                    # A wake-opened clip starts a few seconds before the wake
+                    # (the HUD's pre-roll) so the command is never clipped; the
+                    # command is what follows the wake word.
+                    clean = after_wake if message.get("preroll") and not scan else None
                     if hint:
                         text, source, heard, conf = voice_engine.transcribe_with_hint(
-                            wav_path, hint, known=_known_names())
+                            wav_path, hint, known=_known_names(), clean=clean)
                         print(f"[STT] whisper: {heard[:120]!r} (conf {conf:.2f}) | browser: "
                               f"{hint[:120]!r} -> {source}", flush=True)
                     else:
                         text = voice_engine._transcribe_from_file(wav_path)
+                        if clean:
+                            print(f"[STT] pre-rolled: {text!r}", flush=True)
+                            # Nothing but the wake, or scraps of it ("Hey Cygnus,
+                            # up." left "up."): no word of three letters or more.
+                            bare_wake = bool(text.strip()) and not any(
+                                len(w) > 2 for w in _re.findall(r"[a-z']+", clean(text).lower()))
+                            text = clean(text)
+                            if bare_wake:
+                                # Only "Cygnus" was said: the command is still
+                                # to come, so the HUD listens again.
+                                os.unlink(wav_path)
+                                await websocket.send_text(json.dumps({"type": "relisten"}))
+                                continue
                     _t["stt"] = time.time()
                     print(f"[STT] raw{' (scan)' if scan else ''}: {text!r}", flush=True)
                     os.unlink(wav_path)
@@ -1193,7 +1243,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     # to the brain normally — it resolves apps far better
                     # than the tiny corpus, and asking 'did you mean open,
                     # the beatles?' for a clipped command is worse than trying.
-                    intent = resolve_intent(text.strip(), INTAKE_CORPUS)
+                    intent = resolve_intent(text.strip(), with_names(INTAKE_CORPUS, _known_names()))
                     from cygnus.brain import action_gate    # in lead the gate asks this, for every input path
                     if (intent.needs_confirmation() and intent.candidates
                             and intent.entity is not None and action_gate.MODE != "lead"):
@@ -1235,6 +1285,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     response = await asyncio.to_thread(
                         brain.think, text.strip(), on_hermes_done, _push_progress, client=client_key,
                         remote=_ws_is_remote(websocket))
+                    _view = (getattr(brain, "last_stats", None) or {}).get("view")
                     _t["brain"] = time.time()
                     _wd.stop()
                     _arm_phase_b(websocket, vf, response)
@@ -1285,6 +1336,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "audio": tts_b64
                     })
                     delivered = True
+                    await _send_view(_view)
                     try:
                         await send_telemetry(_SOCKETS.get(client_key) or websocket)
                     except Exception:
@@ -1425,6 +1477,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     response = await asyncio.to_thread(
                         brain.think, user_text, on_hermes_done, _push_progress, client=client_key,
                         remote=_ws_is_remote(websocket))
+                    _view = (getattr(brain, "last_stats", None) or {}).get("view")
                     _wd.stop()
                     try:
                         _arm_phase_b(websocket, vf, response)
@@ -1466,6 +1519,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "type": "response", "text": strip_ai_artifacts(response), "audio": tts_b64
                     })
                     delivered = True
+                    await _send_view(_view)
                     try:
                         await send_telemetry(_SOCKETS.get(client_key) or websocket)
                     except Exception:
@@ -1758,6 +1812,9 @@ async def get_status():
             hops.append("local")
         if brain._use_router:
             hops.append("router")
+        from cygnus.brain import google_ai
+        if google_ai.enabled():
+            hops.append("google")               # the agent loop's own Gemini key
         if brain._use_cerebras:
             hops.append("cerebras")
         if brain._use_groq:

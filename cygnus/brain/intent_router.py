@@ -343,6 +343,8 @@ def actual_route(entries, backend=None, stats=None):
         # counted as disagreements the router never had.
         if tool in ("play_music", "play_spotify", "stop_music", "stop_spotify"):
             return {"type": "ability", "app": "media", "id": tool}
+        if tool == "set_volume":
+            return {"type": "ability", "app": "system", "id": tool}
         if tool == "web_browse":
             return {"type": "ability", "app": None, "id": "web_browse"}
         if tool in ("delegate", "delegate_to_hermes", "run_autonomous"):
