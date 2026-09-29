@@ -619,6 +619,10 @@ def run(brain, text: str, ctx: dict) -> str | None:
                             waiting = True
                             break
                         continue
+                    from cygnus.brain import router_health
+                    err = router_health.provider_error(msg.content)
+                    if err:                     # an error dressed as a reply: the next model answers
+                        raise RuntimeError(err)
                     final = _clean(msg.content)
                     if not final:
                         raise RuntimeError("empty reply")

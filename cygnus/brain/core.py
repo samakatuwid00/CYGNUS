@@ -2158,6 +2158,12 @@ class JarvisBrain:
                             })
                         continue
 
+                    from cygnus.brain import router_health
+                    err = router_health.provider_error(message.content)
+                    if err:
+                        # 9router's HTTP 200 carrying the upstream's error
+                        # (2026-09-29): a failed model, not the reply.
+                        raise RuntimeError(err)
                     text = _clean_for_speech((message.content or "").strip())
                     if not text:
                         break

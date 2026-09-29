@@ -124,6 +124,20 @@ def discover(force: bool = False) -> list[str]:
     return list(_discovered)
 
 
+# 9router can answer HTTP 200 with the upstream's error as the whole reply:
+# "[qoder error 403: {... isQueued ...}]" (2026-09-29), or its own
+# "[codex/gpt-5.5] [429]: ..." / "[antigravity/x] Unavailable (reset ...)".
+# Anchored at the start, so an answer that quotes such a line stays an answer.
+_PROVIDER_ERROR_RE = re.compile(
+    r"^\[(?:[\w.-]+ error(?: \d{3})?:|[\w.-]+/[\w.:-]+\] (?:\[\d{3}\]|Unavailable\b))")
+
+
+def provider_error(text) -> str | None:
+    """The error, when a model's reply is an upstream error and not an answer."""
+    t = (text or "").strip()
+    return t[:300] if _PROVIDER_ERROR_RE.match(t) else None
+
+
 def healthy_models(now: float | None = None) -> list[str]:
     """Models that answered with real text at their last check and are not
     cooling down, best first. Instant: no network. [] until the first probe."""
