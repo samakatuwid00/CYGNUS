@@ -366,3 +366,31 @@ def test_each_client_keeps_its_own_history(monkeypatch):
     assert [m["content"] for m in by_client["default"]] == ["hello"]
     brain.reset = b.JarvisBrain.reset.__get__(brain)
     brain._use_mock, brain.last_stats = False, {}
+
+
+def test_google_answers_before_the_local_model_when_9router_is_down():
+    # 2026-09-29: "play woman by harry styles" went the old routing, every
+    # 9router model answered 503, the CPU model timed out, and six Google
+    # models were never asked.
+    ran = []
+    brain = _chain_brain(_fails("503 unavailable"), lambda u: ran.append(u) or "local answer")
+    brain._use_google = True
+    brain._think_google = lambda u: "Playing Woman by Harry Styles, sir."
+    assert brain._answer_with_models("hi") == "Playing Woman by Harry Styles, sir."
+    assert brain.last_backend == "google" and ran == []
+
+
+def test_the_local_model_still_follows_when_google_fails_too():
+    brain = _chain_brain(_fails("503 unavailable"), lambda u: "local answer")
+    brain._use_google = True
+    brain._think_google = _fails("429 quota")
+    assert brain._answer_with_models("hi") == "local answer" and brain.last_backend == "ollama"
+
+
+def test_local_only_never_asks_google():
+    asked = []
+    brain = _chain_brain(_fails("503"), lambda u: "local answer")
+    brain._use_google, brain._local_only = True, True
+    brain._think_google = lambda u: asked.append(u) or "cloud"
+    brain._answer_with_models("hi")
+    assert asked == []

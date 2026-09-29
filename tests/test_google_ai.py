@@ -136,9 +136,18 @@ def test_a_spent_daily_quota_rests_the_model_until_midnight_pacific(google):
     assert google_ai.is_limit(reason) and not google_ai.is_limit("400 bad request")
 
 
-def test_a_model_out_of_quota_mid_turn_hands_the_turn_to_the_next(google, monkeypatch):
-    """The first model ran a tool, then hit its limit: the next one finishes the
-    same conversation, and the tool is not run again."""
+@pytest.mark.parametrize("error", [
+    "Error code: 429 RESOURCE_EXHAUSTED GenerateRequestsPerDay",
+    # 2026-09-29: after a tool ran, these ended the turn with "Then my model
+    # stopped answering" while four Google models were still left.
+    "Error code: 503 - This model is currently experiencing high demand.",
+    "Connection error.",
+    "Request timed out.",
+])
+def test_a_model_out_of_quota_mid_turn_hands_the_turn_to_the_next(google, monkeypatch, error):
+    """The first model ran a tool, then hit its limit, or Google was busy or
+    out of reach: the next one finishes the same conversation, and the tool is
+    not run again."""
     from cygnus.brain import core as bg
     _health(monkeypatch, [])
     monkeypatch.setattr(bg, "_router_ready", lambda: None)
@@ -158,7 +167,7 @@ def test_a_model_out_of_quota_mid_turn_hands_the_turn_to_the_next(google, monkey
         if model == "gemini-a":
             if len(messages) == 2:
                 return tool_reply()
-            raise RuntimeError("Error code: 429 RESOURCE_EXHAUSTED GenerateRequestsPerDay")
+            raise RuntimeError(error)
         return _reply("Chrome has three tabs open, sir.")
     monkeypatch.setattr(al, "_make_client", lambda: None)
     monkeypatch.setattr(google_ai, "client", lambda: types.SimpleNamespace(
@@ -167,4 +176,4 @@ def test_a_model_out_of_quota_mid_turn_hands_the_turn_to_the_next(google, monkey
     assert tools_run == ["list_tabs"]                       # once, not again by the next model
     assert seen["gemini-b"] == [4]                          # it got the tool call and its result
     assert "three tabs" in out and "stopped answering" not in out
-    assert "google/gemini-a" not in google_ai.models()      # resting until the quota resets
+    assert "google/gemini-a" not in google_ai.models()      # resting

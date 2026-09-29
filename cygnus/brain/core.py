@@ -938,6 +938,8 @@ class JarvisBrain:
         self._use_groq = (not JARVIS_LOCAL_ONLY) and (JARVIS_USE_GROQ and bool(GROQ_API_KEY))
         self._use_cerebras = (not JARVIS_LOCAL_ONLY) and (JARVIS_USE_CEREBRAS and bool(CEREBRAS_API_KEY))
         self._use_ollama = JARVIS_USE_OLLAMA
+        from cygnus.brain import google_ai as _google_ai
+        self._use_google = (not JARVIS_LOCAL_ONLY) and _google_ai.enabled()
         self._prefer_local = JARVIS_PREFER_LOCAL and JARVIS_USE_OLLAMA
         # Local-only: no cloud tier is even attempted, and Gemini (which the
         # chain otherwise always falls through to) is skipped as well.
@@ -1982,6 +1984,20 @@ class JarvisBrain:
                 else:
                     print(f"[JARVIS] 9router/mimo unavailable ({e}); falling back to local Ollama...")
 
+        # 2b) Google (Cygnus's own Gemini key), through the agent loop, which
+        #     speaks Gemini's tool protocol. With every 9router model down this
+        #     went straight to the CPU model, which timed out while six Google
+        #     models were never asked (2026-09-29).
+        if getattr(self, "_use_google", False) and not self._local_only:
+            try:
+                result = self._think_google(user_input)
+                if result:
+                    self.last_backend = "google"
+                    return result
+            except Exception as e:
+                self._last_model_error = e
+                print(f"[JARVIS] Google AI unavailable ({e}); falling back to local Ollama...")
+
         # 3) LOCAL: Ollama — the last real backend. A small local
         #    model beats canned demo text, so it is kept as the last resort.
         # A second turn is not queued behind one already on the CPU model:
@@ -2009,6 +2025,19 @@ class JarvisBrain:
         self._mock_brain.conversation = self.conversation.copy()
         self.last_backend = "mock"
         return self._mock_brain.think(user_input)
+
+    def _think_google(self, user_input: str) -> str | None:
+        """One turn on the Google models, through the agent loop; None when
+        none is left (each rests after a failure, google_ai.py)."""
+        from cygnus.brain import agent_loop as _al
+        from cygnus.brain import google_ai
+        if not google_ai.models():
+            return None
+        out = _al.run(self, user_input, {"client": _client_key(), "user_text": user_input,
+                                          "remote": getattr(_progress_local, "remote", False)})
+        if out is not None:
+            self.last_stats = {"backend": "google", "intent": "agent", **_al.last_stats()}
+        return out
 
     def _think_router(self, user_input: str) -> str:
         """Call 9router (OpenAI-compatible) with mimo model + tool loop."""

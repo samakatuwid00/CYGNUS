@@ -55,6 +55,15 @@ def is_limit(reason) -> bool:
     return bool(re.search(r"\b429\b|quota|RESOURCE_EXHAUSTED", str(reason), re.I))
 
 
+def can_hand_on(reason) -> bool:
+    """A failure the next Google model can finish a half-done turn after: a
+    limit, or Google busy or out of reach. "503 high demand" and "Connection
+    error" after a tool had run ended the turn with four models left
+    (2026-09-29)."""
+    return is_limit(reason) or bool(re.search(
+        r"\b50[0234]\b|UNAVAILABLE|high demand|Connection error|timed out", str(reason), re.I))
+
+
 def _until_daily_reset(wall: float | None = None) -> float:
     """Seconds until the free tier's daily quota resets: midnight Pacific."""
     import datetime

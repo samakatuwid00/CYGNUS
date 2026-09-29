@@ -638,7 +638,7 @@ def run(brain, text: str, ctx: dict) -> str | None:
                 print(f"[agent] {model} failed: {type(e).__name__}: {str(e)[:120]}", flush=True)
                 _failed(model, e)
                 broke = type(e).__name__
-                if ran and google_ai.owns(model) and google_ai.is_limit(e):
+                if ran and google_ai.owns(model) and google_ai.can_hand_on(e):
                     # Work was done and the free quota ran out mid-turn: the
                     # next Google model finishes the same conversation, tool
                     # results and all, so nothing is done twice (2026-09-27:
