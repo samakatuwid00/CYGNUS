@@ -236,9 +236,14 @@ def normalize(text: str) -> str:
     return " ".join(toks)
 
 
-def _token_set_ratio(a: str, b: str) -> float:
+def _token_set_ratio(a: str, b: str, floor: Optional[float] = None) -> float:
     """Order-independent similarity in [0, 1]. Combines a set-Jaccard score
-    with difflib's sequence ratio so partial / reordered phrases still match."""
+    with difflib's sequence ratio so partial / reordered phrases still match.
+
+    With a floor, a pair that cannot score above it returns an upper bound
+    (<= floor) instead of its exact score: difflib's ratio() of a pasted page
+    against a one-word name is slow, and its length bound already says no
+    (2026-09-29: a 540-word paste took two seconds per turn)."""
     if not a or not b:
         return 0.0
     sa, sb = set(a.split()), set(b.split())
@@ -249,7 +254,12 @@ def _token_set_ratio(a: str, b: str) -> float:
     union = len(sa | sb) or 1
     jaccard = inter / union
     # Sequence ratio (rewards contiguous overlap)
-    seq = difflib.SequenceMatcher(None, a, b).ratio()
+    sm = difflib.SequenceMatcher(None, a, b)
+    if floor is not None:
+        bound = round(0.7 * jaccard + 0.3 * sm.real_quick_ratio(), 3)
+        if bound <= floor:
+            return bound
+    seq = sm.ratio()
     # Weight: set overlap matters most for intent, sequence for spelling.
     return round(0.7 * jaccard + 0.3 * seq, 3)
 
@@ -323,7 +333,7 @@ def _detect_verb(tokens: list[str], corpus: dict) -> Optional[str]:
         return interr[0]
     # fuzzy: any token close to a command?
     best, score = None, 0.0
-    for tok in tokens:
+    for tok in dict.fromkeys(tokens):
         m = difflib.get_close_matches(tok, cmds, n=1, cutoff=0.8)
         if m and score < 0.8:
             best, score = m[0], 0.82
@@ -341,10 +351,13 @@ def _fuzzy_token(a: str, b: str, cutoff: float = 0.75) -> float:
     la, lb = len(a), len(b)
     if la == 0 or lb == 0:
         return 0.0
-    dist = _edit_distance(a, b)
-    score = 1.0 - dist / max(la, lb)
     # short words need a looser match threshold
     thr = 0.5 if max(la, lb) <= 5 else cutoff
+    # The distance is at least the length difference: skip the ones it rules out.
+    if 1.0 - abs(la - lb) / max(la, lb) < thr:
+        return 0.0
+    dist = _edit_distance(a, b)
+    score = 1.0 - dist / max(la, lb)
     if score >= thr:
         return 0.6          # fuzzy but real, never as strong as an exact hit
     return 0.0
@@ -368,7 +381,8 @@ def _edit_distance(a: str, b: str) -> int:
     return prev[lb]
 
 
-def _match_entity(tokens: list[str], values: list[str]) -> tuple[Optional[str], float]:
+def _match_entity(tokens: list[str], values: list[str],
+                  floor: float = 0.0) -> tuple[Optional[str], float]:
     """Return (best_entity, score) by combining three signals:
       (1) token-set ratio of the full joined phrase vs candidate,
       (2) same ratio with the leading verb dropped (so 'copy ... excel'
@@ -377,19 +391,20 @@ def _match_entity(tokens: list[str], values: list[str]) -> tuple[Optional[str], 
           (exact or fuzzy) in the input -- this recovers a single token
           buried inside a long, grammatical sentence ("copy the budget
           table from excel" -> 'excel' at ~0.95).
-    The max of the three is the score."""
+    The max of the three is the score. Only a candidate above floor is
+    returned; with none, (None, floor)."""
     joined = " ".join(tokens)
-    best, best_score = None, 0.0
+    rest = " ".join(tokens[1:])
+    uniq = list(dict.fromkeys(tokens))
+    best, best_score = None, floor
     for cand in values:
         ctoks = cand.lower().split()
-        s1 = _token_set_ratio(joined, cand.lower())
-        s2 = _token_set_ratio(" ".join(tokens[1:]), cand.lower()) if len(tokens) > 1 else 0.0
         if ctoks:
             # token-level membership: each candidate token matches SOME input
             # token (exact=1.0 / fuzzy=0.6). A fuzzy-only match is weaker so
             # 'son'->'swift' still recovers 'taylor swift' but never beats a
             # clean exact match.
-            best_per = [max(_fuzzy_token(ct, it, 0.5) for it in tokens)
+            best_per = [max(_fuzzy_token(ct, it, 0.5) for it in uniq)
                         for ct in ctoks]
             contain = sum(best_per) / len(ctoks)
             # A candidate with NO exact token in common is far less certain
@@ -399,6 +414,11 @@ def _match_entity(tokens: list[str], values: list[str]) -> tuple[Optional[str], 
                 contain *= 0.6
         else:
             contain = 0.0
+        # A ratio at or under what already wins never counts, so it need not
+        # be exact: that is where a pasted page spent its time.
+        at_least = max(best_score, contain * 0.95)
+        s1 = _token_set_ratio(joined, cand.lower(), floor=at_least)
+        s2 = _token_set_ratio(rest, cand.lower(), floor=at_least) if len(tokens) > 1 else 0.0
         s = max(s1, s2, contain * 0.95)
         if s > best_score:
             best, best_score = cand, s
@@ -432,7 +452,7 @@ def resolve_intent(raw: str, corpus: Optional[dict] = None,
     # Entity search across all entity buckets.
     best_entity, best_kind, best_score = None, None, 0.0
     for kind in ("apps", "artists", "projects", "contacts", "genres"):
-        ent, score = _match_entity(tokens, corpus.get(kind, []))
+        ent, score = _match_entity(tokens, corpus.get(kind, []), floor=best_score)
         if score > best_score:
             best_entity, best_kind, best_score = ent, kind, score
 
@@ -498,14 +518,16 @@ def autocomplete(normalized: str, corpus: Optional[dict] = None,
 
     scored = []
     commands = set(corpus.get("commands", []))
+    uniq = list(dict.fromkeys(normalized.split()))
     for cand in pool:
-        s = _token_set_ratio(normalized, cand.lower())
+        # Under 0.25 is dropped below, so its exact value is not needed.
+        s = _token_set_ratio(normalized, cand.lower(), floor=0.249)
         # typo tolerance for ENTITIES only (apps/artists/projects/...), not
         # generic 1-token commands -- so 'opn notpad' still surfaces
         # 'notepad' but a stray fuzzy hit on 'stop' doesn't crowd it out.
         ctoks = cand.lower().split()
         if cand not in commands and ctoks and any(
-            _fuzzy_token(ct, it, 0.5) > 0 for ct in ctoks for it in normalized.split()
+            _fuzzy_token(ct, it, 0.5) > 0 for ct in ctoks for it in uniq
         ):
             s = max(s, 0.45)
         if s >= 0.25:

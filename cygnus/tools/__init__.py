@@ -2573,6 +2573,9 @@ def _detect_backend_by_task(task: str) -> str:
        (re.search(r"\b(website|web\s*site|html|react|laravel|python\s+file|javascript|api)\b", _code_text, re.I) and re.search(r"\b(create|make|build|generate|code|implement)\b", _code_text, re.I)):
         return "opencode"
     # Try registry verb_map first (declarative, no hardcoded list)
+    # Resolved once: both lookups below read only its verb, and resolving a
+    # pasted page is not free.
+    intent = None
     reg = _load_delegate_registry()
     if reg:
         verb_map = reg.get("verb_map", {})
@@ -2603,7 +2606,7 @@ def _detect_backend_by_task(task: str) -> str:
     # Fallback: legacy intake verb_backend (hardcoded list kept for compat)
     try:
         from cygnus.brain.intake import verb_backend, resolve_intent, load_corpus
-        intent = resolve_intent(task, load_corpus())
+        intent = intent or resolve_intent(task, load_corpus())
         be = verb_backend(intent.verb)
         if be and be in ("music", "desktop", "web", "manus", "chatgpt", "native"):
             if be == "manus" and re.search(
