@@ -11,6 +11,11 @@ from here, and moving the code or the data changes only this file
   WEB_DIR     the pages the server serves
   DATA_DIR    what Cygnus writes: logs, memory, sessions, models, scans.
               CYGNUS_DATA_DIR in the environment puts it elsewhere.
+  ENV_FILE    the settings (.env). CYGNUS_ENV_FILE puts it elsewhere.
+
+Installed (the desktop app's installer), the code sits read-only under the
+app's resources/ and the desktop app points CYGNUS_DATA_DIR and
+CYGNUS_ENV_FILE at the user's own folder (%APPDATA%/Cygnus).
 """
 
 from __future__ import annotations
@@ -20,9 +25,11 @@ from pathlib import Path
 
 
 def _find_root() -> Path:
+    """The folder holding cygnus/ and web/: the repository, or the installed
+    app's backend folder, which has no pytest.ini or desktop/ beside it."""
     here = Path(__file__).resolve().parent
     for d in (here, *here.parents):
-        if (d / "pytest.ini").is_file() and (d / "desktop").is_dir():
+        if (d / "cygnus").is_dir() and (d / "web" / "jarvis_hud_v3.html").is_file():
             return d
     return here
 
@@ -54,7 +61,7 @@ PROJECTS_EXAMPLE = CONFIG_DIR / "projects.example.json"
 MODELFILE = CONFIG_DIR / "Modelfile.jarvis"
 # OpenCode reads opencode.json from the project root itself: it stays there.
 OPENCODE_JSON = ROOT / "opencode.json"
-ENV_FILE = ROOT / ".env"
+ENV_FILE = Path(os.getenv("CYGNUS_ENV_FILE") or ROOT / ".env")
 
 # Pages.
 HUD_HTML = WEB_DIR / "jarvis_hud_v3.html"

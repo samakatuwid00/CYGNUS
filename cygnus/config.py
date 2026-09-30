@@ -3,7 +3,12 @@ import os
 from pathlib import Path
 from dotenv import dotenv_values, load_dotenv
 
-load_dotenv()
+from cygnus import paths as _paths
+
+# The .env paths.py names: the repository's, or the installed app's copy in
+# the user's folder (CYGNUS_ENV_FILE). load_dotenv() alone searched upward
+# from the code, which in an installed app is a read-only folder with none.
+load_dotenv(_paths.ENV_FILE)
 
 # API Keys
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
@@ -305,6 +310,5 @@ SCAN_BROWSER_HISTORY = os.getenv("JARVIS_SCAN_BROWSER_HISTORY", "0").strip() == 
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
 # Paths
-from cygnus import paths as _paths
 BASE_DIR = _paths.ROOT
 ENV_FILE = _paths.ENV_FILE

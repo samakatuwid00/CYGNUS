@@ -3,17 +3,60 @@
   "productName": "Cygnus",
   "version": "0.1.0",
   "private": true,
-  "description": "Cygnus: tray icon, Ctrl+Alt+J and one window for the HUD. The backend stays in the repo.",
+  "description": "Cygnus: tray icon, Ctrl+Alt+J and one window for the HUD. From the repo it runs the repo's backend; installed, it carries its own (scripts/build/build_backend.py).",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "unpack-electron": "powershell -NoProfile -Command \"Expand-Archive -Force -LiteralPath $env:LOCALAPPDATA\\electron\\Cache\\electron-v33.4.11-win32-x64.zip -DestinationPath node_modules\\electron\\dist; Set-Content -NoNewline -Encoding ascii node_modules\\electron\\path.txt electron.exe\""
+    "unpack-electron": "powershell -NoProfile -Command \"Expand-Archive -Force -LiteralPath $env:LOCALAPPDATA\\electron\\Cache\\electron-v44.5.1-win32-x64.zip -DestinationPath node_modules\\electron\\dist; Set-Content -NoNewline -Encoding ascii node_modules\\electron\\path.txt electron.exe\"",
+    "backend": "cd .. && .venv\\Scripts\\python scripts\\build\\build_backend.py",
+    "pack": "electron-builder --win dir",
+    "dist": "electron-builder --win nsis"
   },
   "devDependencies": {
-    "electron": "33.4.11"
+    "electron": "44.5.1",
+    "electron-builder": "^26.15.3"
   },
   "allowScripts": {
-    "electron@33.4.11": true
+    "electron@44.5.1": true
+  },
+  "build": {
+    "appId": "dev.cygnus.desktop",
+    "productName": "Cygnus",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "starting.html",
+      "assets/**",
+      "cygnus.ico",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/python",
+        "to": "python"
+      },
+      {
+        "from": "build/backend",
+        "to": "backend"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "cygnus.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Cygnus",
+      "deleteAppDataOnUninstall": false
+    }
   }
 }

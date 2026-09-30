@@ -29,6 +29,16 @@ python -m venv .venv
 .venv\Scripts\python -m playwright install chromium
 ```
 
+The wake word ("Cygnus") is heard by a small on-device model. Put it in
+`data/models/kws/`:
+
+```bash
+git clone https://www.modelscope.cn/pkufool/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.git data/models/kws/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01
+```
+
+Without it Cygnus still hears the wake word, with Whisper, which costs more
+processor time. (The installer carries the model.)
+
 ## 2. Settings
 
 ```bash

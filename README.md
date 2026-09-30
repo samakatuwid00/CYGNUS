@@ -84,6 +84,26 @@ one from `.venv`, restarts it if it crashes, and stops it on quit. Do not run
 `scripts/watch_and_restart.py` while the app owns the backend: both would
 start a server on the same port.
 
+## Building the installer
+
+The installer carries its own Python and the backend, so the student's PC
+needs nothing else: no Python, pip or npm. Installed, the code sits read-only
+in the app's folder and the settings and data go to `%APPDATA%\Cygnus`; the
+first start opens the setup screen.
+
+```bash
+.venv\Scripts\python scripts\build\build_backend.py   # desktop/build: Python, packages, code, wake-word model
+cd desktop
+npm install
+npm run pack      # dist/win-unpacked: the app as a folder, to try without installing
+npm run dist      # dist/Cygnus Setup <version>.exe
+```
+
+`build_backend.py --code` refreshes only the code (seconds) when no package
+changed. The build needs `uv` on PATH and the wake-word model in
+`data/models/kws` (docs/SETUP.md). The installer is not signed yet, so Windows
+SmartScreen warns on it (docs/plans/DISTRIBUTION_PLAN.md).
+
 ## Routine check
 
 One command runs every check and writes `data/logs/prod-check-<time>.json`:

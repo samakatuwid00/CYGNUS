@@ -27,6 +27,17 @@ playwright>=1.40.0
 # Clicking inside the user's own browser over its debugging port (browser_cdp)
 websockets>=13.0
 
+# The wake word, spotted on the device, and the voiceprint (voice/wake_kws.py,
+# voice/voiceprint.py). The model ships with the installer; from the repo,
+# put it in data/models/kws (docs/SETUP.md).
+sherpa-onnx>=1.13
+sentencepiece>=0.2
+# The semantic router (brain/semantic_route.py): numpy only, downloads its
+# small model on first use.
+model2vec>=0.9
+# Lowering other apps' volume while Cygnus speaks (voice/ducking.py)
+pycaw>=20240316; sys_platform == "win32"
+
 # Web HUD server (jarvis_web.py)
 fastapi>=0.139.0
 uvicorn>=0.51.0

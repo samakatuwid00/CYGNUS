@@ -4,6 +4,8 @@
 # Desktop shell dependencies and build output
 desktop/node_modules/
 desktop/dist/
+# The installer's Python and code (scripts/build/build_backend.py)
+desktop/build/
 __pycache__/
 *.pyc
 *.pyo

@@ -17,8 +17,20 @@ for (const stream of [process.stdout, process.stderr]) {
   stream.on('error', err => { if (err && err.code === 'EPIPE') return; throw err })
 }
 
-const REPO = path.resolve(__dirname, '..')
-const PYTHON = path.join(REPO, '.venv', 'Scripts', 'python.exe')
+// Installed (npm run dist), the backend and its own Python sit read-only in
+// resources/, and the settings and everything Cygnus writes go to the user's
+// folder, %APPDATA%/Cygnus. From the repository, all of it is the repository.
+const PACKAGED = app.isPackaged
+const REPO = PACKAGED ? path.join(process.resourcesPath, 'backend') : path.resolve(__dirname, '..')
+const PYTHON = PACKAGED ? path.join(process.resourcesPath, 'python', 'python.exe')
+  : path.join(REPO, '.venv', 'Scripts', 'python.exe')
+const ENV_FILE = PACKAGED ? path.join(app.getPath('userData'), '.env') : path.join(REPO, '.env')
+if (PACKAGED && !fs.existsSync(ENV_FILE)) {
+  // First run: the example settings, with no key in them yet - the setup
+  // screen asks for it (cygnus/setup, web/setup.html).
+  fs.mkdirSync(path.dirname(ENV_FILE), { recursive: true })
+  fs.copyFileSync(path.join(REPO, '.env.example'), ENV_FILE)
+}
 const PORT = Number(readEnv('JARVIS_PORT') || 8000)
 const HUD_URL = `http://127.0.0.1:${PORT}/`
 const HUD_ORIGIN = HUD_URL.slice(0, -1)
@@ -28,7 +40,9 @@ const HOTKEY = 'Control+Alt+J'
 // displays.
 const TRAY_ICON = path.join(__dirname, 'assets', 'tray.png')
 // The backend's runtime data lives in data/ (or CYGNUS_DATA_DIR), like cygnus/paths.py.
-const LOG_FILE = path.join(readEnv('CYGNUS_DATA_DIR') || path.join(REPO, 'data'), 'logs', 'desktop-backend.log')
+const DATA_DIR = PACKAGED ? path.join(app.getPath('userData'), 'data')
+  : (readEnv('CYGNUS_DATA_DIR') || path.join(REPO, 'data'))
+const LOG_FILE = path.join(DATA_DIR, 'logs', 'desktop-backend.log')
 const READY_TIMEOUT_MS = 180000
 // What the tray checks besides the backend: Chrome started with its debugging
 // port (clicks inside the browser) and Ollama (the offline fallback), read
@@ -40,6 +54,12 @@ const OLLAMA_PORT = Number(new URL(readEnv('OLLAMA_BASE_URL') || 'http://localho
 // turn to the local Ollama model without saying so.
 const ROUTER_PORT = Number(new URL(readEnv('ROUTER_BASE_URL') || 'http://localhost:20128/v1').port || 20128)
 const ROUTER_CMD = path.join(process.env.APPDATA || '', 'npm', '9router.cmd')
+// Only the author's setup uses 9router: no provider named (the settings from
+// before providers), or CYGNUS_PROVIDER=9router. A student's Gemini or Groq
+// key needs no router, and a tray warning about one would only confuse.
+const PROVIDER = readEnv('CYGNUS_PROVIDER').toLowerCase()
+const ROUTER_WANTED = !PROVIDER || PROVIDER === '9router'
+const OLLAMA_WANTED = PROVIDER === 'ollama' || /^true$/i.test(readEnv('JARVIS_USE_OLLAMA') || (PROVIDER ? 'false' : 'true'))
 const ROUTER_READY_MS = 45000
 const HEALTH_EVERY_MS = 10000
 const CHECKS_EVERY_MS = 60000
@@ -81,7 +101,7 @@ let restartTimes = []      // when an owned backend was restarted after dying
 function readEnv (name) {
   if (process.env[name]) return process.env[name]
   try {
-    const m = fs.readFileSync(path.join(REPO, '.env'), 'utf8').match(new RegExp(`^\\s*${name}\\s*=\\s*(.+?)\\s*$`, 'm'))
+    const m = fs.readFileSync(ENV_FILE, 'utf8').match(new RegExp(`^\\s*${name}\\s*=\\s*(.+?)\\s*$`, 'm'))
     if (m) return m[1].replace(/^["']|["']$/g, '')
   } catch {}
   return ''
@@ -160,7 +180,10 @@ function spawnBackend () {
     cwd: REPO,
     windowsHide: true,
     stdio: ['ignore', log, log],
-    env: { ...process.env, JARVIS_PORT: String(PORT), JARVIS_HOST: '127.0.0.1', PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8', CYGNUS_DESKTOP: '1' }
+    env: {
+      ...process.env, JARVIS_PORT: String(PORT), JARVIS_HOST: '127.0.0.1', PYTHONUNBUFFERED: '1',
+      PYTHONIOENCODING: 'utf-8', CYGNUS_DESKTOP: '1', CYGNUS_ENV_FILE: ENV_FILE, CYGNUS_DATA_DIR: DATA_DIR
+    }
   })
   fs.writeFileSync(pidFile(), String(proc.pid))
   backend = { proc, attached: false, state: 'starting', note: '' }
@@ -215,9 +238,19 @@ async function waitForReady (proc) {
   if (backend.proc === proc) setBackend('error', 'The backend did not answer within 3 minutes. See the backend log.')
 }
 
-function onBackendReady () {
+// A brain that cannot work yet (first run: no key) opens the setup, full
+// size, instead of a HUD that could only say so.
+async function onBackendReady () {
   setBackend('ready')
-  if (win && !win.isDestroyed()) win.loadURL(HUD_URL)
+  const status = await fetchStatus()
+  if (win && !win.isDestroyed()) {
+    if (status && status.setup_problem) {
+      showMode('expanded')
+      win.loadURL(HUD_URL + 'setup')
+    } else {
+      win.loadURL(HUD_URL)
+    }
+  }
   runChecks()
 }
 
@@ -247,6 +280,7 @@ let router = ''
 // here is detached: quitting Cygnus must not take the others' brain with it.
 // Measured ~12s from a cold start to the port answering (2026-09-16).
 async function startRouter () {
+  if (!ROUTER_WANTED) return
   if (await portOpen(ROUTER_PORT)) return setRouter('attached')
   if (!fs.existsSync(ROUTER_CMD)) return setRouter('missing', 'npm i -g 9router')
   try {
@@ -325,12 +359,12 @@ function micBlocked () {
 async function runChecks () {
   const found = []
   if (micBlocked()) found.push('Microphone blocked for desktop apps (Settings > Privacy > Microphone)')
-  if (!await portOpen(ROUTER_PORT)) {
+  if (ROUTER_WANTED && !await portOpen(ROUTER_PORT)) {
     found.push(router === 'missing'
       ? '9router is not installed: every turn falls back to the local model'
       : '9router is not running: every turn falls back to the local model')
   }
-  if (!await portOpen(OLLAMA_PORT)) found.push('Ollama is not running: no offline fallback')
+  if (OLLAMA_WANTED && !await portOpen(OLLAMA_PORT)) found.push('Ollama is not running: no offline fallback')
   if (!await portOpen(CHROME_PORT)) found.push('The automation Chrome is not open: no clicks inside the browser')
   const wake = backend.state === 'ready' ? ((await fetchStatus()) || {}).wake_server : null
   if (wake && !wake.healthy) found.push(`Wake word off: ${wake.error || 'microphone unavailable'}`)

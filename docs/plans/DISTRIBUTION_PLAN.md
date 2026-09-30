@@ -109,7 +109,44 @@ the author's laptop: qwen3:4b-instruct at 14 tok/s on the CPU, 28.9 s cold.
   this computer only - the phone and anything proxied get 403 - and writes
   only as same-origin JSON.
 
-Next: the setup page in the HUD that uses them, then the bundled installer.
+- The setup screen (web/setup.html, `/setup`), opened by the desktop app on
+  a first run, and a banner in the HUD while the provider cannot work.
+- The installer (README, "Building the installer"): `build_backend.py` makes
+  a relocatable CPython of .venv's version with requirements.txt and the
+  code and the wake-word model; electron-builder packs it into an NSIS
+  installer, per user, no admin. Installed, `resources/python` runs
+  `resources/backend`, with `.env` and data in `%APPDATA%/Cygnus`
+  (`CYGNUS_ENV_FILE`, `CYGNUS_DATA_DIR`). 9router is started, and warned
+  about, only for the author's setup.
+- Checked 2026-09-30: the packed app (`npm run pack`) started its own
+  Python, copied `.env.example` to the user's folder, opened the setup full
+  size, and heard the wake word with the bundled model.
+
+- Electron went from 33.4.11 to 44.5.1 before any installer left the
+  machine: 33 carried 39 advisories (12 high: use-after-free, context
+  isolation bypass, sandbox escapes) and is out of support. npm audit: 0.
+  The desktop app ran on 44 from the repository with no errors in its log;
+  the mode switches (panel, full HUD, mini orb) were not clicked through.
+  The installer: `Cygnus Setup 0.1.0.exe`, 310 MB.
+
+### Still to do for the installer
+
+- **Signing.** Unsigned, SmartScreen says "Windows protected your PC" and a
+  student must click "More info, Run anyway". A code-signing certificate
+  (or Azure Trusted Signing) is the owner's purchase; electron-builder signs
+  with it through `CSC_LINK` / `CSC_KEY_PASSWORD`.
+- **Updates.** electron-updater needs somewhere public to fetch releases;
+  the repository is private. Decide with the fresh public repository.
+- **Size.** About 1 GB installed, most of it the Python packages; Whisper's
+  model (~250 MB for small.en) and the semantic router's download on first
+  use, which the setup screen does not show yet.
+- **Delegation** to coding agents runs in the backend folder, read-only when
+  installed; it is an author feature, off for students.
+- **Playwright's browser** is not bundled: the browser tools that need it
+  say so the first time.
+- **Installing it** on a clean Windows PC (or a VM) end to end, including
+  uninstall, has not been done yet.
+
 
 ## Paid (everyone else)
 

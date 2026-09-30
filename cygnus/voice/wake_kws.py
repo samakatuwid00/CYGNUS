@@ -16,7 +16,12 @@ import os
 import numpy as np
 from cygnus import paths
 
-DEFAULT_DIR = os.path.join(str(paths.MODELS_DIR), "kws", "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01")
+_MODEL_NAME = "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
+# The user's own copy (data/models), else the one the installer carries
+# (scripts/build/build_backend.py puts it in the backend's models/).
+DEFAULT_DIR = next((d for d in (os.path.join(str(paths.MODELS_DIR), "kws", _MODEL_NAME),
+                                os.path.join(str(paths.ROOT), "models", "kws", _MODEL_NAME))
+                    if os.path.isdir(d)), os.path.join(str(paths.MODELS_DIR), "kws", _MODEL_NAME))
 # The bench's middle setting: 17/20 caught, 0 false wakes. Lower thresholds
 # caught 18 with one false wake in a minute of talk.
 THRESHOLD = float(os.getenv("JARVIS_WAKE_KWS_THRESHOLD", "0.15"))
