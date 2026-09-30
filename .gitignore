@@ -6,6 +6,9 @@ desktop/node_modules/
 desktop/dist/
 # The installer's Python and code (scripts/build/build_backend.py)
 desktop/build/
+# Wheel builds (uv build / pip wheel)
+/build/
+*.egg-info/
 __pycache__/
 *.pyc
 *.pyo

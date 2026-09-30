@@ -56,7 +56,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "Cygnus",
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "license": "build/LICENSE.txt"
     }
-  }
+  },
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "author": "Roger Abay Jr"
 }

@@ -200,6 +200,14 @@ All settings live in `.env` (see `.env.example`). The ones most often changed:
 | `docs/plans/`, `docs/reviews/` | Design notes and decisions for each feature; reviews |
 | `scripts/prod_check.py` | The routine check (see above) |
 
+## Licence
+
+Free for noncommercial use - students, schools and universities, personal
+projects - under the [PolyForm Noncommercial License 1.0.0](LICENSE.md).
+Using Cygnus in a business or to earn money needs a commercial licence:
+[COMMERCIAL.md](COMMERCIAL.md). Other people's software inside the
+installer keeps its own licences: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 ## Author
 
 Roger Abay Jr

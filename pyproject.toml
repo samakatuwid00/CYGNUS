@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools>=68"]
+# 77: the licence as an SPDX expression, with license-files (PEP 639)
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,6 +10,10 @@ description = "A voice assistant that drives the apps and websites already on yo
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Roger Abay Jr" }]
+# Free for noncommercial use, students and schools included; everyone else
+# needs a paid licence (COMMERCIAL.md).
+license = "PolyForm-Noncommercial-1.0.0"
+license-files = ["LICENSE.md", "THIRD_PARTY_NOTICES.md"]
 keywords = ["voice assistant", "windows", "automation", "whisper", "llm"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -67,5 +72,6 @@ Repository = "https://github.com/samakatuwid00/CYGNUS"
 # example settings copied on first use. What Cygnus writes lives in data/.
 packages = [
     "cygnus", "cygnus.apps", "cygnus.agents", "cygnus.brain", "cygnus.browser",
-    "cygnus.jobs", "cygnus.memory", "cygnus.rules", "cygnus.server", "cygnus.tools",
+    "cygnus.jobs", "cygnus.memory", "cygnus.rules", "cygnus.server", "cygnus.setup",
+    "cygnus.tools", "cygnus.voice",
 ]

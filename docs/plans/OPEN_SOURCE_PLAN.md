@@ -54,10 +54,12 @@ Either way: never push `--all` or `--tags` from this repo, and never push the
       by starting Cygnus as a stranger would); docs/WHAT_IT_CAN_DO.md says
       what Cygnus can do, what it always asks about, what it refuses, and
       what leaves the machine.
-- [~] **Install story**: `pyproject.toml` and docs/SETUP.md (a clean
+- [x] **Install story**: `pyproject.toml` and docs/SETUP.md (a clean
       Windows laptop, a first five minutes, and what to do when it breaks) are
-      done. **A licence is still missing, and which one is the owner's
-      choice.**
+      done, and an installer (README, "Building the installer"). **Licence**
+      (2026-09-30, the owner's choice): PolyForm Noncommercial 1.0.0, free for
+      students and schools, a paid licence for commercial use (LICENSE.md,
+      COMMERCIAL.md, THIRD_PARTY_NOTICES.md).
 - [x] **What it does with the microphone and the cloud, in writing**
       (docs/PRIVACY.md, 2026-09-23). Written by auditing the code, with a
       file:line for every claim. It found three things the docs had wrong or

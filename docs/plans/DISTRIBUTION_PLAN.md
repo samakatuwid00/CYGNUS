@@ -163,10 +163,22 @@ with each provider, and a retention setting (OPEN_SOURCE_PLAN.md, Retention).
 
 ## Open
 
-- **The licence.** "Free for students, paid for others" does not fit MIT,
-  which lets anyone sell it. A source-available licence (PolyForm
-  Noncommercial, the Business Source License) or a dual licence does. The
-  owner's choice.
+- **The licence: decided 2026-09-30.** PolyForm Noncommercial 1.0.0
+  (LICENSE.md), with a separate paid licence for commercial use
+  (COMMERCIAL.md). Every package the installer carries allows this: MIT, BSD,
+  Apache 2.0, PSF, MPL 2.0 (certifi, unchanged) and LGPL 3.0 (edge-tts,
+  unchanged and replaceable) - THIRD_PARTY_NOTICES.md, generated from the
+  bundle at build time. Still open, for a lawyer or IPOPHL, not for code:
+  - **Who owns it.** Under the Philippine IP Code a work made by a government
+    employee as part of official duties has no copyright (Sec. 176), and one
+    made in the course of employment can belong to the employer
+    (Sec. 178.3). If Cygnus was made on the owner's own time and equipment
+    the owner may license it; if not, the paid tier may not be the owner's
+    to sell.
+  - The commercial licence's own terms and price, and a contact address in
+    COMMERCIAL.md.
+  - A contributor agreement before taking outside changes.
+  - "Cygnus" as a trademark, before selling under the name.
 - How a student proves they are one for the free tier, if the paid tier and
   the free one share an installer.
 - The age check: the free tier's docs say who may use which provider; nothing

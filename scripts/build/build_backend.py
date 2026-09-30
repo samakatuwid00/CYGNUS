@@ -33,7 +33,7 @@ CODE = ["cygnus", "web", "config"]
 KWS = "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
 KWS_SRC = REPO / "data" / "models" / "kws" / KWS
 KWS_KEEP = ["*.int8.onnx", "tokens.txt", "bpe.model", "cygnus_keywords.txt", "keywords.txt", "README.md"]
-FILES = [".env.example", "requirements.txt"]
+FILES = [".env.example", "requirements.txt", "LICENSE.md", "COMMERCIAL.md", "THIRD_PARTY_NOTICES.md"]
 SKIP = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache")
 
 
@@ -65,6 +65,15 @@ def build_python():
     _run("uv", "pip", "install", "--python", python, "--compile-bytecode", "-r", REPO / "requirements.txt")
 
 
+def write_notices():
+    """THIRD_PARTY_NOTICES.md from the packages that actually ship, and the
+    licence as plain text for the installer's first page."""
+    with open(REPO / "THIRD_PARTY_NOTICES.md", "w", encoding="utf-8", newline="\n") as out:
+        subprocess.run([str(PYTHON_DIR / "python.exe"), str(REPO / "scripts" / "build" / "third_party_notices.py")],
+                       stdout=out, check=True)
+    shutil.copyfile(REPO / "LICENSE.md", BUILD / "LICENSE.txt")
+
+
 def build_code():
     """The code the backend runs, without the repository around it."""
     shutil.rmtree(BACKEND_DIR, ignore_errors=True)
@@ -89,6 +98,7 @@ def main(argv=None):
     BUILD.mkdir(parents=True, exist_ok=True)
     if not args.code or not (PYTHON_DIR / "python.exe").is_file():
         build_python()
+    write_notices()
     build_code()
     # The bundle on its own: its Python imports its code and the server app.
     subprocess.run([str(PYTHON_DIR / "python.exe"), "-c",
