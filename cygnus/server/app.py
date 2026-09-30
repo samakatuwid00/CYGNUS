@@ -154,12 +154,17 @@ from cygnus.brain import semantic_route
 semantic_route.warm()
 # 9router health: probe at boot, so the first cloud turn already skips dead
 # models (router_health.py); it re-checks every 5 minutes after that.
-from cygnus.brain import router_health
-router_health.start()
 # ...and 9router itself: started when it is down, checked every 30 s, since
 # only the login script and the desktop app ever started it (router_keeper.py).
-from cygnus.brain import router_keeper
-router_keeper.watch()
+# Neither runs when no router is configured (CYGNUS_PROVIDER=gemini or ollama).
+from cygnus import config as _config
+from cygnus.brain import router_health, router_keeper
+
+if _config.JARVIS_USE_9ROUTER and not _config.JARVIS_LOCAL_ONLY:
+    router_health.start()
+    router_keeper.watch()
+if _config.PROVIDER_PROBLEM:
+    print(f"[JARVIS] SETUP: {_config.PROVIDER_PROBLEM}", flush=True)
 from cygnus import tools  # for the /apps/open endpoint (same dispatcher the brain uses)
 
 # Server-side wake-word fallback. The browser's Web Speech WakeListener is primary,
@@ -1792,6 +1797,9 @@ async def get_status():
         model, endpoint = CEREBRAS_MODEL, CEREBRAS_BASE_URL
     elif brain._use_groq:
         model, endpoint = GROQ_MODEL, GROQ_BASE_URL
+    elif getattr(brain, "_use_google", False) or _config.CYGNUS_PROVIDER == "gemini":
+        # CYGNUS_PROVIDER=gemini: Google is the brain, not the local model.
+        model, endpoint = (_config.GOOGLE_AI_MODELS or [""])[0], _config.GOOGLE_AI_BASE_URL
     elif getattr(brain, "_use_ollama", False):
         model, endpoint = OLLAMA_MODEL, OLLAMA_BASE_URL
     else:
@@ -1829,6 +1837,10 @@ async def get_status():
         "brain_label": __import__("cygnus.brain.router_health", fromlist=["_"]).friendly(actual or model),
         "configured": model,
         "local_only": bool(getattr(brain, "_local_only", False)),
+        # The provider chosen in .env, and what stops it working ("" when
+        # nothing does). Never the key itself.
+        "provider": _config.CYGNUS_PROVIDER or "legacy",
+        "setup_problem": _config.PROVIDER_PROBLEM,
         "route": route,
         "endpoint": endpoint,
         # Gemini is off; the final real fallback is the local model.

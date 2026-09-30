@@ -166,10 +166,19 @@ def _why_no_model(err) -> str:
     """The reason the models gave, as a person would say it. Every failure
     used to read the same, and a canned reply even answered as if it had
     opened an app while nothing ran (bench/chaos.py, 2026-09-23)."""
+    # A setup that cannot work says what to fix, whatever the call said.
+    from cygnus import config as _config
+    if _config.PROVIDER_PROBLEM:
+        return _config.PROVIDER_PROBLEM
     text = f"{type(err).__name__}: {err}" if isinstance(err, BaseException) else str(err or "")
     if not text:
         return "No model answered, sir."
     low = text.lower()
+    if re.search(r"\b401\b|invalid.{0,12}api.?key|incorrect api key|api key not valid|"
+                 r"valid api key|api_key_invalid|authenticationerror", low):
+        setting = "CYGNUS_API_KEY" if _config.CYGNUS_PROVIDER else "ROUTER_API_KEY or GOOGLE_AI_API_KEY"
+        return (f"The provider refused the API key, sir. Check {setting} in .env - "
+                "copied whole, no spaces - or make a new one (docs/API_KEY.md).")
     try:
         from cygnus.brain import router_keeper
         down = router_keeper.is_connection_error(text)
@@ -1425,7 +1434,11 @@ class JarvisBrain:
         # the routing below; so does any turn no model could take.
         try:
             from cygnus.brain import agent_loop as _al
-            if _al.MODE in ("lead", "shadow") and _al.takes(user_input, classify_intent(user_input), _client_key()):
+            # Local-only: the loop's models are all in the cloud (9router,
+            # Google), so it never takes the turn (docs/PRIVACY.md).
+            from cygnus import config as _cfg
+            if (not (self._local_only or _cfg.JARVIS_LOCAL_ONLY) and _al.MODE in ("lead", "shadow")
+                    and _al.takes(user_input, classify_intent(user_input), _client_key())):
                 _ctx = {"client": _client_key(), "user_text": user_input, "on_done": on_hermes_done,
                         "progress_cb": progress_cb, "remote": getattr(_progress_local, "remote", False)}
                 if _al.MODE == "lead":
@@ -2048,6 +2061,10 @@ class JarvisBrain:
         from cygnus.brain import agent_loop as _al
         from cygnus.brain import google_ai
         if not google_ai.models():
+            # Every model is resting: why the last one failed is the answer
+            # (a refused key, a spent quota), not "no model answered".
+            if google_ai.last_error:
+                raise RuntimeError(google_ai.last_error)
             return None
         out = _al.run(self, user_input, {"client": _client_key(), "user_text": user_input,
                                           "remote": getattr(_progress_local, "remote", False)})

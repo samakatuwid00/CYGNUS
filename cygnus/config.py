@@ -1,7 +1,7 @@
 """Configuration for Jarvis AI Assistant"""
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
 load_dotenv()
 
@@ -9,21 +9,84 @@ load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = "gemini-2.5-flash"
 
-# 9router (local AI proxy) — primary brain backend
+
+def _env(name: str) -> str:
+    """A setting from .env, "" when unset or set but empty."""
+    return (os.getenv(name) or "").strip()
+
+
+# --- The provider: one choice and one key ------------------------------------
+# A student sets CYGNUS_PROVIDER and CYGNUS_API_KEY and nothing else
+# (docs/API_KEY.md). Each provider fills in the endpoint, the models and which
+# backends are on; any ROUTER_* / GOOGLE_AI_* setting written out in .env still
+# wins over what the provider fills in. Unset: the settings below as they were
+# before providers existed (the author's 9router setup), so an existing .env
+# keeps working unchanged.
+PROVIDERS = {
+    # Google AI Studio: free, no card. Called directly by the agent loop.
+    "gemini":     {"router": False, "key": True},
+    "openai":     {"router": True, "key": True, "url": "https://api.openai.com/v1",
+                   "model": "gpt-5.4-mini", "fallbacks": "gpt-5.4"},
+    "groq":       {"router": True, "key": True, "url": "https://api.groq.com/openai/v1",
+                   "model": "llama-3.3-70b-versatile"},
+    # OpenRouter's free models come and go: the student names one.
+    "openrouter": {"router": True, "key": True, "url": "https://openrouter.ai/api/v1"},
+    # Any other OpenAI-compatible endpoint: ROUTER_BASE_URL and CYGNUS_MODEL.
+    "custom":     {"router": True, "key": False},
+    # Local only through Ollama: no key, nothing to sign up for.
+    "ollama":     {"router": False, "key": False, "local": True},
+    "9router":    {"router": True, "key": False, "url": "http://localhost:20128/v1"},
+}
+CYGNUS_PROVIDER = _env("CYGNUS_PROVIDER").lower()
+CYGNUS_API_KEY = _env("CYGNUS_API_KEY")
+CYGNUS_MODEL = _env("CYGNUS_MODEL")
+_P = PROVIDERS.get(CYGNUS_PROVIDER, {})
+
+
+def _provider_problem() -> str:
+    """Why the chosen provider cannot work as set, in words for the person
+    setting it up; "" when it can. Shown at start, on /status and as the
+    reply when no model answered."""
+    if not CYGNUS_PROVIDER:
+        return ""
+    if not _P:
+        return (f"CYGNUS_PROVIDER={CYGNUS_PROVIDER} is not a provider Cygnus knows. "
+                f"Use one of: {', '.join(PROVIDERS)}.")
+    has_key = CYGNUS_API_KEY or (_env("GOOGLE_AI_API_KEY") if CYGNUS_PROVIDER == "gemini"
+                                 else _env("ROUTER_API_KEY"))
+    if _P.get("key") and not has_key:
+        return (f"No API key is set for {CYGNUS_PROVIDER}. Put it in .env as "
+                f"CYGNUS_API_KEY=... and restart Cygnus; docs/API_KEY.md shows how to get one.")
+    if _P.get("router") and not (_P.get("url") or _env("ROUTER_BASE_URL")):
+        return f"CYGNUS_PROVIDER={CYGNUS_PROVIDER} needs ROUTER_BASE_URL in .env: the endpoint's address."
+    if _P.get("router") and not (_P.get("model") or CYGNUS_MODEL or _env("ROUTER_MODEL")):
+        return f"CYGNUS_PROVIDER={CYGNUS_PROVIDER} needs CYGNUS_MODEL in .env: the model to ask."
+    return ""
+
+
+PROVIDER_PROBLEM = _provider_problem()
+
+# 9router (local AI proxy) — primary brain backend; with a provider set, the
+# provider's OpenAI-compatible endpoint takes this path.
 # Set JARVIS_USE_9ROUTER=false in .env to skip straight to Gemini
-JARVIS_USE_9ROUTER = os.getenv("JARVIS_USE_9ROUTER", "true").lower() == "true"
-ROUTER_BASE_URL = os.getenv("ROUTER_BASE_URL", "http://localhost:20128/v1")
-ROUTER_MODEL = os.getenv("ROUTER_MODEL", "oc/mimo-v2.5-free")
+JARVIS_USE_9ROUTER = (_P["router"] if _P
+                      else os.getenv("JARVIS_USE_9ROUTER", "true").lower() == "true")
+ROUTER_BASE_URL = _env("ROUTER_BASE_URL") or _P.get("url") or "http://localhost:20128/v1"
+ROUTER_MODEL = _env("ROUTER_MODEL") or (CYGNUS_MODEL if _P.get("router") else "") \
+    or _P.get("model") or "oc/mimo-v2.5-free"
 # `or` not a getenv default: ROUTER_API_KEY= (set but empty) in .env returns ""
 # and the OpenAI client then raises "Missing credentials", which reads like a
-# JARVIS bug rather than an unconfigured 9router.
-ROUTER_API_KEY = os.getenv("ROUTER_API_KEY") or "dummy"
+# JARVIS bug rather than an unconfigured 9router. A missing key for a provider
+# that needs one is PROVIDER_PROBLEM, said plainly instead.
+ROUTER_API_KEY = _env("ROUTER_API_KEY") or (CYGNUS_API_KEY if _P.get("router") else "") or "dummy"
 # Free-tier 9router models tried (in order) when the primary is rate-limited
 # (429). They carry separate quotas, so a throttled primary hops to a fresh
 # model instead of giving up. The last real fallback is Ollama (step 3).
+# A provider's own list replaces 9router's: those names mean nothing elsewhere.
 ROUTER_FALLBACK_MODELS = [m.strip() for m in
-    os.getenv("ROUTER_FALLBACK_MODELS",
-              "ag/gemini-3.5-flash-low,ag/gemini-3-flash,antigrav,cx/gpt-5.6-sol").split(",") if m.strip()]
+    (os.getenv("ROUTER_FALLBACK_MODELS")
+     or (_P.get("fallbacks", "") if _P else
+         "ag/gemini-3.5-flash-low,ag/gemini-3-flash,antigrav,cx/gpt-5.6-sol")).split(",") if m.strip()]
 
 # --- Google AI (Gemini API, Cygnus's own key) --------------------------------
 # A key of Cygnus's own, separate from GEMINI_API_KEY (reserved for portfolio
@@ -34,10 +97,11 @@ ROUTER_FALLBACK_MODELS = [m.strip() for m in
 # allows 20 requests a day per model and a turn makes 2-4, so the more models
 # the more turns a day (2026-09-27: two models spent by morning). 3.8 and 3.7
 # go late: overloaded (503) or 4-9 s for a one-word reply that morning.
-GOOGLE_AI_API_KEY = os.getenv("GOOGLE_AI_API_KEY", "").strip()
+GOOGLE_AI_API_KEY = _env("GOOGLE_AI_API_KEY") or (CYGNUS_API_KEY if CYGNUS_PROVIDER == "gemini" else "")
 GOOGLE_AI_BASE_URL = os.getenv("GOOGLE_AI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
 GOOGLE_AI_MODELS = [m.strip() for m in
-    os.getenv("GOOGLE_AI_MODELS", "gemini-3.6-flash,gemini-3-flash-preview,gemini-3.5-flash,gemini-3.1-flash-lite,gemini-3.8-flash,gemini-3.7-flash,gemini-2.5-flash").split(",") if m.strip()]
+    (_env("GOOGLE_AI_MODELS") or (CYGNUS_MODEL if CYGNUS_PROVIDER == "gemini" else "")
+     or "gemini-3.6-flash,gemini-3-flash-preview,gemini-3.5-flash,gemini-3.1-flash-lite,gemini-3.8-flash,gemini-3.7-flash,gemini-2.5-flash").split(",") if m.strip()]
 
 # --- Groq (OpenAI-compatible free tier) -------------------------------------
 # Lets JARVIS use a free Groq model so the Gemini quota isn't burned by JARVIS.
@@ -52,12 +116,11 @@ if not GROQ_API_KEY:
     # JARVIS_GROQ_KEY_PATH: another .env to read the key from, when you keep
     # it with a different project. Unset means "only this .env".
     _GROQ_ENV_PATH = os.getenv("JARVIS_GROQ_KEY_PATH", "")
-    from pathlib import Path as _Path
-    _gp = _Path(_GROQ_ENV_PATH)
-    if _gp.exists():
+    _gp = Path(_GROQ_ENV_PATH)
+    # Path("") is "." and exists: only a named file is read.
+    if _GROQ_ENV_PATH and _gp.is_file():
         try:
-            from dotenv import dotenv_values as _dec
-            _GVALS = {k: v for k, v in _dec(_gp).items() if v}
+            _GVALS = {k: v for k, v in dotenv_values(_gp).items() if v}
             GROQ_API_KEY = _GVALS.get("GROQ_API_KEY", "")
         except Exception:
             GROQ_API_KEY = ""
@@ -72,10 +135,12 @@ CEREBRAS_BASE_URL = os.getenv("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1")
 CEREBRAS_MODEL = os.getenv("CEREBRAS_MODEL", "gemma-4-31b")
 if not CEREBRAS_API_KEY:
     _CEREBRAS_ENV_PATH = os.getenv("JARVIS_CEREBRAS_KEY_PATH", "")
-    _cp = _Path(_CEREBRAS_ENV_PATH)
-    if _cp.exists():
+    # Path was imported only inside the Groq branch above, so a Groq key with
+    # no Cerebras key stopped Cygnus at import with a NameError (2026-09-30).
+    _cp = Path(_CEREBRAS_ENV_PATH)
+    if _CEREBRAS_ENV_PATH and _cp.is_file():
         try:
-            _CVALS = {k: v for k, v in _dec(_cp).items() if v}
+            _CVALS = {k: v for k, v in dotenv_values(_cp).items() if v}
             CEREBRAS_API_KEY = _CVALS.get("CEREBRAS_API_KEY", "")
         except Exception:
             CEREBRAS_API_KEY = ""
@@ -86,13 +151,19 @@ if not CEREBRAS_API_KEY:
 # on qwen3:4b-instruct (CPU only — Ollama has no ROCm path for this iGPU).
 # Set JARVIS_PREFER_LOCAL=true to try it FIRST instead of last (offline work,
 # battery, or keeping a conversation entirely on-device).
-JARVIS_USE_OLLAMA = os.getenv("JARVIS_USE_OLLAMA", "true").lower() == "true"
-JARVIS_PREFER_LOCAL = os.getenv("JARVIS_PREFER_LOCAL", "false").lower() == "true"
+# With a cloud provider chosen it is off unless asked for: a student laptop
+# without Ollama would otherwise log a failed keep-warm ping every 4 minutes.
+JARVIS_USE_OLLAMA = os.getenv(
+    "JARVIS_USE_OLLAMA", "true" if not _P or _P.get("local") else "false").lower() == "true"
+JARVIS_PREFER_LOCAL = os.getenv(
+    "JARVIS_PREFER_LOCAL", "true" if _P.get("local") else "false").lower() == "true"
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 # jarvis-qwen3 is qwen3:4b-instruct rebuilt with num_ctx 8192 (Modelfile.jarvis).
 # The stock 4096 window is ~2.8k spent before the first user turn — 21 tool
 # schemas cost ~2.2k tokens — so history silently truncates mid-conversation.
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "jarvis-qwen3")
+# CYGNUS_PROVIDER=ollama: the stock model (SETUP.md), or CYGNUS_MODEL.
+OLLAMA_MODEL = _env("OLLAMA_MODEL") or (
+    (CYGNUS_MODEL or "qwen3:4b-instruct") if CYGNUS_PROVIDER == "ollama" else "jarvis-qwen3")
 # Ollama ignores the key, but the OpenAI client requires a non-empty string.
 OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "ollama")
 # 512 tokens at 14 tok/s is ~36s worst case; voice replies are far shorter.

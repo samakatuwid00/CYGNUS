@@ -330,6 +330,9 @@ def _ensure_probing() -> None:
     if _thread is not None or os.getenv("PYTEST_CURRENT_TEST") or "pytest" in sys.modules \
             or os.getenv("JARVIS_ROUTER_PROBE", "1") == "0":
         return
+    from cygnus import config
+    if not config.JARVIS_USE_9ROUTER or config.JARVIS_LOCAL_ONLY:
+        return                              # no router in this setup: nothing to probe
     _thread = threading.Thread(target=_loop, daemon=True, name="router-health")
     _thread.start()
 

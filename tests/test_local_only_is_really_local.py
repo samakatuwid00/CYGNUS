@@ -53,3 +53,21 @@ def test_without_local_only_the_cloud_voice_is_used(monkeypatch):
     monkeypatch.setattr("edge_tts.Communicate", FakeCommunicate, raising=False)
     out = asyncio.run(speech.tts_to_b64("hello"))
     assert out and called["text"] == "hello"
+
+
+def test_local_only_keeps_turns_out_of_the_agent_loop(monkeypatch):
+    """The agent loop's models are all cloud ones (9router, Google): with a
+    Google key and JARVIS_AGENT_LOOP=lead, a local-only turn went to Google
+    (found by /ship, 2026-09-30)."""
+    from cygnus import config
+    from cygnus.brain import agent_loop, core
+    monkeypatch.setattr(config, "JARVIS_LOCAL_ONLY", True)
+    monkeypatch.setattr(agent_loop, "MODE", "lead")
+    cloud = []
+    monkeypatch.setattr(agent_loop, "run", lambda *a, **k: cloud.append(a) or "from the cloud")
+    b = core.JarvisBrain()
+    b._local_only = b._prefer_local = b._use_ollama = True
+    b._use_router = b._use_google = False
+    monkeypatch.setattr(b, "_think_ollama", lambda text: "from this laptop")
+    assert b.think("tell me a joke about stars") == "from this laptop"
+    assert cloud == []

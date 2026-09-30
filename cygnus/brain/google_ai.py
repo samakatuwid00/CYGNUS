@@ -22,10 +22,18 @@ from cygnus.config import GOOGLE_AI_API_KEY, GOOGLE_AI_BASE_URL, GOOGLE_AI_MODEL
 PREFIX = "google/"
 REST_S = 60.0             # a model that failed is skipped this long...
 QUOTA_REST_S = 600.0      # ...and this long when its quota ran out
+DEAD_KEY_REST_S = 24 * 3600.0   # ...and every model, when the key itself is refused
 
 _lock = threading.Lock()
 _resting: dict[str, float] = {}     # model -> monotonic time it may be tried again
 _client = None
+# Why the last Google call failed, for the reply when no model is left.
+last_error = ""
+# One key serves every model: when Google refuses it, none of them can
+# answer until the key is fixed and Cygnus restarted, so none is asked. A
+# student's wrong key once spent seven calls a turn to learn it (2026-09-30).
+KEY_REFUSED_RE = re.compile(r"valid api key|api.?key not valid|api_key_invalid|"
+                            r"invalid.{0,12}api.?key|incorrect api key|\b401\b", re.IGNORECASE)
 
 
 def enabled() -> bool:
@@ -83,8 +91,15 @@ def mark_failed(model: str, reason: str = "", now: float | None = None, wall: fl
     until midnight Pacific when its daily quota is spent. The free tier allows
     20 requests a day per model and a turn makes 2-4 (2026-09-27), so a spent
     model was retried every ten minutes all day."""
+    global last_error
     now = time.monotonic() if now is None else now
     reason = str(reason)
+    last_error = reason
+    if KEY_REFUSED_RE.search(reason):
+        with _lock:
+            for m in GOOGLE_AI_MODELS:
+                _resting[PREFIX + m] = now + DEAD_KEY_REST_S
+        return
     if re.search(r"PerDay", reason):
         rest = _until_daily_reset(wall)
     elif is_limit(reason):

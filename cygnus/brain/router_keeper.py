@@ -51,7 +51,10 @@ def _address():
     except Exception:
         ROUTER_BASE_URL = "http://localhost:20128/v1"
     u = urlparse(ROUTER_BASE_URL)
-    return u.hostname or "localhost", u.port or 20128
+    # A URL with no port means the scheme's: https://api.openai.com/v1 was
+    # checked on port 20128, never answered, and every turn with the
+    # student's own key skipped the agent loop as "router down" (2026-09-30).
+    return u.hostname or "localhost", u.port or {"https": 443, "http": 80}.get(u.scheme, 20128)
 
 
 # Cygnus starts and restarts 9router only when the endpoint is on this

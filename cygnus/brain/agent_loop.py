@@ -545,6 +545,10 @@ def run(brain, text: str, ctx: dict) -> str | None:
     from cygnus.brain import google_ai
     router_down = False
     try:
+        if not getattr(brain, "_use_router", True):
+            # No router in this setup (CYGNUS_PROVIDER=gemini): nothing to
+            # start, and its models are not asked.
+            raise bg._RouterDown("no router configured")
         bg._router_ready()                  # starts a 9router that is down, bounded wait
     except bg._RouterDown as e:
         if not google_ai.models():
@@ -565,6 +569,8 @@ def run(brain, text: str, ctx: dict) -> str | None:
                 continue                        # 9router is down: only Google can answer
             if carry is not None and not google_ai.owns(model):
                 continue                        # a half-done turn passes only between Google models
+            if google_ai.owns(model) and model not in google_ai.models():
+                continue                        # rested since the list was made (a refused key rests all)
             messages = carry if carry is not None else list(base)
             api, wire = _client_for(model, client)
             try:
