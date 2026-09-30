@@ -81,8 +81,12 @@ async def _guard_apps_writes(request: Request, call_next):
     if request.url.path.startswith(("/shadow", "/prefs")) and \
             (request.client.host if request.client else "") not in ("127.0.0.1", "::1", "localhost"):
         return JSONResponse({"error": "Only available on this computer."}, status_code=403)
+    # The first-run setup handles the model key: this computer, addressed as
+    # itself, and nothing proxied - not even the owner's phone.
+    if request.url.path.startswith("/setup") and _http_is_remote(request):
+        return JSONResponse({"error": "Only available on this computer."}, status_code=403)
     if request.method in ("POST", "PUT", "PATCH", "DELETE") \
-            and request.url.path.startswith(("/apps", "/shadow", "/prefs")):
+            and request.url.path.startswith(("/apps", "/shadow", "/prefs", "/setup")):
         ctype = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
         origin = request.headers.get("origin")
         same_origin = not origin or \
@@ -829,6 +833,8 @@ from cygnus.server.apps_routes import (  # noqa: E402,F401
     post_shadow_label,
 )
 app.include_router(_apps_routes.router)
+from cygnus.server import setup_routes as _setup_routes  # noqa: E402
+app.include_router(_setup_routes.router)
 
 
 def _ws_origin_allowed(websocket: WebSocket) -> bool:

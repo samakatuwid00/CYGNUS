@@ -34,9 +34,33 @@ Not a default until measured: Groq's llama-3.3-70b allows 12k tokens a minute
 on the free tier, and one Cygnus call is about 7.5k tokens (prompt and 32
 tools, 2026-09-12), so a three-call turn waits on the limit.
 
-**Before publishing a recommendation:** run the tool-call probe
-(`router_health`) and the latency and grounding benches against each student
-provider, and put the measured table in docs/API_KEY.md.
+**Measured 2026-09-30** (`scripts/bench/providers.py`: the agent loop's real
+first call - its system prompt and 16 tools, about 1.4-1.9k prompt tokens -
+for 8 requests whose right first tool is known; one round, on the author's
+laptop):
+
+| Model | Right | Refused | p50 | Slowest |
+|---|---|---|---|---|
+| gemini-3.1-flash-lite | 8/8 | 0 | 2.7 s | 4.4 s |
+| gemini-3.5-flash | 6/8 | 2 (503, busy) | 3.2 s | 6.2 s |
+| gemini-2.5-flash | 3/8 | 4 (429) | 1.7 s | 1.9 s |
+| gemini-3-flash-preview | 2/8 | 6 (429) | 1.8 s | 2.0 s |
+| ollama jarvis-qwen3 (4b, 8k window) | 7/8 | 0 | 3.0 s | 31.8 s (cold) |
+| ollama qwen3:4b-instruct | 6/8 | 0 | 2.9 s | 33.3 s (cold) |
+| ollama qwen3:1.7b | 4/8 | 0 | 6.7 s | 20.3 s |
+
+What it shows: every Gemini model that answered chose the right tool but one
+(2.5-flash said "noted" to "remember that my exam is on Friday"), so the free
+tier's problem is **availability, not quality** - a per-minute limit of 5 calls
+per model (seen on 2.5-flash), a daily one of about 20 (seen on 3.6-flash), and
+503s when Google is busy. The 429s above are most likely the daily limit, spent
+by the day's earlier tests; the bench now records which limit it was. Locally,
+4B is the floor: 1.7B chose right half the time. The 8k-window build of
+qwen3:4b beat the stock one, so the installer should build it
+(`Modelfile.jarvis`) rather than pull the stock model alone.
+
+**To do:** run it again on a fresh daily quota with `--rounds 3`, and on
+Groq and OpenRouter with their keys, then put the table in docs/API_KEY.md.
 
 ### The local model follows the machine
 
@@ -69,6 +93,23 @@ the author's laptop: qwen3:4b-instruct at 14 tok/s on the CPU, 28.9 s cold.
 3. **The phone.** Today it has no login and needs Tailscale (PHONE_PLAN.md).
    Before it ships to students: pairing by QR code from the PC, a token per
    phone that can be revoked.
+
+### Built so far (2026-09-30)
+
+- `cygnus/setup/machine.py`: reads RAM, cores, graphics cards (their real
+  memory, from the registry) and free disk, and recommends: no local model
+  under ~8 GB, a local model only as the offline backup without a graphics
+  card of 6 GB or more, and the Whisper model by RAM.
+- `cygnus/setup/provider.py`: tries a key with one real tool call and says
+  what to do in plain words (refused, quota used up but the key works, no
+  such model, no tools, no connection); keeps the key in Windows Credential
+  Manager and only the provider's name in `.env`. config.py reads the key
+  from there when `.env` has none.
+- `/setup/state`, `/setup/test`, `/setup/save` (`cygnus/server/setup_routes.py`):
+  this computer only - the phone and anything proxied get 403 - and writes
+  only as same-origin JSON.
+
+Next: the setup page in the HUD that uses them, then the bundled installer.
 
 ## Paid (everyone else)
 

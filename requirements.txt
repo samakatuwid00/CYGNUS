@@ -8,6 +8,8 @@ numpy>=1.24.0
 faster-whisper>=0.10.0
 # What is running on this machine (running_apps)
 psutil>=5.9
+# The model key, kept in Windows Credential Manager rather than .env (cygnus/setup)
+keyring>=25
 # A window's picture for "describe that window" (running_apps)
 pillow>=10
 edge-tts>=6.1.0

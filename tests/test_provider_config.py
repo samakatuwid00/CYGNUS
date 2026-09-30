@@ -27,6 +27,7 @@ def load(monkeypatch):
     """config as a fresh process would read it from exactly these settings:
     the real .env is neither read nor left in the environment."""
     monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: False)
+    monkeypatch.setenv("CYGNUS_KEYRING", "0")          # nor a key the setup kept in the vault
     for v in _VARS:
         monkeypatch.delenv(v, raising=False)
 

@@ -38,7 +38,22 @@ PROVIDERS = {
     "9router":    {"router": True, "key": False, "url": "http://localhost:20128/v1"},
 }
 CYGNUS_PROVIDER = _env("CYGNUS_PROVIDER").lower()
-CYGNUS_API_KEY = _env("CYGNUS_API_KEY")
+
+
+def _stored_key(provider: str) -> str:
+    """The key the first-run setup kept in Windows Credential Manager
+    (cygnus/setup/provider.py). CYGNUS_KEYRING=0 skips it (tests)."""
+    if not provider or os.getenv("CYGNUS_KEYRING", "1") == "0":
+        return ""
+    try:
+        import keyring
+        return (keyring.get_password("cygnus", provider) or "").strip()
+    except Exception:
+        return ""
+
+
+# In .env, or else where the setup kept it; .env wins so it can override.
+CYGNUS_API_KEY = _env("CYGNUS_API_KEY") or _stored_key(CYGNUS_PROVIDER)
 CYGNUS_MODEL = _env("CYGNUS_MODEL")
 _P = PROVIDERS.get(CYGNUS_PROVIDER, {})
 
