@@ -20,6 +20,13 @@ Then start Cygnus (or restart it: `.env` is read once, at start).
 | **openai** | Paid per use | Yes | If you already pay for it |
 | **ollama** | Free, runs on your laptop | No key at all | No internet, or nothing may leave the machine |
 
+**Under 18?** Google's Gemini API and OpenRouter require you to be 18 or
+older. Use `ollama` (on your own laptop, no account), or `openai` with your
+parent's or guardian's permission - OpenAI allows 13 and up with it.
+
+**One key per person.** Free limits are per account: a key shared by a class
+runs out in minutes, and everyone's use shows up on its owner's account.
+
 Free tiers have limits per minute and per day, and providers change them
 without notice. When Cygnus says "my model is out of quota", you have hit one:
 wait for the reset it names, or switch provider.
