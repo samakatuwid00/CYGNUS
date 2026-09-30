@@ -1,7 +1,14 @@
 # Getting an API key for Cygnus
 
 Cygnus needs a model to think with. You bring your own: pick one provider
-below, make a key, and put two lines in `.env`. About five minutes.
+below and make a key. About five minutes.
+
+**The easy way:** start Cygnus and click **Set up** (or open
+`http://127.0.0.1:8001/setup`). It shows what your PC can run, lets you pick
+a provider, tries your key before keeping it, keeps the key in Windows
+Credential Manager rather than a file, and restarts Cygnus with it.
+
+**By hand:** put two lines in `.env`:
 
 ```ini
 CYGNUS_PROVIDER=gemini
@@ -149,7 +156,7 @@ Cygnus says what is wrong, in the reply and on `http://127.0.0.1:8001/status`
 
 | Cygnus says | Do this |
 |---|---|
-| "No API key is set for ..." | Put the key in `.env` as `CYGNUS_API_KEY=...` and restart. |
+| "No API key is set for ..." | Add it in the setup (**Set up**), or put it in `.env` as `CYGNUS_API_KEY=...` and restart. |
 | "The provider refused the API key" | The key is wrong, deleted, or copied with a space or a missing character. Copy it again, or make a new one. |
 | "... is not a provider Cygnus knows" | Check the spelling of `CYGNUS_PROVIDER`: one of `gemini`, `groq`, `openrouter`, `openai`, `ollama`, `custom`. |
 | "... needs CYGNUS_MODEL" | OpenRouter and custom endpoints need the model named. |

@@ -14,6 +14,9 @@ import shutil
 import time
 
 KEYRING_SERVICE = "cygnus"
+# The smallest local model that chose Cygnus's tools right often enough
+# (bench/providers.py, 2026-09-30: qwen3:1.7b 4 of 8, this one 6 of 8).
+LOCAL_MODEL = "qwen3:4b-instruct"
 
 
 def endpoint(provider: str, model: str = "", base_url: str = "") -> tuple[str, str]:
@@ -21,6 +24,8 @@ def endpoint(provider: str, model: str = "", base_url: str = "") -> tuple[str, s
     from cygnus import config
     if provider == "gemini":
         return config.GOOGLE_AI_BASE_URL, model or config.GOOGLE_AI_MODELS[0]
+    if provider == "ollama":
+        return base_url or config.OLLAMA_BASE_URL, model or LOCAL_MODEL
     preset = config.PROVIDERS[provider]
     return base_url or preset.get("url", ""), model or preset.get("model", "")
 
@@ -37,6 +42,13 @@ def _plain(error: str) -> tuple[bool, str]:
     if re.search(r"connect|timed out|timeout|getaddrinfo|name resolution", low):
         return False, "Could not reach the provider. Check the internet connection."
     return False, "The call failed: " + error.splitlines()[0][:160]
+
+
+def _plain_local(error: str, model: str) -> str:
+    """The same, for Ollama on this PC: nothing to do with keys or internet."""
+    if re.search(r"\b404\b|not found", error.lower()):
+        return f"Ollama is running, but {model} is not downloaded. Run: ollama pull {model}"
+    return "Ollama is not running on this PC. Install it from ollama.com, then run: ollama pull " + model
 
 
 def test(provider: str, key: str, model: str = "", base_url: str = "") -> dict:
@@ -59,6 +71,8 @@ def test(provider: str, key: str, model: str = "", base_url: str = "") -> dict:
                                                tool_choice="auto", messages=router_health._PROBE_MESSAGES)
     except Exception as e:
         works, message = _plain(f"{type(e).__name__}: {e}")
+        if provider == "ollama" and not works:
+            message = _plain_local(f"{type(e).__name__}: {e}", model)
         return {"ok": works, "model": model, "seconds": round(time.monotonic() - start, 1), "message": message}
     seconds = round(time.monotonic() - start, 1)
     if reply.choices and reply.choices[0].message.tool_calls:

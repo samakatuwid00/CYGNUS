@@ -35,8 +35,12 @@ python -m venv .venv
 copy .env.example .env
 ```
 
-Open `.env` and set the two lines at the top - the provider and your key
-([API_KEY.md](API_KEY.md) shows how to get one):
+Start Cygnus (step 3) and click **Set up**, or open
+`http://127.0.0.1:8001/setup`: it checks what your PC can run, tries your key,
+and restarts Cygnus with it. [API_KEY.md](API_KEY.md) shows how to get a key.
+
+Or by hand: open `.env` and set the two lines at the top - the provider and
+your key:
 
 ```ini
 CYGNUS_PROVIDER=gemini
@@ -110,7 +114,7 @@ the repository folder.
 
 | What you see | What it means |
 |---|---|
-| "No API key is set for ..." | `CYGNUS_API_KEY` is empty in `.env`; see [API_KEY.md](API_KEY.md). |
+| "No API key is set for ..." | Click **Set up**, or fill `CYGNUS_API_KEY` in `.env`; see [API_KEY.md](API_KEY.md). |
 | "The provider refused the API key" | The key is wrong or was deleted; copy it again or make a new one. |
 | "I couldn't reach the model endpoint" | No internet, `ROUTER_BASE_URL` is wrong, or Ollama is not running. |
 | "My model is out of quota" | The provider's limit; it says when it resets. |

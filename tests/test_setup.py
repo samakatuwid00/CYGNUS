@@ -146,3 +146,48 @@ def test_another_page_cannot_save_a_key(client):
     assert client.saved == []
     assert client.post("/setup/save", json={"provider": "gemini", "key": "k"}).json() == {"ok": True}
     assert client.saved == [("gemini", "k", "", "")]
+
+
+def test_the_setup_page_is_served_here_only(client):
+    page = client.get("/setup")
+    assert page.status_code == 200 and "Give Cygnus a" in page.text
+    assert client.get("/setup", headers={"X-Forwarded-For": "100.64.0.2"}).status_code == 403
+
+
+def test_run_by_hand_the_student_is_told_to_restart(client, monkeypatch):
+    monkeypatch.delenv("CYGNUS_DESKTOP", raising=False)
+    assert client.post("/setup/restart", json={}).json()["restart"] == "manual"
+
+
+def test_under_the_desktop_app_it_exits_to_be_started_again(client, monkeypatch):
+    """Exit code 75: desktop/main.js starts it again without counting a crash."""
+    import asyncio
+    from cygnus.server import setup_routes
+    monkeypatch.setenv("CYGNUS_DESKTOP", "1")
+    later = []
+    real_loop = asyncio.get_running_loop
+
+    def loop():
+        lp = real_loop()
+        lp.call_later = lambda delay, fn, *args: later.append((fn, args))
+        return lp
+    monkeypatch.setattr(asyncio, "get_running_loop", loop)
+    assert client.post("/setup/restart", json={}).json()["restart"] == "auto"
+    assert later and later[0][1] == (setup_routes.RESTART_REQUESTED,)
+
+
+@pytest.mark.parametrize("error, says", [
+    ("APIConnectionError: Connection error.", "Ollama is not running"),
+    ("NotFoundError: Error code: 404 - model 'qwen3:4b-instruct' not found", "ollama pull qwen3:4b-instruct"),
+])
+def test_ollama_failures_are_about_ollama_not_the_internet(monkeypatch, error, says):
+    _fake_openai(monkeypatch, error=RuntimeError(error))
+    got = provider.test("ollama", "")
+    assert not got["ok"] and says in got["message"] and "internet" not in got["message"]
+
+
+def test_a_bare_404_from_ollama_means_the_model_is_missing():
+    """The 404 half of the pattern was written with backspace characters and
+    never matched; only "not found" in the text saved it (found by /ship)."""
+    assert "ollama pull m" in provider._plain_local("NotFoundError: Error code: 404", "m")
+    assert "not running" not in provider._plain_local("NotFoundError: Error code: 404", "m")

@@ -70,8 +70,9 @@ def _provider_problem() -> str:
     has_key = CYGNUS_API_KEY or (_env("GOOGLE_AI_API_KEY") if CYGNUS_PROVIDER == "gemini"
                                  else _env("ROUTER_API_KEY"))
     if _P.get("key") and not has_key:
-        return (f"No API key is set for {CYGNUS_PROVIDER}. Put it in .env as "
-                f"CYGNUS_API_KEY=... and restart Cygnus; docs/API_KEY.md shows how to get one.")
+        return (f"No API key is set for {CYGNUS_PROVIDER} yet. Add one in the setup (the Set up "
+                f"button, or /setup), or put it in .env as CYGNUS_API_KEY=... and restart. "
+                f"docs/API_KEY.md shows how to get one.")
     if _P.get("router") and not (_P.get("url") or _env("ROUTER_BASE_URL")):
         return f"CYGNUS_PROVIDER={CYGNUS_PROVIDER} needs ROUTER_BASE_URL in .env: the endpoint's address."
     if _P.get("router") and not (_P.get("model") or CYGNUS_MODEL or _env("ROUTER_MODEL")):

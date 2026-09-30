@@ -45,6 +45,9 @@ const HEALTH_EVERY_MS = 10000
 const CHECKS_EVERY_MS = 60000
 const MAX_RESTARTS = 3
 const RESTART_WINDOW_MS = 10 * 60 * 1000
+// The backend's "start me again" after the setup saved a provider
+// (cygnus/server/setup_routes.py RESTART_REQUESTED).
+const RESTART_REQUESTED = 75
 // 560 tall since the transcript is trimmed to the last exchange (owner's
 // choice, CYGNUS_UI_PLAN.md step 8).
 const STICKY = { width: 380, height: 560, margin: 20, minWidth: 320, minHeight: 420 }
@@ -157,7 +160,7 @@ function spawnBackend () {
     cwd: REPO,
     windowsHide: true,
     stdio: ['ignore', log, log],
-    env: { ...process.env, JARVIS_PORT: String(PORT), JARVIS_HOST: '127.0.0.1', PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' }
+    env: { ...process.env, JARVIS_PORT: String(PORT), JARVIS_HOST: '127.0.0.1', PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8', CYGNUS_DESKTOP: '1' }
   })
   fs.writeFileSync(pidFile(), String(proc.pid))
   backend = { proc, attached: false, state: 'starting', note: '' }
@@ -176,6 +179,13 @@ function spawnBackend () {
 // times in ten minutes: one that keeps crashing needs a person, not a loop.
 // A deliberate stop never gets here (stopBackend lets go of the process first).
 function onBackendExit (code) {
+  // The setup saved a new provider and asked to start again with it
+  // (cygnus/server/setup_routes.py): not a crash, and no budget spent.
+  if (code === RESTART_REQUESTED) {
+    setBackend('starting', 'Applying the new settings.')
+    showStatusPage('Applying your settings…')
+    return startBackend()
+  }
   const now = Date.now()
   restartTimes = restartTimes.filter(t => now - t < RESTART_WINDOW_MS)
   if (restartTimes.length >= MAX_RESTARTS) {

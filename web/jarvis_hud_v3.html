@@ -950,9 +950,20 @@
     .rp-btn, .rp-chip, .rp-grp-head, .rp-more { min-height: 44px; }
     .rp-out-h button { min-width: 44px; min-height: 44px; }
   }
+  /* A model that cannot work yet (no key, a refused one): one line at the
+     top, pointing at the setup. /status's setup_problem drives it. */
+  #jv-setup { position: fixed; z-index: 70; top: 14px; left: 50%; transform: translateX(-50%);
+    display: none; align-items: center; gap: 12px; max-width: calc(100vw - 32px);
+    padding: 10px 12px 10px 16px; border: 1px solid var(--holo); border-radius: 10px;
+    background: rgba(12, 10, 6, .92); font: 500 13px/1.35 var(--font-body); color: #f2ead9; }
+  #jv-setup.on { display: flex; }
+  #jv-setup a { flex: none; font: 700 12px/1 var(--font-display); letter-spacing: .18em; text-transform: uppercase;
+    color: var(--ink); background: var(--holo); padding: 9px 12px; border-radius: 7px; text-decoration: none; }
+  #jv-setup a:focus-visible { outline: 2px solid var(--holo-bright); outline-offset: 2px; }
 </style>
 </head>
 <body>
+  <div id="jv-setup" role="status"><span id="jv-setup-text"></span><a id="jv-setup-go" href="/setup">Set up</a></div>
   <!-- The Cygnus mark: a black disc in a gold photon ring, the accretion
        band tilted across it, its near half passing in front. Colour comes
        from `color`; the tempo of the moving parts from --flow, --spin and
@@ -1637,12 +1648,25 @@
     if (stAmp) stAmp.style.width = Math.min(100, lastLevel * 900) + '%';
   }
 
+  // The setup is on the PC only (/setup refuses the phone), so the phone is
+  // told where to go rather than given a link that answers 403.
+  function showSetupProblem(problem) {
+    var bar = document.getElementById('jv-setup');
+    if (!bar) return;
+    var here = /^(127\.0\.0\.1|localhost|\[::1\])$/.test(location.hostname);
+    document.getElementById('jv-setup-text').textContent = problem
+      ? problem + (here ? '' : ' Finish the setup on the PC.') : '';
+    document.getElementById('jv-setup-go').hidden = !here;
+    bar.classList.toggle('on', !!problem);
+  }
+
   function refreshServerStats() {
     if (DEMO) return;
     // Same endpoint the status bar already exposes; no new server work.
     fetch('/status', { cache: 'no-store' }).then(function (r) { return r.json(); })
       .then(function (s) {
         setVal(stBrain, s.brain_label || s.brain || 'unknown');   // "Gemini 3.8 Flash", live
+        showSetupProblem(s.setup_problem);
         syncBrainPill();
         // STT and the vault index used to be filled in demo mode only, so on a
         // real page they stayed em-dashes for ever. /status answers both.
