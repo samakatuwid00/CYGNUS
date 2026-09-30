@@ -88,25 +88,22 @@ def _router_audn_classifier(new_text: str, old_text: str):
     band where word-order paraphrases and genuine updates are indistinguishable
     by embedding alone). Returns same|update|different, or None on any failure
     (the caller falls back to the deterministic threshold)."""
+    from cygnus.brain import one_shot
+    from cygnus.config import ROUTER_MODEL
+    prompt = (
+        'Two recorded facts about the same user:\n'
+        f'NEW: "{new_text}"\n'
+        f'EXISTING: "{old_text}"\n'
+        'Is NEW the same fact as EXISTING, an updated version of it that '
+        'replaces it, or a different fact? Answer with exactly one word: '
+        'same, update, or different.')
     try:
-        from openai import OpenAI
-        from cygnus.config import ROUTER_BASE_URL, ROUTER_API_KEY, ROUTER_MODEL
-        client = OpenAI(base_url=ROUTER_BASE_URL, api_key=ROUTER_API_KEY or "dummy",
-                        timeout=25, max_retries=0)
-        prompt = (
-            'Two recorded facts about the same user:\n'
-            f'NEW: "{new_text}"\n'
-            f'EXISTING: "{old_text}"\n'
-            'Is NEW the same fact as EXISTING, an updated version of it that '
-            'replaces it, or a different fact? Answer with exactly one word: '
-            'same, update, or different.')
-        r = client.chat.completions.create(
-            model=ROUTER_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=3, temperature=0)
-        return (r.choices[0].message.content or "").strip().lower()
+        # Two models at most: a paraphrase check is not worth a long walk.
+        answer, _ = one_shot.complete([ROUTER_MODEL], [{"role": "user", "content": prompt}],
+                                      timeout=25, max_models=2, max_tokens=3, temperature=0)
     except Exception:
         return None
+    return answer.lower()
 
 
 # ── Phase 20b: Honcho memory augmentation (self-hosted, Gemini-only) ───────

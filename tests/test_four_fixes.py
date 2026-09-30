@@ -244,8 +244,10 @@ def _asked_models(monkeypatch):
 def test_the_rules_model_asks_answering_models_first_and_can_skip_local(monkeypatch):
     import sys
     from cygnus import config
+    from cygnus.brain import google_ai
     from cygnus.rules import ai as rules_ai
     asked = _asked_models(monkeypatch)
+    monkeypatch.setattr(google_ai, "GOOGLE_AI_API_KEY", "")          # the router's models only
     monkeypatch.setitem(sys.modules, "cygnus.brain.router_health", _Health(["oc/big-pickle", "oc/ling"]))
     assert rules_ai._ask_llm("x", local=False)[0] is None
     assert asked == ["oc/big-pickle", "oc/ling"]                     # no dead model, no Ollama

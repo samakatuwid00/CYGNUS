@@ -228,38 +228,36 @@ def _router_models(config):
 
 def _ask_llm(prompt, local=True, timeout=20, max_tokens=600):
     """(parsed JSON dict, model) from the first model that answers, else
-    (None, reason). 9router's answering models first, then - unless
-    local=False - the local Ollama model, which on this CPU takes ~20 s or
-    more and must not sit on a reply's path."""
+    (None, reason). 9router's answering models first, then Google's
+    (one_shot.py), then - unless local=False - the local Ollama model, which
+    on this CPU takes ~20 s or more and must not sit on a reply's path."""
     try:
         from openai import OpenAI
+
         from cygnus import config
+        from cygnus.brain import one_shot
     except Exception as e:
         return None, f"no LLM client ({type(e).__name__})"
-    tries = [(config.ROUTER_BASE_URL, config.ROUTER_API_KEY or "dummy", m, timeout)
-             for m in dict.fromkeys(_router_models(config))]
-    if local:
-        tries.append((config.OLLAMA_BASE_URL, config.OLLAMA_API_KEY or "ollama",
-                      config.OLLAMA_MODEL, 90))
-    errors = []
-    router_down = False
-    for base, key, model, timeout in tries:
-        if router_down and base == config.ROUTER_BASE_URL:
-            continue
+    messages = [{"role": "user", "content": prompt}]
+    try:
+        text, model = one_shot.complete(_router_models(config), messages, timeout=timeout,
+                                        accept=_parse_json, temperature=0, max_tokens=max_tokens)
+        return _parse_json(text), model
+    except RuntimeError as e:
+        errors = [str(e)]
+    if local and config.JARVIS_USE_OLLAMA:
+        model = config.OLLAMA_MODEL
         try:
-            client = OpenAI(base_url=base, api_key=key, timeout=timeout, max_retries=0)
-            r = client.chat.completions.create(
-                model=model, temperature=0, max_tokens=max_tokens,
-                messages=[{"role": "user", "content": prompt}])
+            client = OpenAI(base_url=config.OLLAMA_BASE_URL, api_key=config.OLLAMA_API_KEY or "ollama",
+                            timeout=90, max_retries=0)
+            r = client.chat.completions.create(model=model, temperature=0, max_tokens=max_tokens,
+                                               messages=messages)
             data = _parse_json(r.choices[0].message.content or "")
             if data:
                 return data, model
             errors.append(f"{model}: no JSON")
         except Exception as e:
             errors.append(f"{model}: {type(e).__name__}")
-            # 9router not running: its other models would fail the same way.
-            if base == config.ROUTER_BASE_URL and "Connection" in type(e).__name__:
-                router_down = True
     return None, "; ".join(errors)
 
 

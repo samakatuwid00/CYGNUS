@@ -139,19 +139,14 @@ CONVERSATION SLICE:
 
 
 def _llm_extract(turns_text: str) -> list:
-    """Ask the router model for durable facts. Raises on failure (caller must
+    """Ask a cloud model for durable facts. Raises on failure (caller must
     treat failure as 'chunk not processed' — the state marker must not move)."""
-    from openai import OpenAI
-    from cygnus.config import ROUTER_BASE_URL, ROUTER_API_KEY, ROUTER_MODEL
-    client = OpenAI(base_url=ROUTER_BASE_URL, api_key=ROUTER_API_KEY or "dummy",
-                    timeout=60, max_retries=1)
+    from cygnus.brain import one_shot
+    from cygnus.config import ROUTER_MODEL
     prompt = _DISTILL_PROMPT.replace("{max}", str(DISTILL_MAX_FACTS)).replace(
         "{turns}", turns_text[:12000])
-    r = client.chat.completions.create(
-        model=ROUTER_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=600, temperature=0.2)
-    raw = (r.choices[0].message.content or "").strip()
+    raw, _ = one_shot.complete([ROUTER_MODEL], [{"role": "user", "content": prompt}],
+                               timeout=60, max_tokens=600, temperature=0.2)
     if raw.startswith("```"):
         raw = re.sub(r"^```[a-z]*\n?|\n?```$", "", raw.strip(), flags=re.I)
     arr = json.loads(raw)

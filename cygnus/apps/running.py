@@ -848,22 +848,16 @@ def describe_window(row, question=None):
     if not png:
         return None, "I couldn't capture that window"
     import base64
-    from openai import OpenAI
-    from cygnus.config import ROUTER_API_KEY, ROUTER_BASE_URL
-    client = OpenAI(base_url=ROUTER_BASE_URL, api_key=ROUTER_API_KEY or "none", timeout=40, max_retries=0)
+
+    from cygnus.brain import one_shot
     ask = question or ("Describe what this window shows and what the program seems to be doing, in two or "
                        "three short spoken sentences. No markup, no lists.")
     picture = {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(png).decode()}}
-    for model in _vision_models():
-        try:
-            reply = client.chat.completions.create(model=model, max_tokens=300, messages=[
-                {"role": "user", "content": [{"type": "text", "text": ask}, picture]}])
-            text = (reply.choices[0].message.content or "").strip()
-        except Exception:
-            continue
-        if text:
-            return text, model
-    return None, "no model that reads images answered"
+    try:
+        return one_shot.complete(_vision_models(), [
+            {"role": "user", "content": [{"type": "text", "text": ask}, picture]}], timeout=40, max_tokens=300)
+    except RuntimeError:
+        return None, "no model that reads images answered"
 
 
 # ------------------------------------------------------- phase 5: acting --
