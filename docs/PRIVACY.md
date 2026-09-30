@@ -55,7 +55,7 @@ you asked for, or asset CDNs.
 
 | What | Where | When |
 |---|---|---|
-| Your words, recent conversation, your profile, tool results | the model endpoint **you** set in `.env` (`ROUTER_BASE_URL`; 9router is a local proxy that forwards to the provider of the model you chose) | every turn that needs a model |
+| Your words, recent conversation, your profile, tool results | the provider **you** chose in `.env` (`CYGNUS_PROVIDER`: Google for `gemini`, or the endpoint in `ROUTER_BASE_URL`; 9router is a local proxy that forwards to the provider of the model you chose). Google's free tier may use what you send to improve its products | every turn that needs a model |
 | **The text of every spoken reply** | **Microsoft**, via `edge-tts` (`cygnus/server/speech.py:174`) | every spoken reply, by default |
 | Search terms | Google / YouTube / Spotify, in your browser | you ask it to search |
 | The pixels of one window | your model endpoint, as an image | only when you ask it to describe a window (`cygnus/apps/running.py:752`) |
@@ -78,6 +78,14 @@ falling back to it: you get no audio instead of a silent upload
 (`cygnus/server/speech.py:174`). Before 2026-09-23 it did not, and
 `WHAT_IT_CAN_DO.md` claimed "nothing leaves at all" while the voice was
 shipping every reply to Microsoft. That was wrong, and it is fixed.
+
+The same setting now keeps turns out of the agent loop, whose models are all
+in the cloud (`cygnus/brain/core.py:1440`), and stops the calls made outside a
+turn - memory distilling, the memory arbiter, describing a window, reading an
+Apps-panel rule - from reaching a cloud model (`cygnus/brain/one_shot.py`).
+Before 2026-09-30 neither held: with a Google key and `JARVIS_AGENT_LOOP=lead`
+a local-only turn still went to Google, and memory distilling sent slices of
+the conversation to the router every six hours.
 
 Coding agents (Hermes, Claude Code, Codex, Gemini CLI) are **local programs**.
 Cygnus hands them the task text. What they then send, and to whom, is their

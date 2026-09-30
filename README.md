@@ -48,13 +48,14 @@ microphone does, what leaves the machine, what is written down, and how to
 delete it - with the file and line for each answer.
 
 Requirements: Windows, Python 3.10+, Node.js (for the desktop app), a
-microphone (or `JARVIS_NO_VOICE=1` and type), and one model backend: your own
-key on any OpenAI-compatible endpoint, or Ollama for local-only.
+microphone (or `JARVIS_NO_VOICE=1` and type), and an API key for a model that
+you make yourself - Google AI Studio (Gemini) is free and needs no card; see
+**[docs/API_KEY.md](docs/API_KEY.md)** - or Ollama for local-only.
 
 ```bash
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
-copy .env.example .env        # then set the router and model settings
+copy .env.example .env        # then set CYGNUS_PROVIDER and CYGNUS_API_KEY
 ```
 
 The backend and HUD (port from `JARVIS_PORT` in `.env`):
@@ -148,7 +149,8 @@ All settings live in `.env` (see `.env.example`). The ones most often changed:
 
 | Setting | What it does |
 |---|---|
-| `ROUTER_BASE_URL`, `ROUTER_MODEL`, `ROUTER_FALLBACK_MODELS` | The router and the models tried in order |
+| `CYGNUS_PROVIDER`, `CYGNUS_API_KEY`, `CYGNUS_MODEL` | Which model provider, your key for it, and optionally the model ([docs/API_KEY.md](docs/API_KEY.md)) |
+| `ROUTER_BASE_URL`, `ROUTER_MODEL`, `ROUTER_FALLBACK_MODELS` | Written out, these override what the provider fills in: the endpoint and the models tried in order |
 | `JARVIS_USE_OLLAMA`, `OLLAMA_MODEL` | The local fallback model |
 | `WHISPER_MODEL` | Speech-to-text model size |
 | `JARVIS_CLI_JOB_TIMEOUT` | How long a delegated coding job may run (seconds) |

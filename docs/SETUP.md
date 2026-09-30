@@ -14,10 +14,10 @@ at. Nothing else leaves the laptop.
 - **Python 3.10 or newer** (`python --version`).
 - **Node.js 18+**, only for the desktop app. The browser HUD works without it.
 - **A microphone**, or `JARVIS_NO_VOICE=1` and type instead.
-- **One model backend**, one of:
-  - your own key for any OpenAI-compatible endpoint (OpenAI, OpenRouter,
-    Groq, Together, or a server on your network), or
-  - [Ollama](https://ollama.com) for a local model, no key and no cloud.
+- **An API key for a model**, which you make yourself: Google AI Studio
+  (Gemini) is free and needs no card. [API_KEY.md](API_KEY.md) walks through
+  it and the other providers. Or [Ollama](https://ollama.com) for a local
+  model, no key and no cloud.
 
 ## 1. Get the code and the dependencies
 
@@ -35,23 +35,20 @@ python -m venv .venv
 copy .env.example .env
 ```
 
-Open `.env` and set the brain. For your own key:
+Open `.env` and set the two lines at the top - the provider and your key
+([API_KEY.md](API_KEY.md) shows how to get one):
 
 ```ini
-JARVIS_USE_9ROUTER=true
-ROUTER_BASE_URL=https://api.openai.com/v1
-ROUTER_MODEL=gpt-5.4-mini
-ROUTER_API_KEY=sk-...your key...
-ROUTER_FALLBACK_MODELS=gpt-5.4
+CYGNUS_PROVIDER=gemini
+CYGNUS_API_KEY=AIza...your key...
 ```
 
-For local only, no key and no cloud:
+`groq`, `openrouter` and `openai` work the same way with their own key. For
+local only, no key and no cloud, install Ollama, run
+`ollama pull qwen3:4b-instruct`, and set:
 
 ```ini
-JARVIS_USE_9ROUTER=false
-JARVIS_USE_OLLAMA=true
-JARVIS_PREFER_LOCAL=true
-OLLAMA_MODEL=qwen3:4b-instruct
+CYGNUS_PROVIDER=ollama
 ```
 
 Worth setting while you are in there:
@@ -113,7 +110,9 @@ the repository folder.
 
 | What you see | What it means |
 |---|---|
-| "I couldn't reach the model endpoint" | `ROUTER_BASE_URL` is wrong, or the server is not running. |
+| "No API key is set for ..." | `CYGNUS_API_KEY` is empty in `.env`; see [API_KEY.md](API_KEY.md). |
+| "The provider refused the API key" | The key is wrong or was deleted; copy it again or make a new one. |
+| "I couldn't reach the model endpoint" | No internet, `ROUTER_BASE_URL` is wrong, or Ollama is not running. |
 | "My model is out of quota" | The provider's limit; it says when it resets. |
 | "No mic - click Enable mic" | The browser has not been given the microphone yet. |
 | Port already in use | Another program has `JARVIS_PORT`; change it in `.env`. |
