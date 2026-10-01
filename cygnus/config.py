@@ -118,11 +118,16 @@ ROUTER_FALLBACK_MODELS = [m.strip() for m in
 # allows 20 requests a day per model and a turn makes 2-4, so the more models
 # the more turns a day (2026-09-27: two models spent by morning). 3.8 and 3.7
 # go late: overloaded (503) or 4-9 s for a one-word reply that morning.
+# gemini-3.1-flash-lite leads since 2026-10-01 (bench/providers.py, the agent
+# loop's real first call, two days): it chose the right tool 15 times of 15
+# and never hit its daily limit, while 3.6-flash, 3-flash-preview, 3.5-flash
+# and 2.5-flash ran out of theirs after 3-5 calls, and 2.5-flash took up to
+# 158 s. The owner's .env names its own list; this order is for a new key.
 GOOGLE_AI_API_KEY = _env("GOOGLE_AI_API_KEY") or (CYGNUS_API_KEY if CYGNUS_PROVIDER == "gemini" else "")
 GOOGLE_AI_BASE_URL = os.getenv("GOOGLE_AI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
 GOOGLE_AI_MODELS = [m.strip() for m in
     (_env("GOOGLE_AI_MODELS") or (CYGNUS_MODEL if CYGNUS_PROVIDER == "gemini" else "")
-     or "gemini-3.6-flash,gemini-3-flash-preview,gemini-3.5-flash,gemini-3.1-flash-lite,gemini-3.8-flash,gemini-3.7-flash,gemini-2.5-flash").split(",") if m.strip()]
+     or "gemini-3.1-flash-lite,gemini-3.6-flash,gemini-3-flash-preview,gemini-3.5-flash,gemini-3.8-flash,gemini-3.7-flash,gemini-2.5-flash").split(",") if m.strip()]
 
 # --- Groq (OpenAI-compatible free tier) -------------------------------------
 # Lets JARVIS use a free Groq model so the Gemini quota isn't burned by JARVIS.

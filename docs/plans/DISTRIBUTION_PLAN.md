@@ -59,8 +59,20 @@ by the day's earlier tests; the bench now records which limit it was. Locally,
 qwen3:4b beat the stock one, so the installer should build it
 (`Modelfile.jarvis`) rather than pull the stock model alone.
 
-**To do:** run it again on a fresh daily quota with `--rounds 3`, and on
-Groq and OpenRouter with their keys, then put the table in docs/API_KEY.md.
+**Again 2026-10-01**, six hours after the daily reset, one round per model:
+3.1-flash-lite 7/8 (one 503), 3-flash-preview 4/8, 3.6-flash 3/8, 3.5-flash
+2/8, 2.5-flash 2/8 at 80 s typical, 158 s at worst. Every refusal but the
+two 503s was `GenerateRequestsPerDayPerProjectPerModel-FreeTier`: the daily
+limit, reached after 3-5 calls. Something else had spent the day's quota on
+this Google project first - the author's other tools share it (inferred:
+Hermes also runs on Gemini) - so these numbers say little about a fresh
+student key, except one thing: over two days gemini-3.1-flash-lite chose
+right 15 times of 15 and never ran out. It now leads the default Gemini
+list (config.py); the owner's .env keeps its own order.
+
+**To do:** a clean run needs a Google key nothing else uses - a student's
+situation exactly - with `--rounds 3`; then Groq and OpenRouter with their
+keys; then the table goes in docs/API_KEY.md.
 
 ### The local model follows the machine
 

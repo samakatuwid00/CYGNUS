@@ -51,7 +51,9 @@ wait for the reset it names, or switch provider.
    ```
 
 Cygnus tries several free Gemini models in turn, so when one reaches its daily
-limit the next one answers. To use one model only, set `CYGNUS_MODEL`, for
+limit the next one answers. It starts with gemini-3.1-flash-lite, which chose
+Cygnus's tools right every time in our tests and lasted longest on the free
+limit. To use one model only, set `CYGNUS_MODEL`, for
 example `CYGNUS_MODEL=gemini-2.5-flash`.
 
 Your limits: the **Rate limit** page in AI Studio. Google may use what you send
