@@ -1853,7 +1853,10 @@ async def get_status():
         "fallback": None if getattr(brain, "_local_only", False) else OLLAMA_MODEL,
         # Whether 9router answers, how often Cygnus had to start it, and the
         # models it would walk right now (router_keeper, router_health).
-        "router_up": __import__("cygnus.brain.router_keeper", fromlist=["_"]).port_open(),
+        # None when this setup uses no router (CYGNUS_PROVIDER=gemini or
+        # ollama): another program's 9router on the port is not Cygnus's.
+        "router_up": (__import__("cygnus.brain.router_keeper", fromlist=["_"]).port_open()
+                      if brain._use_router else None),
         "router_restarts": __import__("cygnus.brain.router_keeper", fromlist=["_"]).state.get("started", 0),
         "router_restarts_hung": __import__("cygnus.brain.router_keeper", fromlist=["_"]).state.get("restarts_hung", 0),
         "router_models": __import__("cygnus.brain.router_health", fromlist=["_"]).healthy_models()[:8],

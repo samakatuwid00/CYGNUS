@@ -107,9 +107,10 @@ SmartScreen warns on it (docs/plans/DISTRIBUTION_PLAN.md).
 ## Routine check
 
 One command runs every check and writes `data/logs/prod-check-<time>.json`:
-compile, the pytest suite, the routing gate, the running server (9router up
-and answering, at least three healthy cloud models, not on the local model),
-and the smoke test against it.
+compile, the pytest suite, the routing gate, the running server (no setup
+problem; with a student's own key, its models answering; with 9router, the
+router up and at least three healthy cloud models; and not on the local
+model unless that is the chosen brain), and the smoke test against it.
 
 ```bash
 .venv\Scripts\python scripts\prod_check.py              # safe: nothing on the machine changes

@@ -5,8 +5,10 @@ One command runs every check in order and writes one report:
   1. compile   every Python file under the repo compiles
   2. tests     the pytest suite
   3. routing   eval/gate_routing.py, the deterministic routing gate
-  4. server    a Cygnus server answers, 9router is up, and cloud models (9router's
-               or Google's) are healthy (a brain on the local model is a failure)
+  4. server    a Cygnus server answers and its provider works: no setup problem;
+               on the author's 9router setup, 9router up and 3+ healthy cloud
+               models; on a student's own key, its models answering; on Ollama,
+               the local model is the brain (elsewhere it answering is a failure)
   5. smoke     scripts/cygnus_smoke.py against that server
 
 With --bench, the measurement suites too: the routing gold set, grounding
@@ -45,7 +47,10 @@ from cygnus import paths  # noqa: E402
 
 # Fewer healthy cloud models than this and one quota reset leaves Cygnus on
 # the local model (2026-09-22: 16 answered, 60% of 9router's list was dead).
+# That is the author's 9router setup; a student's own key names one or two
+# models (or rotates Gemini's), so one that answers is enough there.
 MIN_HEALTHY_MODELS = 3
+MIN_HEALTHY_OWN_KEY = 1
 
 
 def _run(name, cmd, timeout):
@@ -81,6 +86,42 @@ def check_routing():
     return _run("routing", [PY, os.path.join("eval", "gate_routing.py")], 300)
 
 
+
+
+def server_problems(st: dict, router_answers=None) -> list[str]:
+    """What is wrong with a running Cygnus, from its /status, judged by the
+    provider it runs on (config.py CYGNUS_PROVIDER; "legacy" is the author's
+    settings from before providers). router_answers: a callable that says
+    whether a local 9router answers (only asked when one is in use)."""
+    if st.get("setup_problem"):
+        return [st["setup_problem"]]
+    provider = st.get("provider") or "legacy"
+    models, google = st.get("router_models") or [], st.get("google_models") or []
+    problems = []
+    if provider in ("legacy", "9router"):
+        if st.get("router_up") is False:
+            problems.append("9router is not running")
+        elif router_answers is not None and not router_answers():
+            # The port can be open while 9router answers nothing (2026-09-22).
+            problems.append("9router's port is open but it does not answer")
+        # Google's models count too: when every 9router model is out of quota
+        # the agent loop answers on them (2026-09-29), not on the local model.
+        if len(models) + len(google) < MIN_HEALTHY_MODELS:
+            problems.append(f"only {len(models) + len(google)} healthy cloud models "
+                            f"({', '.join(models + google) or 'none'})")
+    elif provider == "gemini":
+        if len(google) < MIN_HEALTHY_OWN_KEY:
+            problems.append("no Gemini model is answering (each is resting after a failure or out of quota)")
+    elif provider != "ollama":
+        if st.get("router_up") is False:
+            problems.append(f"the {provider} endpoint does not answer ({st.get('endpoint')})")
+    # On Ollama the local model is the brain; anywhere else it answering means
+    # every cloud model failed.
+    if provider != "ollama" and "ollama" in str(st.get("last_backend") or "").lower():
+        problems.append("the last turn was answered by the local model")
+    return problems
+
+
 def check_server(url):
     import httpx
     import cygnus_client
@@ -91,25 +132,11 @@ def check_server(url):
         return {"check": "server", "ok": False, "seconds": 0.0,
                 "detail": f"no Cygnus server on {' or '.join(tried)}; start it (desktop app or jarvis_web.py)"}, None
     st = httpx.get(base.rstrip("/") + "/status", timeout=5).json()
-    problems = []
     from cygnus.brain import router_keeper
-    if st.get("router_up") is False:
-        problems.append("9router is not running")
-    elif not router_keeper.responds(timeout=10):
-        # The port can be open while 9router answers nothing (2026-09-22).
-        problems.append("9router's port is open but it does not answer")
-    # Google's models count too: when every 9router model is out of quota the
-    # agent loop answers on them (2026-09-29), not on the local model.
-    models = st.get("router_models")
-    google = st.get("google_models") or []
-    if models is not None and len(models) + len(google) < MIN_HEALTHY_MODELS:
-        problems.append(f"only {len(models) + len(google)} healthy cloud models "
-                        f"({', '.join(models + google) or 'none'})")
-    if "ollama" in str(st.get("last_backend") or "").lower():
-        problems.append("the last turn was answered by the local model")
-    detail = (f"{base}: brain {st.get('brain')}, router_up {st.get('router_up')}, "
-              f"{len(models or [])} healthy 9router + {len(google)} Google models, "
-              f"restarts {st.get('router_restarts')}")
+    problems = server_problems(st, lambda: router_keeper.responds(timeout=10))
+    detail = (f"{base}: provider {st.get('provider') or 'legacy'}, brain {st.get('brain')}, "
+              f"router_up {st.get('router_up')}, {len(st.get('router_models') or [])} healthy router + "
+              f"{len(st.get('google_models') or [])} Google models, restarts {st.get('router_restarts')}")
     if problems:
         detail += " | " + "; ".join(problems)
     return {"check": "server", "ok": not problems, "seconds": round(time.monotonic() - start, 1),
