@@ -73,7 +73,7 @@ logs/
 # Recovery + large local artifacts (never commit binaries or private memory)
 .recovery/
 models/
-memory/
+/memory/
 nul
 
 # /ship gate: machine state, rewritten every run. Acknowledgements
