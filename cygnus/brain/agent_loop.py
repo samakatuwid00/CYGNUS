@@ -409,6 +409,71 @@ Tabs are not windows: a browser window's title is only its front tab. For how ma
 Hand bigger jobs (code, files, research) to delegate; say the answer comes later.{extra}"""
 
 
+# Characters of names each list may spend in the prompt, every turn.
+_APPS_CAP = 1600
+_SITES_CAP = 500
+
+
+def _capped(names: list, cap: int) -> str:
+    out, used = [], 0
+    for n in names:
+        if used + len(n) + 2 > cap:
+            break
+        out.append(n)
+        used += len(n) + 2
+    return ", ".join(out)
+
+
+# A registry that is missing, half-written or hand-edited into another shape.
+_REGISTRY_ERRORS = (ImportError, OSError, ValueError, TypeError, AttributeError)
+
+
+def _app_names() -> list:
+    """The owner's opted-in apps first, then store apps and Start-menu names
+    ("task manager"); a bare exe stem (eppcchkr, tabtip32) is no name anyone
+    says, and the opener still finds those by itself."""
+    try:
+        from cygnus.apps import curate
+        apps = curate._apps()
+        opted = [k for k in curate.registered_apps() if curate.is_enabled(k) and not curate.is_hidden(k)]
+        rest = sorted(k for k in apps if k not in opted and not curate.is_hidden(k)
+                      and (apps[k].get("kind") == "store" or " " in k))
+    except _REGISTRY_ERRORS as e:
+        print(f"[agent] app names left out of the prompt: {e}", flush=True)
+        return []
+    return opted + rest
+
+
+def _site_names() -> list:
+    """The saved sites, most visited first."""
+    try:
+        from cygnus.apps import web_registry
+        sites = (web_registry.load_registry() or {}).get("sites", {})
+        return sorted(sites, key=lambda k: -(sites[k].get("visits") or 0))
+    except _REGISTRY_ERRORS as e:
+        print(f"[agent] site names left out of the prompt: {e}", flush=True)
+        return []
+
+
+def _known_names() -> str:
+    """The installed apps and saved sites, by the names open_app and open_site
+    resolve. Before this the model saw only the running apps and guessed the
+    rest. 166 of 412 open_application calls in logs/audit.jsonl failed, the top
+    ones websites sent to the app opener (z chat 27, chatgpt 21, github 20);
+    139 of them on 2026-09-11, before open_application learned to fall back to
+    a site (a98bd8a). The opener copes now; the model still needs the names."""
+    extra = ""
+    apps, sites = _app_names(), _site_names()
+    if apps:
+        extra += "\nInstalled apps (open_app): " + _capped(apps, _APPS_CAP) + "."
+    if sites:
+        extra += "\nSaved sites (open_site): " + _capped(sites, _SITES_CAP) + "."
+    if extra:
+        extra += ("\nA name only among the sites goes to open_site, never open_app; a name in both "
+                  "lists is the app unless the user says site or website.")
+    return extra
+
+
 def _system(ctx: dict) -> str:
     extra = ""
     try:
@@ -418,6 +483,7 @@ def _system(ctx: dict) -> str:
             extra += "\nRunning now: " + ", ".join(f"{t['slug']} ({t['name']})" for t in ts[:12]) + "."
     except Exception:
         pass
+    extra += _known_names()
     cur = _current_app.get(ctx.get("client", "default"))
     if cur:
         extra += f"\nThe app in play from the last turns: {cur}."

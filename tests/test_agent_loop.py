@@ -199,6 +199,32 @@ def test_the_app_in_play_is_remembered_and_told_to_the_model(monkeypatch):
     assert "The app in play from the last turns: chrome." in al._system({"client": "phone"})
 
 
+def test_the_model_sees_the_installed_apps_and_the_saved_sites(monkeypatch):
+    from cygnus.apps import curate, web_registry
+    apps = {"spotify": {"registered": True, "hidden": False}, "task manager": {"hidden": False},
+            "telegram desktop": {"kind": "store"}, "eppcchkr": {"hidden": False},
+            "fold": {"hidden": True}}
+    monkeypatch.setattr(curate, "_apps", lambda: apps)
+    monkeypatch.setattr(web_registry, "load_registry", lambda: {"sites": {
+        "github": {"visits": 5}, "z chat": {"visits": 50}}})
+    out = al._known_names()
+    assert "Installed apps (open_app): spotify, task manager, telegram desktop." in out
+    assert "eppcchkr" not in out and "fold" not in out           # exe stem, hidden
+    assert "Saved sites (open_site): z chat, github." in out      # most visited first
+    assert "never open_app" in out
+
+
+def test_the_name_lists_are_capped_and_survive_a_missing_registry(monkeypatch):
+    from cygnus.apps import curate, web_registry
+    monkeypatch.setattr(curate, "_apps", lambda: {f"app {i:04}": {} for i in range(2000)})
+    monkeypatch.setattr(web_registry, "load_registry", lambda: (_ for _ in ()).throw(OSError("gone")))
+    out = al._known_names()
+    assert "Saved sites" not in out and len(out) < al._APPS_CAP + 300
+    monkeypatch.setattr(curate, "_apps", dict)
+    monkeypatch.setattr(web_registry, "load_registry", dict)
+    assert al._known_names() == ""
+
+
 def test_list_tabs_reads_the_app_s_tabs(monkeypatch):
     """"How many tabs are open on Brave?" was answered from the window title,
     which names only the tab in front (2026-09-26)."""
