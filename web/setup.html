@@ -78,6 +78,8 @@
     background: linear-gradient(90deg, rgba(255, 180, 84, .07), transparent); border-radius: 0 8px 8px 0; }
   .verdict p { color: var(--text); }
   .verdict p span { color: var(--muted); }
+  .downloads { color: var(--muted); margin-top: 12px; max-width: 600px; }
+  .downloads b { color: var(--text); font-weight: 600; }
 
   /* 02 - the providers. Real radio inputs, dressed as cards. */
   .providers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; border: 0; }
@@ -166,6 +168,7 @@
         <div class="cell"><dt>Free disk</dt><dd id="m-disk">…</dd></div>
       </dl>
       <div class="verdict"><p id="verdict">Checking…</p></div>
+      <p class="downloads" id="downloads" hidden></p>
     </div>
   </section>
 
@@ -286,6 +289,21 @@
     $('stage-brain').classList.add('active');
   }
 
+  // What the first listen downloads: over a gigabyte on a new PC, and a
+  // student on mobile data should know before it starts.
+  function showDownloads(list) {
+    var el = $('downloads'), need = (list || []).filter(function (d) { return !d.have; });
+    if (!list || !list.length) return;
+    el.hidden = false;
+    if (!need.length) { el.textContent = 'The speech and routing models are already on this PC.'; return; }
+    var mb = need.reduce(function (n, d) { return n + (d.mb || 0); }, 0);
+    el.innerHTML = 'The first time Cygnus listens it downloads <b></b>: ';
+    el.querySelector('b').textContent = mb >= 1000 ? (Math.round(mb / 100) / 10) + ' GB' : mb + ' MB';
+    el.appendChild(document.createTextNode(need.map(function (d) {
+      return d.what.toLowerCase() + ' model ' + d.model.split('/').pop() + (d.mb ? ' (' + d.mb + ' MB)' : '');
+    }).join(', ') + '. Use Wi-Fi for it.'));
+  }
+
   function buildProviders(r) {
     var set = $('providers');
     Object.keys(PROVIDERS).forEach(function (id) {
@@ -381,7 +399,7 @@
     var btn = this;
     btn.disabled = true;
     say($('apply-status'), 'Saving…', 'busy');
-    post('/setup/save', c).then(function (r) {
+    post('/setup/save', Object.assign({ whisper: rec ? rec.whisper : '' }, c)).then(function (r) {
       $('key').value = '';
       return post('/setup/restart', {});
     }).then(function (r) {
@@ -410,6 +428,7 @@
       cur.textContent = 'No provider chosen yet.';
     }
     showMachine(s.machine, s.recommend);
+    showDownloads(s.downloads);
     buildProviders(s.recommend);
     choose(PROVIDERS[s.provider] ? s.provider : (s.recommend.local === 'main' ? 'ollama' : 'gemini'));
   }).catch(function (e) {

@@ -44,8 +44,10 @@ def _choice(body: dict) -> tuple[str, str, str, str]:
 @router.get("/setup/state")
 async def setup_state():
     specs = await asyncio.to_thread(machine.read)
+    rec = machine.recommend(specs)
     return {"provider": config.CYGNUS_PROVIDER or None, "problem": config.PROVIDER_PROBLEM,
-            "providers": list(config.PROVIDERS), "machine": specs, "recommend": machine.recommend(specs)}
+            "providers": list(config.PROVIDERS), "machine": specs, "recommend": rec,
+            "downloads": await asyncio.to_thread(machine.downloads, rec["whisper"])}
 
 
 @router.post("/setup/test")
@@ -56,10 +58,12 @@ async def setup_test(request: Request):
 
 @router.post("/setup/save")
 async def setup_save(request: Request):
-    name, key, model, base_url = _choice(await request.json())
+    body = await request.json()
+    name, key, model, base_url = _choice(body)
     if name not in config.PROVIDERS:
         return JSONResponse({"ok": False, "message": f"Unknown provider: {name}."}, status_code=400)
-    return await asyncio.to_thread(provider.save, name, key, model, base_url)
+    whisper = str(body.get("whisper") or "").strip()
+    return await asyncio.to_thread(provider.save, name, key, model, base_url, whisper)
 
 
 @router.post("/setup/restart")

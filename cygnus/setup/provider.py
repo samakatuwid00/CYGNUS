@@ -93,10 +93,26 @@ def _env_file():
     return env
 
 
-def save(provider: str, key: str = "", model: str = "", base_url: str = "") -> dict:
+def _whisper_is_default(env) -> bool:
+    """True when .env's WHISPER_MODEL is unset or still the one .env.example
+    ships with."""
+    from dotenv import dotenv_values
+
+    from cygnus import paths
+    current = dotenv_values(env).get("WHISPER_MODEL")
+    if not current:
+        return True
+    example = paths.ROOT / ".env.example"
+    return example.exists() and current == dotenv_values(example).get("WHISPER_MODEL")
+
+
+def save(provider: str, key: str = "", model: str = "", base_url: str = "", whisper: str = "") -> dict:
     """Keep the choice: the key in Credential Manager (or .env when that is
-    not available), the provider and model in .env. Takes effect on restart."""
+    not available), the provider and model in .env, and the speech model the
+    setup showed for this PC (machine.recommend). Takes effect on restart."""
     from dotenv import set_key
+
+    from cygnus.setup import machine
     env = _env_file()
     where = ".env"
     if key.strip():
@@ -111,5 +127,11 @@ def save(provider: str, key: str = "", model: str = "", base_url: str = "") -> d
     set_key(env, "CYGNUS_MODEL", model.strip(), quote_mode="never")
     if base_url.strip():
         set_key(env, "ROUTER_BASE_URL", base_url.strip(), quote_mode="never")
+    # Before 2026-10-03 the page said "Speech model: base.en" and .env kept
+    # small.en from .env.example: an 8 GB laptop downloaded and ran a model
+    # three times the size of the one it was shown. A model someone chose by
+    # hand stays: only an unset one, or the shipped default, is replaced.
+    if whisper in machine.WHISPER_MB and _whisper_is_default(env):
+        set_key(env, "WHISPER_MODEL", whisper, quote_mode="never")
     return {"ok": True, "key_in": where if key.strip() else None, "restart": True,
             "message": "Saved. Restart Cygnus to use it."}

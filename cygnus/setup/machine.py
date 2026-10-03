@@ -80,6 +80,46 @@ def read(data_dir: str | None = None) -> dict:
     }
 
 
+# What each model weighs on the first download, in MB: the model file on
+# Hugging Face, measured in the author's cache 2026-10-03.
+WHISPER_MB = {"tiny.en": 76, "base.en": 145, "small.en": 484, "medium.en": 1528}
+_REPO_MB = {"minishlab/potion-multilingual-128M": 537}
+
+
+def _have(repo: str, filename: str) -> bool:
+    """True when the model is already in the Hugging Face cache. Looks only;
+    never downloads."""
+    try:
+        from huggingface_hub import try_to_load_from_cache
+        return isinstance(try_to_load_from_cache(repo, filename), str)
+    except (ImportError, OSError, ValueError):     # no hub, unreadable cache, a bad repo id
+        return False
+
+
+def _whisper_repo(model: str) -> str:
+    return model if "/" in model else f"Systran/faster-whisper-{model}"
+
+
+def downloads(whisper: str) -> list[dict]:
+    """What Cygnus fetches the first time it listens and routes, with the
+    speech model `whisper`. Nothing said so before 2026-10-03, and on a new PC
+    it is over a gigabyte."""
+    from cygnus import config
+    from cygnus.brain import semantic_route
+    out, seen = [], set()
+    for what, model in (("Speech", whisper), ("Wake word", config.WAKE_WHISPER_MODEL)):
+        if model in seen:
+            continue
+        seen.add(model)
+        out.append({"what": what, "model": model, "mb": WHISPER_MB.get(model),
+                    "have": _have(_whisper_repo(model), "model.bin")})
+    if semantic_route.MODE != "off":
+        out.append({"what": "Command router", "model": semantic_route.MODEL,
+                    "mb": _REPO_MB.get(semantic_route.MODEL),
+                    "have": _have(semantic_route.MODEL, "model.safetensors")})
+    return out
+
+
 def recommend(m: dict) -> dict:
     """What to offer on a machine like `m` (read()'s shape)."""
     ram = m.get("ram_gb") or 0

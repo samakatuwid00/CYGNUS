@@ -110,6 +110,52 @@ def test_without_a_vault_the_key_goes_to_env(monkeypatch, tmp_path):
     assert "CYGNUS_API_KEY=gsk-x" in (tmp_path / ".env").read_text(encoding="utf-8")
 
 
+def test_saving_keeps_the_speech_model_the_setup_showed(monkeypatch, tmp_path):
+    from cygnus import paths
+    monkeypatch.setitem(sys.modules, "keyring", types.SimpleNamespace(set_password=lambda *a: None))
+    (tmp_path / ".env.example").write_text("WHISPER_MODEL=small.en\n", encoding="utf-8")
+    env = tmp_path / ".env"
+    env.write_text("WHISPER_MODEL=small.en\n", encoding="utf-8")         # the shipped default
+    monkeypatch.setattr(paths, "ROOT", tmp_path)
+    monkeypatch.setattr(paths, "ENV_FILE", env)
+    provider.save("gemini", "AIza-x", whisper="base.en")
+    assert "WHISPER_MODEL=base.en" in env.read_text(encoding="utf-8")
+    env.write_text("WHISPER_MODEL=small.en\n", encoding="utf-8")
+    provider.save("gemini", "AIza-x", whisper="../../evil")             # not a known model: left alone
+    provider.save("gemini", "AIza-x")
+    assert "WHISPER_MODEL=small.en" in env.read_text(encoding="utf-8")
+
+
+def test_a_speech_model_chosen_by_hand_is_kept(monkeypatch, tmp_path):
+    from cygnus import paths
+    monkeypatch.setitem(sys.modules, "keyring", types.SimpleNamespace(set_password=lambda *a: None))
+    example = tmp_path / ".env.example"
+    example.write_text("WHISPER_MODEL=small.en            # shipped\n", encoding="utf-8")
+    env = tmp_path / ".env"
+    monkeypatch.setattr(paths, "ROOT", tmp_path)
+    monkeypatch.setattr(paths, "ENV_FILE", env)
+    env.write_text("WHISPER_MODEL=medium.en\n", encoding="utf-8")
+    provider.save("gemini", "AIza-x", whisper="base.en")
+    assert "WHISPER_MODEL=medium.en" in env.read_text(encoding="utf-8")
+    env.write_text("OTHER=1\n", encoding="utf-8")                      # unset: the recommendation goes in
+    provider.save("gemini", "AIza-x", whisper="tiny.en")
+    assert "WHISPER_MODEL=tiny.en" in env.read_text(encoding="utf-8")
+
+
+def test_the_setup_names_the_first_use_downloads(monkeypatch):
+    from cygnus.brain import semantic_route
+    cached = {"Systran/faster-whisper-tiny.en"}
+    monkeypatch.setattr(machine, "_have", lambda repo, f: repo in cached)
+    monkeypatch.setattr(semantic_route, "MODE", "lead")
+    got = {d["what"]: d for d in machine.downloads("base.en")}
+    assert got["Speech"]["mb"] == 145 and not got["Speech"]["have"]
+    assert got["Wake word"]["have"]                                       # tiny.en, already here
+    assert got["Command router"]["mb"] == 537
+    assert [d["what"] for d in machine.downloads("tiny.en")][:2] == ["Speech", "Command router"]  # one model, listed once
+    monkeypatch.setattr(semantic_route, "MODE", "off")
+    assert "Command router" not in {d["what"] for d in machine.downloads("base.en")}
+
+
 # ------------------------------------------------------------ the routes --
 
 @pytest.fixture
@@ -145,7 +191,9 @@ def test_another_page_cannot_save_a_key(client):
                        headers={"Origin": "https://evil.example"}).status_code == 403
     assert client.saved == []
     assert client.post("/setup/save", json={"provider": "gemini", "key": "k"}).json() == {"ok": True}
-    assert client.saved == [("gemini", "k", "", "")]
+    assert client.saved == [("gemini", "k", "", "", "")]
+    client.post("/setup/save", json={"provider": "gemini", "key": "k", "whisper": "base.en"})
+    assert client.saved[-1] == ("gemini", "k", "", "", "base.en")
 
 
 def test_the_setup_page_is_served_here_only(client):
