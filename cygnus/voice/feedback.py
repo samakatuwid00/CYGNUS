@@ -1,7 +1,7 @@
 """voice_feedback.py — JARVIS spoken state-cue policy (Phase A, 2026-08-28 plan).
 
 Single choke point every spoken state update must pass through, so the user
-hears friendly feedback ("Thinking, sir.") without JARVIS becoming chatty and
+hears friendly feedback ("Thinking.") without JARVIS becoming chatty and
 without duplicate announcements from the progress and job-event channels.
 
 Policy:
@@ -56,9 +56,9 @@ _cache: dict[str, str] = {}
 
 # Standard cue lines. Dynamic lines (task summaries) pass announce(text=...).
 CUES = {
-    "thinking": "Thinking, sir.",
+    "thinking": "Thinking.",
     "thinking_escalate": "Still working on it.",
-    "confirm_pending": "Still waiting on your confirm, sir.",
+    "confirm_pending": "Still waiting on your confirm.",
 }
 
 _PRIORITY = {

@@ -305,13 +305,13 @@ print("[JARVIS Web] Ready.", flush=True)
 from cygnus.voice import feedback as _vf
 from cygnus.voice import ducking as voice_ducking
 
-# Phase B: per-job milestone timers ("Still on it, sir.") for long background
+# Phase B: per-job milestone timers ("Still on it.") for long background
 # tasks — keyed by job id, cancelled when the job reaches a terminal state.
 _TASK_MILESTONES: dict[str, asyncio.Task] = {}
 
 
 class _ThinkingWatchdog:
-    """Speaks 'Thinking, sir.' / 'Still working on it.' if a turn runs long."""
+    """Speaks 'Thinking.' / 'Still working on it.' if a turn runs long."""
 
     def __init__(self, ws, vf):
         self._ws = ws
@@ -374,8 +374,8 @@ def _start_task_milestones(ws, vf, jid: str) -> None:
     _TASK_MILESTONES.pop(jid, None)  # cancel any stale timer for this job
 
     async def _run():
-        lines = ["Still on it, sir.", "Making progress, sir.",
-                 "This one is taking a while, sir."]
+        lines = ["Still on it.", "Making progress.",
+                 "This one is taking a while."]
         try:
             for line in lines:
                 await asyncio.sleep(45)

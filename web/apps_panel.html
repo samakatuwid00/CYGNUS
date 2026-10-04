@@ -13,6 +13,9 @@
     --hover: rgba(255, 255, 255, .035);
     --border: rgba(255, 255, 255, .07);
     --border-strong: rgba(255, 255, 255, .12);
+    /* A control's edge (inputs, buttons, switches): 3.1:1 on --bg, WCAG 1.4.11.
+       The two above are for dividers and cards only. */
+    --border-ui: rgba(255, 255, 255, .36);
     --text: #ededf2;
     --text-2: #a3a3b0;
     --text-3: #8b8b99;        /* 4.86:1 on the chips; #6c6c7a was 3.16:1 */
@@ -20,6 +23,7 @@
     --accent-deep: #8f7020;           /* deeper gold for pressed/hover */
     --accent-soft: rgba(207, 162, 54, .11);
     --accent-ring: rgba(207, 162, 54, .30);
+    --focus: rgba(207, 162, 54, .85);   /* focus outline: the .30 ring was 1.7:1 */
     --ok:        #d4b85e;               /* gold-amber for OK */
     --warn:      #cfa84c;               /* gold-amber for warn */
     --danger:    #c26e4c;               /* muted amber-red (not neon red) */
@@ -40,7 +44,7 @@
   }
   body.has-drawer { overflow: hidden; }
   button, input, textarea { font: inherit; color: inherit; }
-  :focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .08); border-radius: 10px; border: 3px solid transparent; background-clip: padding-box; }
   ::-webkit-scrollbar-thumb:hover { background-color: rgba(255, 255, 255, .14); }
@@ -56,8 +60,8 @@
   }
   .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
   /* Top row: title on the left, one toolbar of actions on the right. The
-     toolbar never wraps: below 900px the scan/rules buttons fold into ⋯ and
-     only "Add app" (the everyday action) stays out. */
+     toolbar never wraps: only "Add app" (the everyday action) stays out; the
+     bulk and maintenance actions live in the ⋯ menu at every width. */
   .top-row { display: flex; align-items: center; gap: 12px; padding-top: 16px; min-height: 40px; }
   .title { flex: 0 1 auto; min-width: 0; }
   .title h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.012em; line-height: 1.2; }
@@ -73,11 +77,11 @@
   .search {
     flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
     height: 32px; padding: 0 8px 0 10px;
-    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface); border: 1px solid var(--border-ui); border-radius: 8px;
     color: var(--text-3);
     transition: border-color .15s, box-shadow .15s;
   }
-  .search:focus-within { border-color: var(--accent-ring); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .search:focus-within { border-color: var(--focus); box-shadow: 0 0 0 3px var(--accent-soft); }
   .search input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; font-size: 13px; color: var(--text); }
   .search input::placeholder { color: var(--text-3); }
   .search input::-webkit-search-cancel-button { display: none; }
@@ -89,11 +93,11 @@
   .search .clear:hover { background: var(--hover); color: var(--text); }
   .search .clear[hidden] { display: none; }
   kbd {
-    font: 500 10.5px/1 var(--mono); color: var(--text-3);
+    font: 500 12px/1 var(--mono); color: var(--text-3);
     padding: 3px 5px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-2);
   }
 
-  .seg { display: flex; gap: 2px; padding: 2px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+  .seg { display: flex; gap: 2px; padding: 2px; background: var(--surface); border: 1px solid var(--border-ui); border-radius: 8px; }
   .seg-btn {
     height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent;
     font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer;
@@ -102,7 +106,7 @@
   }
   .seg-btn:hover { color: var(--text); }
   .seg-btn.active { background: var(--surface-3); color: var(--text); box-shadow: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 1px 2px rgba(0, 0, 0, .4); }
-  .seg-btn .n { font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+  .seg-btn .n { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
   .seg-btn .n:empty { display: none; }
 
   .tabs-row { display: flex; align-items: flex-end; gap: 16px; margin-bottom: -1px; }
@@ -121,31 +125,26 @@
   }
   .tab.active::after { transform: scaleX(1); }
   .count {
-    font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums;
+    font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums;
     padding: 1px 6px; border-radius: 999px; background: var(--surface-3); color: var(--text-3);
   }
   .tab.active .count { background: var(--accent-soft); color: var(--accent); }
 
   .icon-btn {
     width: 30px; height: 30px; display: grid; place-items: center; flex: none;
-    border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+    border: 1px solid var(--border-ui); border-radius: 8px; background: var(--surface);
     color: var(--text-2); cursor: pointer; transition: background .12s, color .12s, border-color .12s;
   }
-  .icon-btn:hover { background: var(--surface-3); color: var(--text); border-color: var(--border-strong); }
+  .icon-btn:hover { background: var(--surface-3); color: var(--text); border-color: rgba(255, 255, 255, .5); }
   .icon-btn.ghost { border-color: transparent; background: transparent; }
   .icon-btn.ghost:hover { background: var(--hover); }
   .icon-btn.spinning svg { animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* Header toolbar: Add app (primary) · a joined group of the three bulk
-     actions · Stop deep scan while one runs · ⋯ (narrow) · refresh. */
+  /* Header toolbar: Add app (primary) · Stop deep scan while one runs · ⋯
+     (bulk actions, Show advanced) · refresh. */
   .head-acts { display: flex; align-items: center; gap: 8px; flex: none; }
   .head-acts .btn svg { opacity: .8; }
-  .btn-group { display: inline-flex; align-items: stretch; }
-  .btn-group .btn { border-radius: 0; margin-left: -1px; position: relative; }
-  .btn-group .btn:first-child { border-radius: 7px 0 0 7px; margin-left: 0; }
-  .btn-group .btn:last-child { border-radius: 0 7px 7px 0; }
-  .btn-group .btn:hover, .btn-group .btn:focus-visible { z-index: 1; }
   .head-tools { display: flex; align-items: center; gap: 6px; flex: none; }
   .head-tools::before { content: ""; width: 1px; height: 20px; background: var(--border-strong); margin: 0 2px; }
   #h-deep-cancel[hidden] { display: none; }
@@ -161,10 +160,15 @@
   .list { padding-top: 12px; padding-bottom: 48px; }
   .group + .group { margin-top: 14px; }
   .group-h {
-    display: flex; align-items: center; gap: 8px;
-    padding: 6px 12px; font-size: 12px; font-weight: 500; color: var(--text-2);
+    width: 100%; min-height: 28px; display: flex; align-items: center; gap: 8px; text-align: left;
+    padding: 6px 12px; border: 0; border-radius: 8px; background: transparent; cursor: pointer;
+    font-size: 12px; font-weight: 500; color: var(--text-2);
   }
+  .group-h:hover { background: var(--hover); color: var(--text); }
   .group-h .n { color: var(--text-3); font-variant-numeric: tabular-nums; }
+  /* Groups start closed; the chevron turns down when one is open. */
+  .group-h .gchev { color: var(--text-3); transition: transform .15s var(--ease); }
+  .group.open > .group-h .gchev { transform: rotate(90deg); }
   .row {
     display: grid; grid-template-columns: 32px minmax(0, 1fr) auto auto auto;
     align-items: center; gap: 12px;
@@ -193,7 +197,7 @@
   .meta { font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .name, .meta { display: block; }
   .aux { display: flex; align-items: center; gap: 8px; }
-  .rules-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-2); }
+  .rules-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-2); }
   .v-answer-row { display: flex; gap: 6px; margin: 6px 0 2px; }
   .ctl { width: 28px; display: flex; justify-content: center; }
   .acts { display: flex; align-items: center; gap: 4px; min-width: 30px; justify-content: flex-end; }
@@ -207,7 +211,7 @@
 
   .pill {
     display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px;
-    border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap;
+    border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap;
     color: var(--text-3); background: var(--surface-2); border: 1px solid var(--border);
   }
   .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
@@ -219,7 +223,7 @@
   .switch input { position: absolute; z-index: 1; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
   .switch .track {
     width: 28px; height: 16px; border-radius: 999px; background: #2a2a34;
-    border: 1px solid var(--border-strong); position: relative;
+    border: 1px solid var(--border-ui); position: relative;
     transition: background .18s var(--ease), border-color .18s, box-shadow .2s;
   }
   .switch .track::after {
@@ -228,16 +232,16 @@
   }
   .switch input:checked + .track { background: var(--accent); border-color: transparent; box-shadow: 0 0 10px -2px rgba(207, 162, 54, .7); }
   .switch input:checked + .track::after { transform: translateX(12px); background: #fff; }
-  .switch input:focus-visible + .track { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
+  .switch input:focus-visible + .track { outline: 2px solid var(--focus); outline-offset: 2px; }
   .switch input:disabled + .track { opacity: .5; }
 
   .btn {
     height: 30px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    border-radius: 7px; border: 1px solid var(--border-strong); background: var(--surface-3);
+    border-radius: 7px; border: 1px solid var(--border-ui); background: var(--surface-3);
     font-size: 12.5px; font-weight: 500; color: var(--text); white-space: nowrap; cursor: pointer;
     transition: background .12s, border-color .12s, color .12s, opacity .12s;
   }
-  .btn:hover { background: #262630; border-color: rgba(255, 255, 255, .17); }
+  .btn:hover { background: #262630; border-color: rgba(255, 255, 255, .5); }
   .btn:disabled, .btn.is-busy { opacity: .5; cursor: default; }
   .btn.is-busy { cursor: progress; }
   .btn-sm { height: 26px; padding: 0 9px; font-size: 12px; }
@@ -309,7 +313,7 @@
   .bubble.jarvis { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
   .bubble.jarvis.ok { border-color: color-mix(in srgb, var(--ok) 28%, transparent); }
   .bubble.jarvis.err { border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
-  .who { display: block; font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); margin-bottom: 2px; }
+  .who { display: block; font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); margin-bottom: 2px; }
   @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
 
   .ask {
@@ -322,20 +326,20 @@
   .ask[hidden] { display: none; }
   .ask-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
   .ask-top .who { margin: 0; color: var(--accent); }
-  .ask-state { margin-left: auto; font-size: 11px; color: var(--text-3); }
+  .ask-state { margin-left: auto; font-size: 12px; color: var(--text-3); }
   .question { font-size: 13.5px; font-weight: 500; color: var(--text); margin-bottom: 10px; }
   .proposal-text, .prop-body {
     margin: 0 0 10px; padding: 10px 12px; max-height: 200px; overflow: auto;
-    font: 11.5px/1.55 var(--mono); color: var(--text-2); white-space: pre-wrap;
+    font: 12px/1.55 var(--mono); color: var(--text-2); white-space: pre-wrap;
     background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
   }
   .proposal-text[hidden] { display: none; }
   .composer {
     display: flex; align-items: center; gap: 6px; padding: 3px 3px 3px 10px;
-    background: var(--bg); border: 1px solid var(--border-strong); border-radius: 9px;
+    background: var(--bg); border: 1px solid var(--border-ui); border-radius: 9px;
     color: var(--text-3); transition: border-color .15s, box-shadow .15s;
   }
-  .composer:focus-within { border-color: var(--accent-ring); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .composer:focus-within { border-color: var(--focus); box-shadow: 0 0 0 3px var(--accent-soft); }
   .composer[hidden] { display: none; }
   .composer input { flex: 1; min-width: 0; height: 30px; border: 0; outline: 0; background: transparent; font-size: 13px; color: var(--text); }
   .composer input::placeholder { color: var(--text-3); }
@@ -347,7 +351,7 @@
   .rule-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .rid { font: 500 12px var(--mono); color: var(--text); margin-right: 2px; }
   .tag {
-    font-size: 11px; font-weight: 500; padding: 1px 7px; border-radius: 5px;
+    font-size: 12px; font-weight: 500; padding: 1px 7px; border-radius: 5px;
     color: var(--text-2); background: var(--surface-3); border: 1px solid var(--border);
   }
   .tag-hard {
@@ -366,19 +370,19 @@
   .add-row[hidden] { display: none; }
   .add-row input, .ab-val {
     flex: 1; min-width: 0; height: 28px; padding: 0 10px; border-radius: 7px;
-    background: var(--surface-2); border: 1px solid var(--border); color: var(--text); font: inherit; font-size: 12.5px;
+    background: var(--surface-2); border: 1px solid var(--border-ui); color: var(--text); font: inherit; font-size: 12.5px;
   }
-  .add-row input:focus-visible, .ab-val:focus-visible, .ab-level:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 1px; }
+  .add-row input:focus-visible, .ab-val:focus-visible, .ab-level:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
   .ab-list { display: grid; }
   .ab { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--border); }
   .ab:last-child { border-bottom: 0; }
   .ab-main { flex: 1 1 180px; min-width: 0; }
   .ab-name { font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
-  .ab-src { font: 11px/1.4 var(--mono); color: var(--text-3); }
+  .ab-src { font: 12px/1.4 var(--mono); color: var(--text-3); }
   .ab-val { flex: 1 1 140px; }
   .ab-level {
     height: 26px; padding: 0 6px; border-radius: 6px; font: inherit; font-size: 12px;
-    background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border-ui);
   }
   .ab.is-off .ab-name { color: var(--text-3); }
   .sh-stats { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: var(--text-2); padding: 12px 0 4px; }
@@ -415,7 +419,7 @@
   .link-btn:hover { color: color-mix(in srgb, var(--accent) 80%, #fff); text-decoration: underline; }
   .link-btn[hidden] { display: none; }
   .rule-intent { margin-top: 5px; font-size: 12.5px; color: var(--text-2); }
-  .rule-check { display: block; margin-top: 6px; font: 11.5px var(--mono); color: var(--ok); }
+  .rule-check { display: block; margin-top: 6px; font: 12px var(--mono); color: var(--ok); }
   .empty-mini { padding: 14px; text-align: center; font-size: 12.5px; color: var(--text-3); border: 1px dashed var(--border-strong); border-radius: 9px; }
 
   details.sec > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; }
@@ -427,11 +431,11 @@
   details.sec[open] > summary { margin-bottom: 12px; }
   textarea {
     width: 100%; min-height: 96px; padding: 9px 11px; resize: vertical;
-    background: var(--bg); border: 1px solid var(--border-strong); border-radius: 9px;
+    background: var(--bg); border: 1px solid var(--border-ui); border-radius: 9px;
     font: 12.5px/1.55 var(--mono); color: var(--text); outline: 0;
     transition: border-color .15s, box-shadow .15s;
   }
-  textarea:focus { border-color: var(--accent-ring); box-shadow: 0 0 0 3px var(--accent-soft); }
+  textarea:focus { border-color: var(--focus); box-shadow: 0 0 0 3px var(--accent-soft); }
   .btn-row { display: flex; gap: 8px; margin-top: 10px; }
   .proposal { margin-top: 14px; }
   .proposal[hidden] { display: none; }
@@ -466,12 +470,10 @@
   }
   .toast .t-act:hover { background: var(--accent-soft); }
 
-  /* Below 900px the three bulk actions fold into ⋯. "Add app" stays out, and
-     so does Stop deep scan, so a running scan can always be stopped. */
+  /* "Add app" and Stop deep scan stay out of ⋯, so a running scan can always
+     be stopped. */
   @media (max-width: 899px) {
     .title p { white-space: normal; }
-    .btn-group { display: none; }
-    .head-tools .head-more { display: block; }   /* beats the base .head-more rule below */
   }
   @media (max-width: 640px) {
     .wrap { padding: 0 14px; }
@@ -508,7 +510,7 @@
     .head-menu button { padding: 12px 12px; }
     .add-row input { height: 40px; font-size: 16px; }
   }
-  .head-more { position: relative; display: none; }
+  .head-more { position: relative; }
   #h-more { font-size: 18px; line-height: 1; letter-spacing: 1px; }
   #h-more[aria-expanded="true"] { background: var(--surface-3); color: var(--text); border-color: var(--border-strong); }
   .head-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: 250px; padding: 6px;
@@ -520,6 +522,11 @@
   .head-menu button svg { color: var(--text-3); }
   .head-menu button:hover, .head-menu button:focus-visible { background: var(--hover, rgba(255, 255, 255, .06)); outline: none; }
   .head-menu button:disabled { opacity: .5; cursor: default; }
+  .head-menu button[aria-checked] .box {
+    width: 16px; height: 16px; flex: none; margin-left: auto; display: grid; place-items: center;
+    border: 1px solid var(--border-strong); border-radius: 4px; color: transparent;
+  }
+  .head-menu button[aria-checked="true"] .box { color: #0a1322; background: var(--accent); border-color: transparent; }
   .head-menu hr { border: 0; border-top: 1px solid var(--border, rgba(255, 255, 255, .1)); margin: 4px 2px; }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
@@ -544,10 +551,12 @@
         <div class="head-acts" role="toolbar" aria-label="App actions">
           <button class="btn btn-sm btn-primary" id="h-add" aria-expanded="false" aria-controls="add-row"
                   title="Register an app by name or program path"><span data-ico="plus"></span>Add app</button>
-          <div class="btn-group">
-            <button class="btn btn-sm" id="h-scan" title="Find every app on this computer"><span data-ico="scan"></span>Full scan</button>
-            <button class="btn btn-sm" id="h-deep" title="Open, read and close every registered app not scanned yet, one at a time"><span data-ico="deep"></span>Deep scan all</button>
-            <button class="btn btn-sm" id="h-gen" title="Give every registered app its predefined abilities"><span data-ico="sparkle"></span>Create predefined rules for all</button>
+          <!-- The bulk buttons stay in the DOM (hidden) so the ⋯ menu presses the
+               real ones: same handlers, same busy state. -->
+          <div hidden>
+            <button id="h-scan" type="button"></button>
+            <button id="h-deep" type="button"></button>
+            <button id="h-gen" type="button"></button>
           </div>
           <button class="btn btn-sm btn-danger" id="h-deep-cancel" hidden><span data-ico="stop"></span>Stop deep scan</button>
         </div>
@@ -556,10 +565,12 @@
             <button class="icon-btn" id="h-more" aria-haspopup="menu" aria-expanded="false" aria-controls="h-menu"
                     aria-label="More actions" title="More actions">⋯</button>
             <div class="head-menu" id="h-menu" role="menu" aria-label="More actions" hidden>
-              <button type="button" role="menuitem" data-for="h-scan"><span data-ico="scan"></span>Full scan</button>
-              <button type="button" role="menuitem" data-for="h-deep"><span data-ico="deep"></span>Deep scan all</button>
+              <button type="button" role="menuitem" data-for="h-scan" title="Find every app on this computer"><span data-ico="scan"></span>Full scan</button>
+              <button type="button" role="menuitem" data-for="h-deep" title="Open, read and close every registered app not scanned yet, one at a time"><span data-ico="deep"></span>Deep scan all</button>
+              <button type="button" role="menuitem" data-for="h-gen" title="Give every registered app its predefined abilities"><span data-ico="sparkle"></span>Create predefined rules for all</button>
               <hr>
-              <button type="button" role="menuitem" data-for="h-gen"><span data-ico="sparkle"></span>Create predefined rules for all</button>
+              <button type="button" role="menuitemcheckbox" aria-checked="false" id="h-adv"
+                      title="Also show the raw detected list and the Shadow review"><span>Show advanced</span><span class="box" data-ico="check"></span></button>
             </div>
           </div>
           <button class="icon-btn" id="refresh" title="Refresh" aria-label="Refresh"></button>
@@ -750,7 +761,11 @@ const CATS = {
 };
 
 // View state for the list, and the drawer's per-app working state.
-const S = { curated: [], all: [], tab: "curated", filter: "all", loading: false, error: "" };
+// `open` is the set of expanded category groups (all closed to start with);
+// `advanced` unlocks the raw and shadow tabs (see ADV_KEY).
+const S = { curated: [], all: [], tab: "curated", filter: "all", loading: false, error: "", open: {}, advanced: false };
+const ADV_KEY = "cygnus.apps.advanced";
+const ADV_TABS = ["all", "shadow"];
 const DR = { key: null, filledKey: null, voiceRuleId: "", voiceStatus: "", proposed: [], thread: [], lastFocus: null };
 
 const $ = sel => document.querySelector(sel);
@@ -782,11 +797,37 @@ function status(a) {
   if (a.enabled === false) return { cls: "off", label: "Disabled" };
   return { cls: "on", label: kindOf(a) === "capability" ? "Available" : "Enabled" };
 }
+// Well-known programs whose process name does not spell the product name.
+const FRIENDLY = { chrome: "Google Chrome", msedge: "Microsoft Edge", firefox: "Firefox", brave: "Brave",
+                   code: "VS Code", winword: "Word", excel: "Excel", powerpnt: "PowerPoint", outlook: "Outlook",
+                   notepad: "Notepad", explorer: "File Explorer", mspaint: "Paint", calc: "Calculator" };
+
+// What the row calls an app: a display_name from the server if it ever sends
+// one, else the name tidied up (path and .exe gone, camelCase / _ - split,
+// title-cased). Websites keep their host as written. The raw name stays in
+// the tooltip and the drawer.
+function prettyName(a) {
+  if (a.display_name) return String(a.display_name);
+  const raw = String(a.name || a.key || "");
+  if (kindOf(a) === "website") return raw;
+  let n = raw.split(/[\\/]/).pop().replace(/\.(exe|com|bat|cmd|lnk|msc)$/i, "");
+  if (FRIENDLY[n.toLowerCase()]) return FRIENDLY[n.toLowerCase()];
+  // Already written for people ("Visual Studio Code", "7-Zip"): leave it be.
+  if (/\s/.test(n) && /[A-Z]/.test(n)) return n;
+  n = n.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_\-.]+/g, " ").trim();
+  return n.split(/\s+/).map(w => w === w.toLowerCase() ? w.charAt(0).toUpperCase() + w.slice(1) : w).join(" ") || raw;
+}
+// The raw name, only when the shown name differs from it.
+function rawHint(a) {
+  const raw = String(a.name || a.key || "");
+  return raw && raw !== prettyName(a) ? raw + (a.key && a.key !== raw ? " (" + a.key + ")" : "") : "";
+}
 function metaOf(a) {
   const k = kindOf(a);
   if (k === "website") return a.host || a.url || "website";
   if (k === "capability") return a.description || a.adapter || "capability";
-  return a.key + " · " + (a.kind || a.adapter || "gui");
+  const kind = a.kind || a.adapter || "gui";
+  return kind === "gui" ? "Desktop app" : kind === "cli" ? "Command-line tool" : kind;
 }
 function icoHtml(cat, size = 16) {
   return `<span class="ico" style="--tint:${CATS[cat].tint}">${svg(cat, size)}</span>`;
@@ -895,6 +936,7 @@ function onHudMessage(e) {
 // -------------------------------------------------------------------- list --
 
 function setTab(tab) {
+  if (!S.advanced && ADV_TABS.indexOf(tab) >= 0) tab = "curated";
   S.tab = tab;
   for (const t of ["curated", "all", "shadow"]) {
     const el = $("#tab-" + t);
@@ -903,6 +945,17 @@ function setTab(tab) {
   }
   updateCounts();
   render();
+}
+
+// Show advanced: reveals the raw and shadow tabs. Turning it off while one of
+// them is open drops back to the default tab. Remembered across visits.
+function setAdvanced(on, save) {
+  S.advanced = on;
+  if (save) { try { localStorage.setItem(ADV_KEY, on ? "1" : "0"); } catch (e) {} }
+  for (const t of ADV_TABS) $("#tab-" + t).hidden = !on;
+  const item = $("#h-adv");
+  item.setAttribute("aria-checked", String(on));
+  if (!on && ADV_TABS.indexOf(S.tab) >= 0) setTab("curated");
 }
 
 function setFilter(filter) {
@@ -917,7 +970,7 @@ function setFilter(filter) {
 
 function matches(a, q) {
   if (!q) return true;
-  return [a.name, a.category, a.key, a.host, a.description]
+  return [a.name, prettyName(a), a.category, a.key, a.host, a.description]
     .some(v => (v || "").toLowerCase().includes(q));
 }
 
@@ -959,10 +1012,15 @@ function render() {
     if (!groups.has(c)) groups.set(c, []);
     groups.get(c).push(a);
   }
+  // Groups start closed. They open on the user's say-so, while a search is
+  // typed, when only one group is left, or when it holds the app in the drawer.
   let html = "";
   for (const [c, apps] of groups) {
-    html += `<section class="group"><div class="group-h">${escapeHtml(CATS[c].label)}<span class="n">${apps.length}</span></div>`;
-    html += apps.map(rowHtml).join("");
+    const open = !!(S.open[c] || q || groups.size === 1 || apps.some(a => a.key === DR.key));
+    html += `<section class="group${open ? " open" : ""}"><button class="group-h" data-act="group" data-cat="${c}" ` +
+      `aria-expanded="${open}">${svg("chevron", 12).replace("<svg ", '<svg class="gchev" ')}` +
+      `${escapeHtml(CATS[c].label)}<span class="n">${apps.length}</span></button>`;
+    if (open) html += apps.map(rowHtml).join("");
     html += "</section>";
   }
   list.innerHTML = html;
@@ -984,11 +1042,12 @@ function rowHtml(a) {
   const enabled = a.enabled !== false;
   const rules = (a.compiled_rules || []).length;
   const cls = ["row", DR.key === a.key ? "is-active" : "", enabled ? "" : "is-off"].filter(Boolean).join(" ");
+  const nm = prettyName(a), hint = rawHint(a);
   const brokenWhy = a.broken ? (k === "website" ? "No URL registered" : "Binary not found: " + (a.bin || "")) : "";
   return `<div class="${cls}" data-key="${escapeHtml(a.key)}">
     ${icoHtml(catOf(a))}
-    <button class="main" data-act="configure" aria-label="Configure ${escapeHtml(a.name)}">
-      <span class="name">${escapeHtml(a.name)}</span>
+    <button class="main" data-act="configure" aria-label="Configure ${escapeHtml(nm)}"${hint ? ` title="${escapeHtml(hint)}"` : ""}>
+      <span class="name">${escapeHtml(nm)}</span>
       <span class="meta">${escapeHtml(metaOf(a))}</span>
     </button>
     <div class="aux">
@@ -996,7 +1055,7 @@ function rowHtml(a) {
       ${rules ? `<span class="rules-chip" title="Active rules">${svg("shield", 12)}${rules} rule${rules > 1 ? "s" : ""}</span>` : ""}
       ${k !== "app" || a.broken ? `<span class="pill ${st.cls}"${brokenWhy ? ` title="${escapeHtml(brokenWhy)}"` : ""}>${st.label}</span>` : ""}
     </div>
-    <div class="ctl">${k === "app" ? switchHtml(enabled, "Enable " + a.name) : ""}</div>
+    <div class="ctl">${k === "app" ? switchHtml(enabled, "Enable " + nm) : ""}</div>
     <div class="acts">
       ${k === "website" ? '<button class="btn btn-sm btn-site" data-act="open">Open site</button>' : (k !== "capability" ? '<button class="btn btn-sm" data-act="open">Open</button>' : "")}
       ${S.tab === "all" && k === "app" ? '<button class="btn btn-sm btn-quiet" data-act="hide">Hide</button>' : ""}
@@ -1013,7 +1072,7 @@ function markActive() {
 
 async function toggleApp(key, enable, cb) {
   const a = findApp(key);
-  const name = a ? a.name : key;
+  const name = a ? prettyName(a) : key;
   cb.disabled = true;
   let ok = false;
   try {
@@ -1035,7 +1094,7 @@ async function toggleApp(key, enable, cb) {
 
 async function openApp(key, btn) {
   const a = findApp(key);
-  const name = a ? a.name : key;
+  const name = a ? prettyName(a) : key;
   setBusy(btn, true);
   let d = {}, ok = false;
   try {
@@ -1058,7 +1117,7 @@ async function setHidden(key, hidden) {
 
 async function hideApp(key, btn) {
   const a = findApp(key);
-  const name = a ? a.name : key;
+  const name = a ? prettyName(a) : key;
   const wasRegistered = !!(a && a.registered);
   setBusy(btn, true);
   const ok = await setHidden(key, true);
@@ -1134,7 +1193,9 @@ function fillDrawer(a) {
   const ico = $("#dr-ico");
   ico.style.setProperty("--tint", CATS[cat].tint);
   ico.innerHTML = svg(cat, 18);
-  $("#dr-title").textContent = a.name;
+  $("#dr-title").textContent = prettyName(a);
+  $("#dr-title").title = rawHint(a);
+  // The drawer is the expanded detail, so the raw key is shown here.
   $("#dr-meta").textContent = [CATS[cat].label, k === "app" ? a.key : metaOf(a)].join(" · ");
 
   const st = status(a);
@@ -1820,10 +1881,12 @@ function clearSearch(refocus) {
 // ↑ / ↓ walk the list one row at a time; Home / End jump to the ends.
 function rowKeyNav(e) {
   if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return false;
-  const mains = [...document.querySelectorAll("#list .row .main")];
+  // Group headers are stops too, so a closed group can be reached and opened.
+  const mains = [...document.querySelectorAll("#list .row .main, #list .group-h")];
   if (!mains.length) return false;
-  const from = document.activeElement && document.activeElement.closest(".row");
-  const i = from ? mains.findIndex(m => m.closest(".row") === from) : -1;
+  const at = document.activeElement;
+  const from = at && (at.closest(".row") || at.closest(".group-h"));
+  const i = from ? mains.findIndex(m => m === from || m.closest(".row") === from) : -1;
   let to;
   if (e.key === "Home") to = 0;
   else if (e.key === "End") to = mains.length - 1;
@@ -1859,9 +1922,17 @@ function init() {
     const actEl = e.target.closest("[data-act]");
     const act = actEl ? actEl.dataset.act : "";
     if (act === "retry") return loadApps();
-    if (act === "browse") return setTab("all");
+    if (act === "browse") { if (!S.advanced) setAdvanced(true, true); return setTab("all"); }
     if (act === "add") return showAddRow(true);
     if (act === "clear") { $("#search").value = ""; return setFilter("all"); }
+    if (act === "group") {
+      const cat = actEl.dataset.cat;
+      S.open[cat] = !actEl.closest(".group").classList.contains("open");
+      render();
+      const h = document.querySelector('.group-h[data-cat="' + cat + '"]');
+      if (h) h.focus({ preventScroll: true });
+      return;
+    }
     const row = e.target.closest(".row");
     if (!row || e.target.closest(".switch")) return;
     const key = row.dataset.key;
@@ -1902,23 +1973,28 @@ function init() {
   $("#h-gen").addEventListener("click", e => generateAll(e.currentTarget));
   $("#h-deep").addEventListener("click", e => deepScanAll(e.currentTarget));
   $("#h-deep-cancel").addEventListener("click", e => cancelDeepScan(e.currentTarget));
-  // Narrow screens fold the bulk actions into ⋯. Each item presses the real
-  // button, so its handler and busy state stay the same; an item is greyed
-  // out while its button is busy. Arrow keys walk the menu.
+  // The bulk actions live in ⋯. Each item presses the real (hidden) button,
+  // so its handler and busy state stay the same; an item is greyed out while
+  // its button is busy. Arrow keys walk the menu. Show advanced is a checkbox
+  // item.
+  let adv = false;
+  try { adv = localStorage.getItem(ADV_KEY) === "1"; } catch (e) {}
+  setAdvanced(adv, false);
   const moreBtn = $("#h-more"), moreMenu = $("#h-menu");
-  const menuItems = () => [...moreMenu.querySelectorAll("[data-for]")];
+  const menuItems = () => [...moreMenu.querySelectorAll("[role^=menuitem]")];
   const setMoreMenu = (open, focusFirst) => {
     moreMenu.hidden = !open;
     moreBtn.setAttribute("aria-expanded", String(open));
     if (!open) return;
-    menuItems().forEach(item => { item.disabled = document.getElementById(item.dataset.for).disabled; });
+    menuItems().forEach(item => { if (item.dataset.for) item.disabled = document.getElementById(item.dataset.for).disabled; });
     if (focusFirst) { const first = menuItems().find(i => !i.disabled); if (first) first.focus(); }
   };
   moreBtn.addEventListener("click", e => { e.stopPropagation(); setMoreMenu(moreMenu.hidden, e.detail === 0); });
   moreBtn.addEventListener("keydown", e => { if (e.key === "ArrowDown") { e.preventDefault(); setMoreMenu(true, true); } });
   moreMenu.addEventListener("click", e => {
-    const item = e.target.closest("[data-for]");
+    const item = e.target.closest("[role^=menuitem]");
     if (!item || item.disabled) return;
+    if (item.id === "h-adv") { setAdvanced(!S.advanced, true); return; }
     setMoreMenu(false);
     document.getElementById(item.dataset.for).click();
   });

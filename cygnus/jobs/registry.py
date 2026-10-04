@@ -40,9 +40,13 @@ _owner = False
 def claim_ownership() -> None:
     """Called once, at startup, by the process that starts and finishes jobs."""
     global _owner
-    _owner = True
-    if _loaded:
-        _mark_interrupted()
+    # Under the lock: a request thread may be in _load_history filling _jobs,
+    # and looping over it here then raised "dictionary changed size during
+    # iteration" on startup.
+    with _lock:
+        _owner = True
+        if _loaded:
+            _mark_interrupted()
 
 # queued / waiting-on-confirm jobs never reach a terminal state on their own,
 # so without expiry they pile up in active() forever (real case: 26 stale
@@ -78,41 +82,44 @@ def _load_history() -> None:
     global _loaded
     if _loaded:
         return
-    _loaded = True
-    if not _LOG_PATH.exists():
-        return
-    try:
-        with open(_LOG_PATH, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                except Exception:
-                    continue
-                jid = rec.get("id")
-                if not jid:
-                    continue
-                prev = _jobs.get(jid)
-                # last record wins, except the step notes: each record carries
-                # one, and keeping only the last lost which agent a job used.
-                merged = {**(prev or {}), **rec}
-                notes = list((prev or {}).get("progress") or [])
-                if rec.get("note"):
-                    notes.append(rec["note"])
-                merged["progress"] = notes[-20:]
-                _jobs[jid] = merged
-    except Exception:
-        return
-    if _owner:
-        _mark_interrupted()
+    with _lock:
+        if _loaded:             # another thread loaded it while this one waited
+            return
+        _loaded = True
+        if not _LOG_PATH.exists():
+            return
+        try:
+            with open(_LOG_PATH, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except Exception:
+                        continue
+                    jid = rec.get("id")
+                    if not jid:
+                        continue
+                    prev = _jobs.get(jid)
+                    # last record wins, except the step notes: each record carries
+                    # one, and keeping only the last lost which agent a job used.
+                    merged = {**(prev or {}), **rec}
+                    notes = list((prev or {}).get("progress") or [])
+                    if rec.get("note"):
+                        notes.append(rec["note"])
+                    merged["progress"] = notes[-20:]
+                    _jobs[jid] = merged
+        except Exception:
+            return
+        if _owner:
+            _mark_interrupted()
 
 
 def _mark_interrupted() -> None:
     """Jobs the log shows running, loaded by the process that runs jobs, were
     cut off by its restart. On record, so the log agrees with "status?" and
-    the next restart does not find them running again."""
+    the next restart does not find them running again. Caller holds _lock."""
     for j in _jobs.values():
         if j.get("state") == "running":
             j["state"] = "error"

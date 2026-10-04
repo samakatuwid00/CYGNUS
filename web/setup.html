@@ -20,7 +20,8 @@
     --faint: #8f897d;         /* 5.6:1 on --ink: hints and labels stay readable */
     --ok: #7ddba0;
     --bad: #ef7b64;
-    --hairline: color-mix(in srgb, var(--holo) 22%, transparent);
+    /* Control edges: 50% holds 3:1 on the ink (22% was 1.5:1). Soft = dividers. */
+    --hairline: color-mix(in srgb, var(--holo) 50%, transparent);
     --hairline-soft: color-mix(in srgb, var(--holo) 12%, transparent);
     --panel: rgba(14, 18, 24, .72);
     --font-display: 'Rajdhani', 'Archivo', system-ui, sans-serif;
@@ -71,7 +72,7 @@
   .readout { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px;
     background: var(--hairline-soft); border: 1px solid var(--hairline-soft); border-radius: 10px; overflow: hidden; }
   .cell { background: var(--panel); padding: 14px 16px; min-width: 0; }
-  .cell dt { font: 600 11px/1 var(--font-display); letter-spacing: .22em; text-transform: uppercase; color: var(--faint); }
+  .cell dt { font: 600 12px/1 var(--font-display); letter-spacing: .22em; text-transform: uppercase; color: var(--faint); }
   .cell dd { font: 600 20px/1.2 var(--font-data); margin-top: 10px; color: var(--text); overflow-wrap: anywhere; }
   .cell dd small { display: block; font: 400 12px/1.35 var(--font-body); color: var(--muted); margin-top: 4px; }
   .verdict { display: flex; gap: 12px; margin-top: 16px; padding: 14px 16px; border-left: 2px solid var(--holo);
@@ -79,34 +80,39 @@
   .verdict p { color: var(--text); }
   .verdict p span { color: var(--muted); }
   .downloads { color: var(--muted); margin-top: 12px; max-width: 600px; }
+  /* The numbers behind the advice, one click away. */
+  .more { margin-top: 14px; }
+  .more summary { display: inline-block; min-height: 24px; color: var(--holo); cursor: pointer; font-size: 14px; }
+  .more summary:focus-visible { outline: 2px solid var(--holo-bright); outline-offset: 2px; }
+  .more[open] summary { margin-bottom: 12px; }
   .downloads b { color: var(--text); font-weight: 600; }
 
   /* 02 - the providers. Real radio inputs, dressed as cards. */
   .providers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; border: 0; }
   .providers legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-  .prov { position: relative; display: block; padding: 14px 14px 13px; border: 1px solid var(--hairline-soft);
+  .prov { position: relative; display: block; padding: 14px 14px 13px; border: 1px solid var(--hairline);
     border-radius: 10px; background: var(--panel); cursor: pointer; transition: border-color .15s, background .15s, transform .15s; }
-  .prov:hover { border-color: var(--hairline); transform: translateY(-1px); }
+  .prov:hover { border-color: var(--holo-bright); transform: translateY(-1px); }
   .prov input { position: absolute; opacity: 0; pointer-events: none; }
   .prov .name { font: 600 15px/1.2 var(--font-body); display: flex; align-items: center; gap: 8px; }
   .prov .tag { display: block; font: 500 12px/1.3 var(--font-data); color: var(--muted); margin-top: 6px; }
-  .prov .badge { font: 700 10px/1 var(--font-display); letter-spacing: .14em; text-transform: uppercase;
+  .prov .badge { font: 700 12px/1 var(--font-display); letter-spacing: .14em; text-transform: uppercase;
     padding: 4px 6px 3px; border-radius: 4px; color: var(--ink); background: var(--holo); margin-left: auto; }
   .prov .badge.age { background: transparent; color: var(--muted); border: 1px solid var(--hairline-soft); }
   .prov:has(input:checked) { border-color: var(--holo); background: linear-gradient(160deg, rgba(255, 180, 84, .12), var(--panel) 60%); }
   .prov:has(input:focus-visible) { outline: 2px solid var(--holo-bright); outline-offset: 2px; }
-  .prov:has(input:disabled) { opacity: .45; cursor: not-allowed; transform: none; }
+  .prov:has(input:disabled) { opacity: .65; cursor: not-allowed; transform: none; }
 
   .fields { margin-top: 18px; padding: 18px; border: 1px solid var(--hairline-soft); border-radius: 10px; background: var(--panel); }
   .fields .about { color: var(--muted); margin-bottom: 14px; }
   .fields .about a { color: var(--holo); }
   .field { display: grid; gap: 6px; margin-top: 14px; }
   .field:first-of-type { margin-top: 0; }
-  label.lbl { font: 600 11px/1 var(--font-display); letter-spacing: .22em; text-transform: uppercase; color: var(--muted); }
+  label.lbl { font: 600 12px/1 var(--font-display); letter-spacing: .22em; text-transform: uppercase; color: var(--muted); }
   .lbl .opt { letter-spacing: .1em; color: var(--faint); text-transform: none; font-family: var(--font-body); font-weight: 400; }
   .row { display: flex; gap: 8px; }
   input.text { flex: 1; min-width: 0; font: 500 14px/1 var(--font-data); color: var(--text); background: rgba(0, 0, 0, .35);
-    border: 1px solid var(--hairline-soft); border-radius: 8px; padding: 12px 12px; }
+    border: 1px solid var(--hairline); border-radius: 8px; padding: 12px 12px; }
   input.text::placeholder { color: var(--faint); }
   input.text:focus { outline: none; border-color: var(--holo); box-shadow: 0 0 0 3px rgba(255, 180, 84, .15); }
   .hint { font-size: 12px; color: var(--faint); }
@@ -116,10 +122,10 @@
     transition: background .15s, color .15s, opacity .15s; }
   button:hover:not(:disabled) { background: rgba(255, 180, 84, .12); }
   button:focus-visible { outline: 2px solid var(--holo-bright); outline-offset: 2px; }
-  button:disabled { opacity: .35; cursor: not-allowed; }
+  button:disabled { opacity: .55; cursor: not-allowed; }
   button.primary { background: var(--holo); color: var(--ink); }
   button.primary:hover:not(:disabled) { background: var(--holo-bright); }
-  button.quiet { border-color: var(--hairline-soft); color: var(--muted); padding: 13px 12px; }
+  button.quiet { border-color: var(--hairline); color: var(--muted); padding: 13px 12px; }
 
   .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 18px; }
   /* One line that says what just happened, for eyes and screen readers. */
@@ -137,7 +143,7 @@
 
   @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   @keyframes pulse { 50% { opacity: .3; } }
-  @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
   @media (max-width: 720px) {
     .readout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .providers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -151,7 +157,7 @@
   <header>
     <p class="kicker">Cygnus · first run</p>
     <h1>Give Cygnus a <em>brain</em>.</h1>
-    <p class="lede">Cygnus listens and acts on this PC; a language model does its thinking. Pick where that model
+    <p class="lede">Cygnus listens and acts on this PC; an AI model does its thinking. Pick where that AI
       runs, try it, and Cygnus starts again with it. Your key stays on this computer.</p>
     <p class="current" id="current">Reading the current settings…</p>
   </header>
@@ -160,15 +166,17 @@
     <div class="num" aria-hidden="true">01</div>
     <div>
       <h2 id="h-machine">This PC</h2>
-      <p class="sub">What this machine can run decides whether a model on the PC itself is worth it.</p>
-      <dl class="readout" id="readout">
-        <div class="cell"><dt>Memory</dt><dd id="m-ram">…</dd></div>
-        <div class="cell"><dt>Processor</dt><dd id="m-cpu">…</dd></div>
-        <div class="cell"><dt>Graphics</dt><dd id="m-gpu">…</dd></div>
-        <div class="cell"><dt>Free disk</dt><dd id="m-disk">…</dd></div>
-      </dl>
       <div class="verdict"><p id="verdict">Checking…</p></div>
-      <p class="downloads" id="downloads" hidden></p>
+      <details class="more">
+        <summary>Details</summary>
+        <dl class="readout" id="readout" aria-label="This PC's hardware">
+          <div class="cell"><dt>Memory</dt><dd id="m-ram">…</dd></div>
+          <div class="cell"><dt>Processor</dt><dd id="m-cpu">…</dd></div>
+          <div class="cell"><dt>Graphics</dt><dd id="m-gpu">…</dd></div>
+          <div class="cell"><dt>Free disk</dt><dd id="m-disk">…</dd></div>
+        </dl>
+        <p class="downloads" id="downloads" hidden></p>
+      </details>
     </div>
   </section>
 
@@ -177,7 +185,7 @@
     <div>
       <h2 id="h-brain">The brain</h2>
       <p class="sub">Each option needs its own free account or install. Gemini is free and needs no card.</p>
-      <fieldset class="providers" id="providers"><legend>Model provider</legend></fieldset>
+      <fieldset class="providers" id="providers"><legend>AI provider</legend></fieldset>
 
       <div class="fields" id="fields">
         <p class="about" id="about"></p>
@@ -185,16 +193,16 @@
           <label class="lbl" for="key">API key</label>
           <div class="row">
             <input class="text" id="key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your key">
-            <button type="button" class="quiet" id="show" aria-pressed="false">Show</button>
+            <button type="button" class="quiet" id="show" aria-pressed="false" aria-controls="key" aria-label="Show key">Show</button>
           </div>
           <span class="hint" id="key-hint"></span>
         </div>
         <div class="field" id="f-model">
-          <label class="lbl" for="model">Model <span class="opt" id="model-opt">(optional)</span></label>
+          <label class="lbl" for="model">Model name <span class="opt" id="model-opt">(optional)</span></label>
           <input class="text" id="model" type="text" autocomplete="off" spellcheck="false">
         </div>
         <div class="field" id="f-base">
-          <label class="lbl" for="base">Endpoint address</label>
+          <label class="lbl" for="base">Server address</label>
           <input class="text" id="base" type="url" autocomplete="off" spellcheck="false" placeholder="https://your-server/v1">
         </div>
         <div class="actions">
@@ -232,18 +240,18 @@
              'Google may use what you send on the free tier to improve its products.' },
     groq: { name: 'Groq', tag: 'Free tier · fast', key: true,
       keyUrl: 'https://console.groq.com/keys', hint: 'Starts with gsk_. Shown only once when you make it.',
-      about: 'Free with per-minute limits. The default model is llama-3.3-70b-versatile.' },
+      about: 'Free, with a limit on requests per minute. Cygnus picks the model for you.' },
     openrouter: { name: 'OpenRouter', tag: 'Many models, some free', age: true, key: true, needsModel: true,
       keyUrl: 'https://openrouter.ai/keys', hint: 'Starts with sk-or-.',
-      modelHint: 'e.g. a model id ending in :free that supports tools',
-      about: 'Pick a model that supports tools on openrouter.ai/models; free ones end in :free.' },
+      modelHint: 'e.g. a name ending in :free',
+      about: 'Pick a model on openrouter.ai/models that lists “tools” support; free ones end in :free.' },
     openai: { name: 'OpenAI', tag: 'Paid per use', key: true,
       keyUrl: 'https://platform.openai.com/api-keys', hint: 'Starts with sk-.',
       about: 'Charged for every request: set a monthly budget on your account before you make the key.' },
-    ollama: { name: 'On this PC', tag: 'Ollama · no key', key: false,
+    ollama: { name: 'On this PC', tag: 'Runs offline · no key', key: false,
       keyUrl: 'https://ollama.com', about: '' },
-    custom: { name: 'Other endpoint', tag: 'OpenAI-compatible', key: 'optional', needsModel: true, needsBase: true,
-      about: 'Any server that speaks the OpenAI chat API.' }
+    custom: { name: 'Other server', tag: 'Works like OpenAI', key: 'optional', needsModel: true, needsBase: true,
+      about: 'Any server that works like OpenAI’s. Ask whoever runs it for the address and model name.' }
   };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -260,11 +268,13 @@
     el.className = 'status' + (kind ? ' ' + kind : '');
   }
 
-  // Numbers arrive as a readout: counted up, not dropped in.
+  // Numbers arrive as a readout: counted up, not dropped in (at once when
+  // the system asks for reduced motion).
+  var STILL = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   function countTo(el, value, unit, small) {
-    var start = performance.now(), dur = 600;
+    var start = performance.now(), dur = STILL ? 0 : 600;
     function frame(t) {
-      var k = Math.min(1, (t - start) / dur), v = value * (1 - Math.pow(1 - k, 3));
+      var k = dur ? Math.min(1, (t - start) / dur) : 1, v = value * (1 - Math.pow(1 - k, 3));
       el.innerHTML = (Math.round(v * 10) / 10) + ' ' + unit + (small ? '<small>' + small + '</small>' : '');
       if (k < 1) requestAnimationFrame(frame);
     }
@@ -278,8 +288,8 @@
     $('m-gpu').innerHTML = best ? (best.vram_gb != null ? best.vram_gb + ' GB' : '—') + '<small></small>' : 'None<small></small>';
     if (best) $('m-gpu').querySelector('small').textContent = best.name;
     countTo($('m-disk'), m.disk_free_gb, 'GB');
-    var local = { none: 'Use a cloud model. ', backup: 'A cloud model first; a local one fits as the offline backup. ',
-                  main: 'A local model can be the main brain here. ' }[r.local];
+    var local = { none: 'Use an online model. ', backup: 'Use an online model first; one on this PC can work as the offline backup. ',
+                  main: 'A model on this PC can be the main brain here. ' }[r.local];
     var v = $('verdict');
     v.textContent = local;
     var span = document.createElement('span');
@@ -295,7 +305,7 @@
     var el = $('downloads'), need = (list || []).filter(function (d) { return !d.have; });
     if (!list || !list.length) return;
     el.hidden = false;
-    if (!need.length) { el.textContent = 'The speech and routing models are already on this PC.'; return; }
+    if (!need.length) { el.textContent = 'The speech and command models are already on this PC.'; return; }
     var mb = need.reduce(function (n, d) { return n + (d.mb || 0); }, 0);
     el.innerHTML = 'The first time Cygnus listens it downloads <b></b>: ';
     el.querySelector('b').textContent = mb >= 1000 ? (Math.round(mb / 100) / 10) + ' GB' : mb + ' MB';
@@ -326,6 +336,7 @@
   }
 
   function choose(id) {
+    var prev = chosen;
     chosen = id; tested = null;
     var p = PROVIDERS[id];
     document.querySelector('input[value="' + id + '"]').checked = true;
@@ -342,7 +353,13 @@
     }
     $('f-key').hidden = !p.key;
     $('key-hint').textContent = p.hint || (p.key === 'optional' ? 'Only if the server asks for one.' : '');
-    $('f-model').hidden = false;
+    // Only the providers with no default model, OpenAI, and Ollama (whatever
+    // the student pulled) ask for one; the rest would send a stale name from
+    // the last choice, so it is cleared.
+    var askModel = id === 'openai' || id === 'ollama' || !!p.needsModel;
+    if (id !== prev) $('model').value = '';
+    $('f-model').hidden = !askModel;
+    $('model').required = !!p.needsModel && askModel;
     $('model-opt').textContent = p.needsModel ? '(required)' : '(optional)';
     $('model').placeholder = p.modelHint || (id === 'ollama' ? 'qwen3:4b-instruct' : 'the provider’s default');
     $('f-base').hidden = !p.needsBase;
@@ -358,6 +375,7 @@
     var shown = $('key').type === 'text';
     $('key').type = shown ? 'password' : 'text';
     this.textContent = shown ? 'Show' : 'Hide';
+    this.setAttribute('aria-label', shown ? 'Show key' : 'Hide key');
     this.setAttribute('aria-pressed', String(!shown));
   });
 
