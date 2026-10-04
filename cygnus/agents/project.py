@@ -15,10 +15,20 @@ Which projects exist is read from projects.json beside this file; a template is
 written on first use. Credentials, when a project has them, come from the vault
 through tools.get_credentials and are strictly read - nothing here writes to the
 vault, and the password is never logged or returned.
+
+The same file is the Project Connector's registry (docs/CONNECTOR.md). Each
+entry may also carry:
+  active        the project agents work in now (at most one; none means
+                Cygnus's own folder, the built-in "cygnus" project)
+  agent         the coding agent the project prefers (default claude-code)
+  allow_writes  an agent may change files there; false until the owner says
+                yes the first time a job would (safety.assess_project_write)
+Older entries without them read as inactive, claude-code, writes not allowed.
 """
 
 import json
 import os
+import re
 import subprocess
 import time
 import urllib.error
@@ -188,6 +198,366 @@ def load_registry() -> dict:
         REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
         REGISTRY_PATH.write_text(json.dumps(seed, indent=2) + "\n", encoding="utf-8")
     return json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+
+
+# ------------------------------------------------------------ connector --
+# Cygnus's own folder is a project too: the one agents work in when no other
+# is active. It is never written to projects.json.
+CYGNUS_ID = "cygnus"
+DEFAULT_AGENT = "claude-code"
+_registry_lock = threading.Lock()
+
+
+def normalize(entry) -> dict:
+    """An entry with the connector fields filled in (the file is not changed)."""
+    entry = dict(entry or {})
+    entry["active"] = bool(entry.get("active", False))
+    entry["agent"] = str(entry.get("agent") or DEFAULT_AGENT)
+    entry["allow_writes"] = bool(entry.get("allow_writes", False))
+    return entry
+
+
+def save_registry(registry: dict) -> None:
+    """Write projects.json whole, through a temp file so a crash leaves the old one."""
+    REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = REGISTRY_PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    os.replace(tmp, REGISTRY_PATH)
+
+
+def _same_folder(a, b) -> bool:
+    try:
+        return os.path.normcase(str(Path(a).expanduser().resolve())) == \
+            os.path.normcase(str(Path(b).expanduser().resolve()))
+    except (OSError, ValueError):
+        return False
+
+
+def project_info(pid: str, entry: dict | None = None) -> dict:
+    """One project as the API and the MCP server show it. The vault note name
+    is not shown, only that the project has a login."""
+    if pid == CYGNUS_ID:
+        folder = paths.ROOT
+        entry = {"active": False, "agent": DEFAULT_AGENT, "allow_writes": True,
+                 "dev_cmd": "", "url": "", "note": "Cygnus's own folder."}
+    else:
+        entry = normalize(entry if entry is not None else load_registry().get(pid))
+        folder = Path(str(entry.get("path") or "")).expanduser()
+    exists = bool(str(folder)) and folder.is_dir()
+    return {"id": pid, "path": str(folder).replace("\\", "/"), "exists": exists,
+            "builtin": pid == CYGNUS_ID, "active": bool(entry.get("active")),
+            "agent": entry["agent"], "allow_writes": entry["allow_writes"],
+            "dev_cmd": entry.get("dev_cmd") or "", "url": entry.get("url") or "",
+            "note": entry.get("note") or "", "test_cmd": entry.get("test_cmd") or "",
+            "git": exists and (folder / ".git").exists(),
+            "has_login": bool(entry.get("vault_secret"))}
+
+
+def list_projects() -> list[dict]:
+    """Cygnus first, then the connected projects; exactly one is active."""
+    registry = load_registry()
+    items = [project_info(k, v) for k, v in registry.items() if isinstance(v, dict)]
+    me = project_info(CYGNUS_ID)
+    me["active"] = not any(i["active"] for i in items)
+    return [me] + items
+
+
+def active_id() -> str:
+    for key, entry in load_registry().items():
+        if isinstance(entry, dict) and entry.get("active"):
+            return key
+    return CYGNUS_ID
+
+
+def find(name: str):
+    """The project id `name` means ("sticky brain" is sticky-brain), or None."""
+    if (name or "").strip().lower() in (CYGNUS_ID, "jarvis", "yourself", "your own code"):
+        return CYGNUS_ID
+    return _resolve(name or "", load_registry()) if (name or "").strip() else None
+
+
+def set_active(name: str) -> dict:
+    """Make `name` the project agents work in; "cygnus" clears it."""
+    with _registry_lock:
+        registry = load_registry()
+        pid = CYGNUS_ID if find(name) == CYGNUS_ID else _resolve(name or "", registry)
+        if pid is None:
+            raise KeyError(name)
+        for key, entry in registry.items():
+            if isinstance(entry, dict):
+                entry["active"] = key == pid
+        save_registry(registry)
+    return project_info(pid, None if pid == CYGNUS_ID else registry[pid])
+
+
+def _detect_dev_cmd(folder: Path) -> str:
+    """"npm run dev" when package.json has a dev script; nothing is guessed otherwise."""
+    try:
+        scripts = json.loads((folder / "package.json").read_text(encoding="utf-8")).get("scripts") or {}
+    except (OSError, ValueError, AttributeError):
+        return ""
+    return "npm run dev" if "dev" in scripts else ""
+
+
+def _too_broad(folder: Path) -> bool:
+    """A drive root or the home folder is not a project: connecting it would let
+    agents work across everything."""
+    return folder.parent == folder or _same_folder(folder, Path.home())
+
+
+def connect(path: str, name: str = "", dev_cmd: str | None = None, url: str = "",
+            agent: str = "", allow_writes: bool = False, active: bool = False) -> dict:
+    """Add a folder to projects.json (or return the entry that has it).
+    Raises ValueError with a sentence when the folder cannot be a project."""
+    folder = Path(str(path or "").strip().strip('"')).expanduser()
+    if not str(path or "").strip():
+        raise ValueError("Give the folder to connect.")
+    if not folder.is_absolute():
+        raise ValueError(f"{path} is not a full folder path.")
+    if not folder.is_dir():
+        raise ValueError(f"{folder} is not a folder on this computer.")
+    folder = folder.resolve()
+    if _too_broad(folder):
+        raise ValueError(f"{folder} is too broad to connect; pick the project's own folder.")
+    if _same_folder(folder, paths.ROOT):
+        return set_active(CYGNUS_ID) if active else project_info(CYGNUS_ID)
+    with _registry_lock:
+        registry = load_registry()
+        for key, entry in registry.items():
+            if isinstance(entry, dict) and _same_folder(entry.get("path") or "", folder):
+                pid = key
+                break
+        else:
+            base = re.sub(r"[^a-z0-9]+", "-", (name or folder.name).lower()).strip("-") or "project"
+            pid, n = base, 2
+            while pid in registry or pid == CYGNUS_ID:
+                pid, n = f"{base}-{n}", n + 1
+            registry[pid] = {"path": str(folder).replace("\\", "/"),
+                             "dev_cmd": _detect_dev_cmd(folder) if dev_cmd is None else dev_cmd,
+                             "url": url or "", "agent": agent or DEFAULT_AGENT,
+                             "allow_writes": bool(allow_writes), "active": False}
+        if active:
+            for key, entry in registry.items():
+                if isinstance(entry, dict):
+                    entry["active"] = key == pid
+        save_registry(registry)
+    return project_info(pid, registry[pid])
+
+
+def disconnect(name: str) -> str:
+    """Forget a project. Its folder is not touched. Returns its id."""
+    with _registry_lock:
+        registry = load_registry()
+        pid = _resolve(name or "", registry)
+        if pid is None or pid == CYGNUS_ID:
+            raise KeyError(name)
+        registry.pop(pid)
+        save_registry(registry)
+    return pid
+
+
+def writes_allowed(pid: str) -> bool:
+    if pid == CYGNUS_ID:
+        return True
+    return normalize(load_registry().get(pid)).get("allow_writes", False)
+
+
+def allow_writes(pid: str, allowed: bool = True) -> None:
+    """The owner said yes (or no) to agents changing files in `pid`."""
+    if pid == CYGNUS_ID:
+        return
+    with _registry_lock:
+        registry = load_registry()
+        if isinstance(registry.get(pid), dict):
+            registry[pid]["allow_writes"] = bool(allowed)
+            save_registry(registry)
+
+
+def _named_in(task: str, registry: dict):
+    """The connected project a task names outright ("fix the header in
+    sticky-brain", "... in sticky brain"), as a whole word, or None."""
+    low = f" {(task or '').lower()} "
+    for key in sorted(registry, key=len, reverse=True):     # "my-app-2" before "my-app"
+        spoken = re.sub(r"[-_]+", " ", key.lower())
+        for form in {key.lower(), spoken}:
+            if re.search(rf"(?<![\w-]){re.escape(form)}(?![\w-])", low):
+                return key
+    return None
+
+
+def project_for(task=None) -> tuple[str, Path]:
+    """(project id, folder) an agent working on `task` runs in: the project the
+    task names, else the active one, else Cygnus's own folder. A project whose
+    folder is gone falls back to Cygnus's folder rather than failing the spawn."""
+    if isinstance(task, dict):
+        task = task.get("project") or task.get("task") or ""
+    registry = {k: v for k, v in load_registry().items() if isinstance(v, dict)}
+    pid = _named_in(str(task or ""), registry) or next(
+        (k for k, v in registry.items() if v.get("active")), None)
+    if pid:
+        folder = Path(str(registry[pid].get("path") or "")).expanduser()
+        if str(folder) and folder.is_dir():
+            return pid, folder
+        print(f"[projects] {pid} points at {folder}, which is missing; using Cygnus's folder", flush=True)
+    return CYGNUS_ID, paths.ROOT
+
+
+def git_head(folder) -> str:
+    """The folder's current commit, or "" outside git."""
+    try:
+        out = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=str(folder),
+                             capture_output=True, text=True, timeout=5)
+        return out.stdout.strip() if out.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def record_job(jid: str, pid: str, folder) -> None:
+    """Put the project, and the commit it was at, on the job: "what did it
+    change?" diffs from there."""
+    from cygnus.jobs import registry as jobreg
+    jobreg.update(jid, project=pid, project_head=git_head(folder))
+
+
+# --------------------------------------------------------------- voice --
+# "work on sticky brain", "switch to my-app", "back to your own code",
+# "connect this folder", "connect C:\code\app and work on it",
+# "which project are we on?". Instant and local (brain/core.py).
+_LEAD = r"^(?:(?:ok(?:ay)?|now|so|please|hey|cygnus|jarvis|alright)[,\s]+)*"
+_WORK_ON_RE = re.compile(
+    _LEAD + r"(?:let'?s\s+|let\s+us\s+|i\s+want\s+to\s+|i'?m\s+going\s+to\s+|we'?re\s+going\s+to\s+)?"
+    r"(?:work\s+(?:on|in)|switch\s+(?:over\s+)?(?:to|back\s+to)|focus\s+on|go\s+back\s+to|back\s+to)\s+"
+    r"(?:the\s+|my\s+|our\s+)?(.+?)(?:\s+(?:project|repo|repository|folder|codebase))?"
+    r"(?:\s+(?:now|please|instead))?\s*[.!?]*$", re.I)
+_CONNECT_RE = re.compile(
+    _LEAD + r"(?:connect|add|link|hook\s+up)\s+(?:(?:this|the\s+current|the\s+open|that)\s+folder\b|"
+    r"(?:the\s+)?folder\s+[A-Za-z]:[\\/]|[A-Za-z]:[\\/])", re.I)
+_WHICH_RE = re.compile(
+    _LEAD + r"(?:(?:what|which)\s+project\s+(?:are\s+(?:we|you)|am\s+i|is)\s+(?:on|in|active|working)"
+    r"|what\s+are\s+(?:we|you)\s+working\s+on\s+(?:now|right\s+now)?\s*\??$)", re.I)
+_PATH_RE = re.compile(r"[A-Za-z]:[\\/][^\"<>|?*\n]*")
+
+
+def _spoken_match(target: str):
+    """The project `target` names exactly ("sticky brain" is sticky-brain),
+    or None. Stricter than _resolve: "work on the report" must not pick a
+    project whose name happens to contain "report"."""
+    t = re.sub(r"^(?:the|my|our)\s+", "", (target or "").strip().lower())
+    if t in (CYGNUS_ID, "jarvis", "yourself", "your own code", "your code", "your own project",
+             "you", "your own folder"):
+        return CYGNUS_ID
+    flat = re.sub(r"[^a-z0-9]+", "", t)
+    if not flat:
+        return None
+    for key in load_registry():
+        if re.sub(r"[^a-z0-9]+", "", key.lower()) == flat:
+            return key
+    return None
+
+
+def voice_intent(text: str):
+    """"project_switch", "project_connect", "project_which" or None."""
+    t = (text or "").strip()
+    if _WHICH_RE.match(t):
+        return "project_which"
+    if _CONNECT_RE.match(t):
+        return "project_connect"
+    m = _WORK_ON_RE.match(t)
+    if m:
+        try:
+            if _spoken_match(m.group(1)):
+                return "project_switch"
+        except Exception:
+            return None
+    return None
+
+
+def explorer_folder():
+    """The folder shown in the front-most File Explorer window, or None."""
+    if os.name != "nt":
+        return None
+    ps = ("$s = New-Object -ComObject Shell.Application; foreach ($w in $s.Windows()) { try { "
+          "$p = $w.Document.Folder.Self.Path; if ($p) { '{0}|{1}' -f $w.HWND, $p } } catch {} }")
+    try:
+        out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+                             capture_output=True, text=True, timeout=15,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    windows = {}
+    for line in (out or "").splitlines():
+        hwnd, _, folder = line.strip().partition("|")
+        if hwnd.isdigit() and folder and Path(folder).is_dir():
+            windows[int(hwnd)] = folder
+    if not windows:
+        return None
+    try:                                         # top of the z-order first
+        import ctypes
+        user32 = ctypes.windll.user32
+        user32.GetTopWindow.restype = user32.GetWindow.restype = ctypes.c_void_p
+        user32.GetWindow.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+        h = user32.GetTopWindow(None)
+        while h:
+            if h in windows:
+                return windows[h]
+            h = user32.GetWindow(h, 2)           # GW_HWNDNEXT
+    except Exception:
+        pass
+    return next(iter(windows.values()))
+
+
+def _said_folder(said: str) -> str:
+    """The folder in "C:\\code\\my app and work on it": folder names may have
+    spaces, so the longest leading run of words that is a folder wins."""
+    words = said.strip().split(" ")
+    for n in range(len(words), 0, -1):
+        cand = " ".join(words[:n]).strip().rstrip(".,;!?")
+        if cand and Path(cand).is_dir():
+            return cand
+    return said.strip().rstrip(".,;!?")
+
+
+def describe(info: dict) -> str:
+    return f"{info['id']} ({info['path']})"
+
+
+def voice(text: str):
+    """The spoken reply to a project command, or None when `text` is not one."""
+    kind = voice_intent(text)
+    if kind == "project_which":
+        pid = active_id()
+        if pid == CYGNUS_ID:
+            return "We're on my own code, sir. Say \"work on\" and a project to switch."
+        return f"We're working on {describe(project_info(pid))}, sir."
+    if kind == "project_switch":
+        pid = _spoken_match(_WORK_ON_RE.match(text.strip()).group(1))
+        info = set_active(pid)
+        if pid == CYGNUS_ID:
+            return "Back on my own code, sir. Agents will work in Cygnus's folder."
+        if not info["exists"]:
+            return (f"{pid} is active, sir, but {info['path']} is missing, so agents will "
+                    "work in my own folder until it's back.")
+        writes = "" if info["allow_writes"] else " I'll ask before an agent changes anything there."
+        return f"Working on {describe(info)}, sir. Coding tasks will run in that folder.{writes}"
+    if kind == "project_connect":
+        m = _PATH_RE.search(text)
+        folder = _said_folder(m.group(0)) if m else explorer_folder()
+        if not folder:
+            return ("I can't see which folder you mean, sir. Open it in File Explorer and say "
+                    "\"connect this folder\" again, or say its full path.")
+        make_active = bool(re.search(r"\b(?:work\s+on\s+it|make\s+it\s+active|switch\s+to\s+it|"
+                                     r"and\s+use\s+it)\b", text, re.I))
+        try:
+            info = connect(folder, active=make_active)
+        except ValueError as e:
+            return f"I couldn't connect that, sir. {e}"
+        if info["builtin"]:
+            return "That's my own folder, sir; it's always connected."
+        tail = (" and made it the active project" if info["active"] else
+                f". Say \"work on {info['id'].replace('-', ' ')}\" to switch to it")
+        return (f"Connected {describe(info)}{tail}, sir. Agents will ask before changing files "
+                "there the first time.")
+    return None
 
 
 def _resolve(name: str, registry: dict):

@@ -75,7 +75,7 @@ def test_no_releases_it_without_building_anything(hermes):
 
 def test_a_safe_task_still_runs_with_its_brief(hermes, monkeypatch):
     monkeypatch.setattr(tools, "_is_safe_task", lambda t: True)
-    monkeypatch.setattr(tools, "_repo_changes", lambda: {})
+    monkeypatch.setattr(tools, "_repo_changes", lambda root=None: {})
     tools.delegate_to_hermes_grounded("what is on my calendar today?")
     assert hermes["brief"] == ["what is on my calendar today?"]
     (ran,) = hermes["ran"]                      # look-only brief first, then the task's own

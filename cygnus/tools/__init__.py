@@ -2024,7 +2024,7 @@ HERMES_BACKGROUND_ACK = "⟳ HERMES_BACKGROUND: On it, sir, working on that now�
 
 
 def _run_hermes_sync(task: str, timeout: int, max_turns: int,
-                      progress_cb=None) -> str:
+                      progress_cb=None, cwd: str | None = None) -> str:
     """Synchronously launch Hermes and return its parsed reply (blocking).
 
     Each job runs in a Hermes session of its own: resuming one shared session
@@ -2034,7 +2034,7 @@ def _run_hermes_sync(task: str, timeout: int, max_turns: int,
     """
     from cygnus.jobs.warm_harness import warm_send
     return warm_send(task, timeout=timeout, max_turns=max_turns,
-                     progress_cb=progress_cb, fresh=True)
+                     progress_cb=progress_cb, fresh=True, cwd=cwd)
 
 
 # A "safe" task is one the user asked to look at, not change, so Hermes is
@@ -2046,9 +2046,10 @@ _LOOK_ONLY_BRIEF = ("LOOK-ONLY TASK: read, search and report back. Do not create
                     "machine. If the task needs a change, say what you would change.\n\n")
 
 
-def _repo_changes() -> dict:
-    """{path: mtime} for every file git sees as changed in Cygnus's folder."""
-    root = str(paths.ROOT)
+def _repo_changes(root: str | None = None) -> dict:
+    """{path: mtime} for every file git sees as changed in `root` (the job's
+    project folder; Cygnus's own by default)."""
+    root = root or str(paths.ROOT)
     try:
         out = subprocess.run(["git", "status", "--porcelain"], cwd=root, capture_output=True,
                              text=True, timeout=10).stdout
@@ -2064,9 +2065,9 @@ def _repo_changes() -> dict:
     return seen
 
 
-def _changed_files(before: dict) -> list:
-    """Files in Cygnus's folder changed since the `before` snapshot."""
-    return sorted(p for p, m in _repo_changes().items() if before.get(p, -1) != m)
+def _changed_files(before: dict, root: str | None = None) -> list:
+    """Files in `root` (Cygnus's folder by default) changed since the `before` snapshot."""
+    return sorted(p for p, m in _repo_changes(root).items() if before.get(p, -1) != m)
 
 
 # A changing task whose reply only says what would be done ("I would delegate
@@ -2076,22 +2077,23 @@ _DESCRIBES_ONLY_RE = re.compile(r"\s*(?:I would|I'd|The goal (?:\w+ ){0,3}would 
 DESCRIBED_ONLY_NOTE = "only described the work; no files in Cygnus's folder changed"
 
 
-def _finish_hermes_job(jid, result: str, before: dict, look_only: bool) -> None:
+def _finish_hermes_job(jid, result: str, before: dict, look_only: bool, root: str | None = None) -> None:
     """Mark a finished Hermes job done, or unverified when a changing task
     came back as a description of the work and nothing changed."""
     from cygnus.jobs import registry as _jobs
-    if not look_only and _DESCRIBES_ONLY_RE.match(result) and not _changed_files(before):
+    if not look_only and _DESCRIBES_ONLY_RE.match(result) and not _changed_files(before, root):
         _jobs.update(jid, state="unverified", note=DESCRIBED_ONLY_NOTE, result=result, summary=result[:200])
     else:
         _jobs.update(jid, state="done", result=result, summary=result[:200])
 
 
-def _look_only_report(before: dict, result: str, jid) -> str:
+def _look_only_report(before: dict, result: str, jid, root: str | None = None) -> str:
     """`result`, plus a plain note if files changed while a look-only job ran."""
-    changed = _changed_files(before)
+    changed = _changed_files(before, root)
     if not changed:
         return result
-    note = "Files in Cygnus's folder changed while this look-only job ran: " + ", ".join(changed[:8])
+    where = "Cygnus's folder" if not root or root == str(paths.ROOT) else root
+    note = f"Files in {where} changed while this look-only job ran: " + ", ".join(changed[:8])
     _audit_log("delegate_to_hermes", note, "look_only_changed_files", extra={"jid": jid})
     try:
         from cygnus.jobs import registry as _jobs
@@ -2195,7 +2197,10 @@ def delegate_to_hermes(task: str, timeout: int = 300, max_turns: int = 15,
     else:
         _jobs.update(jid, state="running", note="safe — launching Hermes")
         task = _LOOK_ONLY_BRIEF + task
-    before = _repo_changes()
+    # Hermes works in the task's project folder (paths.cwd_for), and the
+    # look-only check watches that folder.
+    cwd = paths.cwd_for(gate_target, jid)
+    before = _repo_changes(cwd)
 
     # --- Execution path -----------------------------------------------------
     # Phase 2+4: non-blocking. Front never blocks; status via jobs registry + WS listener.
@@ -2204,14 +2209,14 @@ def delegate_to_hermes(task: str, timeout: int = 300, max_turns: int = 15,
         def _bg():
             j = jid_bg
             try:
-                result = _run_hermes_sync(task, timeout, max_turns, progress_cb)
+                result = _run_hermes_sync(task, timeout, max_turns, progress_cb, cwd=cwd)
                 if is_safe:
-                    result = _look_only_report(before, result, j)
+                    result = _look_only_report(before, result, j, cwd)
                 if result.startswith("[Error]"):
                     _jobs.update(j, state="error", error=result[:500], result=result, summary=result[:120])
                     _audit_log("delegate_to_hermes", gate_target, "background_error", result=result, confirm=confirm, extra={"jid": j})
                 else:
-                    _finish_hermes_job(j, result, before, is_safe)
+                    _finish_hermes_job(j, result, before, is_safe, cwd)
                     _audit_log("delegate_to_hermes", gate_target, "background_done", result=result, confirm=confirm, extra={"jid": j})
             except Exception as e:
                 result = f"[Error] Hermes background task failed: {type(e).__name__}: {e}"
@@ -2227,13 +2232,13 @@ def delegate_to_hermes(task: str, timeout: int = 300, max_turns: int = 15,
 
     # sync path — still tracked in registry so HUD shows it even while blocked
     _jobs.update(jid, state="running", note="sync execution")
-    result = _run_hermes_sync(task, timeout, max_turns, progress_cb)
+    result = _run_hermes_sync(task, timeout, max_turns, progress_cb, cwd=cwd)
     if is_safe:
-        result = _look_only_report(before, result, jid)
+        result = _look_only_report(before, result, jid, cwd)
     if result.startswith("[Error]"):
         _jobs.update(jid, state="error", error=result[:500], result=result, summary=result[:120])
     else:
-        _finish_hermes_job(jid, result, before, is_safe)
+        _finish_hermes_job(jid, result, before, is_safe, cwd)
     _audit_log("delegate_to_hermes", gate_target, "executed", result=result, confirm=confirm, extra={"jid": jid})
     return result
 
@@ -2767,6 +2772,7 @@ def _run_cli_agent(task: str, name: str, timeout: int = 300) -> str:
     spec = _cli_registry().get(name)
     if not spec:
         return f"[cli:{name}] not in cli_agents.json."
+    cwd = paths.cwd_for(task)                 # before the brief: it names other projects
     # Phase 4: brief for ideation delegates
     try:
         from cygnus.brain import context_assembler as ca
@@ -2786,7 +2792,7 @@ def _run_cli_agent(task: str, name: str, timeout: int = 300) -> str:
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True,
                               timeout=timeout,
-                              cwd=str(paths.ROOT))
+                              cwd=cwd)
     except subprocess.TimeoutExpired:
         return f"[cli:{name}] timed out after {timeout}s."
     out = (proc.stdout or "").strip()
@@ -2945,7 +2951,8 @@ def _start_cli_job(task: str, name: str, raw_task: str = None, on_done=None,
             return _fail(f"[Error] {label} is not installed on this computer, so I can't hand it this.")
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                                    encoding="utf-8", errors="replace", cwd=_REPO_DIR)
+                                    encoding="utf-8", errors="replace",
+                                    cwd=paths.cwd_for(raw_task or task, jid))
         except Exception as e:
             return _fail(f"[Error] I couldn't start {label}: {e}"[:300])
         jobreg.update(jid, state="running", note=f"handed to {label}")
@@ -3050,6 +3057,7 @@ def _run_specialist(task: str, agent: str | None = None, timeout: int = 300) -> 
     oc = _direct_launcher("opencode")
     if oc is None:
         return "[specialist] OpenCode not installed; route to hermes."
+    asked = task
     try:
         from cygnus.brain import context_assembler as ca
         brief = ca.assemble_brief(task, delegate=agent or "opencode")
@@ -3059,6 +3067,7 @@ def _run_specialist(task: str, agent: str | None = None, timeout: int = 300) -> 
     # Phase 2: registry — sync specialist also tracked as job for proactive reporting
     jid = jobreg.create(task[:200], tier="specialist", agent=agent, background=False)
     jobreg.update(jid, state="running", note=f"sync specialist {agent or 'build'}")
+    cwd = paths.cwd_for(asked, jid)
     cmd = oc + ["run"]
     if agent:
         cmd += ["--agent", agent]
@@ -3066,7 +3075,7 @@ def _run_specialist(task: str, agent: str | None = None, timeout: int = 300) -> 
     cmd.append(task)
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True,
-                              timeout=timeout, cwd=str(paths.ROOT))
+                              timeout=timeout, cwd=cwd)
     except subprocess.TimeoutExpired:
         return f"[specialist:{agent or 'build'}] timed out after {timeout}s."
     out = (proc.stdout or "").strip()
@@ -3154,7 +3163,7 @@ def _run_specialist_bg(task: str, agent: str | None, timeout: int,
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace",
-            cwd=str(paths.ROOT))
+            cwd=paths.cwd_for(task, jid))
     except Exception as e:
         jobreg.update(jid, state="error", error=str(e)[:200])
         return f"[specialist] failed to launch: {e}", jid
@@ -3233,6 +3242,7 @@ def _run_pi_specialist(task: str, agent: str | None = None, timeout: int = 300) 
     script = str(paths.SCRIPTS_DIR / "pi_sandbox.sh")
     if not os.path.exists(script):
         return "[pi] sandbox wrapper missing; route to opencode."
+    asked = task
     try:
         from cygnus.brain import context_assembler as ca
         brief = ca.assemble_brief(task, delegate="pi")
@@ -3241,8 +3251,8 @@ def _run_pi_specialist(task: str, agent: str | None = None, timeout: int = 300) 
         pass
     jid = jobreg.create(task[:200], tier="pi", agent=agent or "pi", background=False)
     jobreg.update(jid, state="running", note="sandboxed pi coding task")
-    # repo to mount = current working dir (JARVIS cwd) by default
-    repo = str(paths.ROOT)
+    # repo to mount = the project's folder (paths.cwd_for), Cygnus's by default
+    repo = paths.cwd_for(asked, jid)
     cmd = [bash, script, repo, task, str(timeout)]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -3284,7 +3294,7 @@ def _run_pi_specialist_bg(task: str, agent: str | None, timeout: int,
     except Exception:
         full_task = task
     jid = jobreg.create(task, tier="pi", agent=agent or "pi", background=True)
-    repo = str(paths.ROOT)
+    repo = paths.cwd_for(task, jid)
     cmd = ["bash", script, repo, full_task, str(timeout)]
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,

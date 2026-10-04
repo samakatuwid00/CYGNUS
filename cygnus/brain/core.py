@@ -1500,6 +1500,21 @@ class JarvisBrain:
             self.last_stats = {"backend": "instant", "intent": "check_in"}
             return reply
 
+        # PROJECTS (docs/CONNECTOR.md): "work on sticky brain", "connect this
+        # folder", "which project are we on?" - instant and local; the
+        # coding agents then run in the active project's folder.
+        if intent in ("project_switch", "project_connect", "project_which"):
+            try:
+                from cygnus.agents import project as _project
+                out = _project.voice(user_input)
+                if out:
+                    self.conversation.append({"role": "assistant", "content": out})
+                    self.last_backend = "instant"
+                    self.last_stats = {"backend": "instant", "intent": intent}
+                    return out
+            except Exception as e:
+                print(f"[JARVIS] project command failed ({type(e).__name__}: {e}); falling back...")
+
         # Where the keywords found nothing specific, a confident semantic pick
         # for a route it earned leads (semantic_route.lead; JARVIS_SEMANTIC).
         _semantic_route = None

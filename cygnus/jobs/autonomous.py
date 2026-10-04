@@ -158,7 +158,7 @@ def start_goal(goal_text: str, timeout: int = DEFAULT_TIMEOUT,
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace",
             env=_child_env(),
-            cwd=str(paths.ROOT))
+            cwd=paths.cwd_for(goal_text, jid))
     except Exception as e:
         jobreg.update(jid, state="error", error=str(e)[:200])
         return f"[Error] Could not launch autonomous job: {e}", jid

@@ -29,7 +29,7 @@ INSTANT_INTENTS = {
     "math", "greeting", "thanks", "time", "help", "stop", "music", "job_status", "job_stop",
     "remember", "recall_memory", "running_stop", "rescan", "app_install", "app_uninstall",
     "list_sites", "add_site", "report", "launch", "clarify_play", "clarify_search", "clarify_open",
-    "view", "volume"}
+    "view", "volume", "project_switch", "project_connect", "project_which"}
 
 _current_app: dict = {}                 # client -> the app in play (slug)
 _records: dict = {}                     # client -> the last tasks' records, newest last
@@ -362,9 +362,15 @@ def _run_tool(name: str, args: dict, ctx: dict) -> str:
                                (cleaned or user_text)[:300])
                 task = (cleaned or user_text).strip()
         if agent in ("claude", "codex", "gemini"):
-            return tools._cli_delegate(task, agent, raw_task=user_text, on_done=ctx.get("on_done"))
-        return tools.delegate_to_hermes(task, raw_task=user_text, background=ctx.get("on_done") is not None,
-                                        on_done=ctx.get("on_done"), progress_cb=ctx.get("progress_cb"))
+            run = lambda: tools._cli_delegate(task, agent, raw_task=user_text, on_done=ctx.get("on_done"))  # noqa: E731
+        else:
+            run = lambda: tools.delegate_to_hermes(  # noqa: E731
+                task, raw_task=user_text, background=ctx.get("on_done") is not None,
+                on_done=ctx.get("on_done"), progress_cb=ctx.get("progress_cb"))
+        # The agent runs in the task's project folder; its first change in a
+        # connected project waits for the owner's yes (safety.assess_project_write).
+        from cygnus import safety
+        return safety.gate(f"delegate {agent} {task[:160]}", safety.assess_project_write(task), run)
     if name in ("search_web", "read_file", "list_directory"):
         return bg.execute_tool(name, args, user_text)
     if name == "recall":

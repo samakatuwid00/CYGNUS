@@ -82,3 +82,20 @@ PROJECTS_LOG = DATA_DIR / "projects.log"
 def log(name: str) -> str:
     """A file in the log folder, as a string (most callers use os.path)."""
     return str(LOG_DIR / name)
+
+
+def cwd_for(task=None, jid: str | None = None) -> str:
+    """The folder an agent working on `task` runs in: the connected project the
+    task names, else the active project, else ROOT (docs/CONNECTOR.md). With
+    `jid`, the project is recorded on that job for "what did it change?".
+
+    Agents used to run in ROOT whatever the task was about."""
+    try:
+        from cygnus.agents import project
+        pid, folder = project.project_for(task)
+        if jid:
+            project.record_job(jid, pid, folder)
+        return str(folder)
+    except Exception as e:
+        print(f"[paths] cwd_for failed ({type(e).__name__}: {e}); using ROOT", flush=True)
+        return str(ROOT)

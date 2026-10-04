@@ -151,6 +151,7 @@ def _emit(job: dict) -> None:
         "task": job.get("task", ""),
         "tier": job.get("tier", ""),
         "agent": job.get("agent"),
+        "project": job.get("project"),
         "state": job.get("state"),
         "note": (job.get("progress") or [None])[-1],
         "error": job.get("error"),
@@ -210,13 +211,19 @@ def create(task: str, tier: str, agent: str | None = None,
 
 def update(jid: str, *, state: str | None = None, note: str | None = None,
            result: str | None = None, summary: str | None = None,
-           error: str | None = None) -> None:
-    """Transition a job; emits on every change."""
+           error: str | None = None, project: str | None = None,
+           project_head: str | None = None) -> None:
+    """Transition a job; emits on every change. `project` is the connected
+    project the job's agent runs in, `project_head` the commit it started at."""
     _load_history()
     with _lock:
         job = _jobs.get(jid)
         if not job:
             return
+        if project is not None:
+            job["project"] = project
+        if project_head is not None:
+            job["project_head"] = project_head
         if state:
             job["state"] = state
         if note:
@@ -242,6 +249,9 @@ def update(jid: str, *, state: str | None = None, note: str | None = None,
            "agent": snapshot.get("agent"),
            "started": snapshot.get("started"),
            "elapsed": snapshot.get("elapsed")}
+    if snapshot.get("project"):
+        rec["project"] = snapshot["project"]
+        rec["project_head"] = snapshot.get("project_head") or ""
     if note is not None:
         rec["note"] = note
     if result is not None:
@@ -286,6 +296,15 @@ def recent(limit: int = 10) -> list[dict]:
     _load_history()
     with _lock:
         rows = sorted(_jobs.values(), key=lambda j: j.get("started") or 0)
+    return [dict(j) for j in rows[-limit:]][::-1]
+
+
+def for_project(project: str, limit: int = 10) -> list[dict]:
+    """The jobs that ran in `project`, newest first."""
+    _load_history()
+    with _lock:
+        rows = sorted((j for j in _jobs.values() if j.get("project") == project),
+                      key=lambda j: j.get("started") or 0)
     return [dict(j) for j in rows[-limit:]][::-1]
 
 

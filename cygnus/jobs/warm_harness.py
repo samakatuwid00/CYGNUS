@@ -68,8 +68,9 @@ def _child_env() -> dict:
     return env
 
 
-def _run(cmd: list[str], timeout: int) -> tuple[str, str, int]:
-    """Run hermes subprocess, return (stdout, stderr, returncode)."""
+def _run(cmd: list[str], timeout: int, cwd: str | None = None) -> tuple[str, str, int]:
+    """Run hermes subprocess, return (stdout, stderr, returncode). `cwd`: the
+    job's project folder (paths.cwd_for); None keeps the backend's own."""
     proc = subprocess.run(
         cmd,
         capture_output=True,
@@ -78,6 +79,7 @@ def _run(cmd: list[str], timeout: int) -> tuple[str, str, int]:
         encoding="utf-8",
         errors="replace",
         env=_child_env(),
+        cwd=cwd,
     )
     return proc.stdout or "", proc.stderr or "", proc.returncode
 
@@ -188,6 +190,7 @@ def warm_send(
     max_turns: int = 15,
     progress_cb=None,
     fresh: bool = False,
+    cwd: str | None = None,
 ) -> str:
     """Send a task to Hermes via the warm session.
 
@@ -228,7 +231,7 @@ def warm_send(
             "--source", _SOURCE,
         ]
         try:
-            stdout, stderr, rc = _run(cmd, timeout)
+            stdout, stderr, rc = _run(cmd, timeout, cwd)
             combined = stdout + "\n" + stderr
 
             # Check if session was actually resumed
@@ -283,7 +286,7 @@ def warm_send(
         "--source", _SOURCE,
     ]
     try:
-        stdout, stderr, rc = _run(cmd, timeout)
+        stdout, stderr, rc = _run(cmd, timeout, cwd)
         combined = stdout + "\n" + stderr
 
         # Capture session_id for next call

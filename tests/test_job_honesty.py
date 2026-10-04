@@ -18,7 +18,7 @@ def hermes(monkeypatch, tmp_path):
     monkeypatch.setattr(tools, "_audit_log", lambda *a, **k: None)
     monkeypatch.setattr(tools, "_PENDING_HERMES_CALL", None)
     monkeypatch.setitem(tools._PENDING_DESTRUCTIVE, "task", None)
-    monkeypatch.setattr(tools, "_repo_changes", lambda: {})
+    monkeypatch.setattr(tools, "_repo_changes", lambda root=None: {})
 
     def reply(text):
         monkeypatch.setattr(tools, "_run_hermes_sync", lambda *a, **k: text)
@@ -43,7 +43,7 @@ def test_a_description_of_the_work_is_not_done(hermes):
 def test_work_that_changed_files_stays_done(hermes, monkeypatch):
     hermes("I would say it went well: the mic now sits on the text's midline.")
     snapshots = iter([{}, {"jarvis_hud_v3.html": 1.0}])
-    monkeypatch.setattr(tools, "_repo_changes", lambda: next(snapshots))
+    monkeypatch.setattr(tools, "_repo_changes", lambda root=None: next(snapshots))
     assert _run_confirmed("fix the chat buttons")["state"] == "done"
 
 

@@ -399,6 +399,30 @@
   @media (max-width: 640px) { .sh-row { grid-template-columns: 1fr; gap: 2px; } }
   .sh-verdicts { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 4px; }
   .btn.is-chosen { border-color: var(--accent); color: var(--accent); }
+  /* Projects tab: one card per connected folder, then the connect form. */
+  .controls[hidden] { display: none; }
+  .pj { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--surface); display: grid; gap: 8px; margin-bottom: 10px; }
+  .pj.is-active { border-color: var(--accent-ring); }
+  .pj-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+  .pj-name { font-size: 13.5px; font-weight: 500; overflow-wrap: anywhere; }
+  .pj-path, .pj-line { font: 12px/1.4 var(--mono); color: var(--text-3); overflow-wrap: anywhere; }
+  .pj-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pj-msg { font-size: 12.5px; color: var(--text-2); overflow-wrap: anywhere; }
+  .pj-ch { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 12.5px; }
+  .pj-ch h4 { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+  .pj-ch ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+  .pj-ch li { overflow-wrap: anywhere; }
+  .pj-diff { margin: 0; max-height: 260px; overflow: auto; padding: 9px 11px; border-radius: 8px; background: var(--bg);
+    border: 1px solid var(--border); font: 12px/1.5 var(--mono); color: var(--text-2); white-space: pre; }
+  .pj-form { display: grid; gap: 8px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+  .pj-form h3 { margin: 0; font-size: 13px; font-weight: 600; }
+  .pj-form .pj-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 6px; }
+  .pj-form input[type="text"] { min-width: 0; height: 28px; padding: 0 10px; border-radius: 7px; background: var(--surface-2);
+    border: 1px solid var(--border-ui); color: var(--text); font: inherit; font-size: 12.5px; }
+  .pj-form input[type="text"]:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  .pj-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); }
+  .pj-err { font-size: 12.5px; color: var(--danger); min-height: 1em; overflow-wrap: anywhere; }
+  @media (max-width: 640px) { .pj-form input[type="text"] { height: 40px; font-size: 16px; } }
   .progress { margin: 8px 0 12px; }
   .progress-bar {
     height: 4px; border-radius: 99px; overflow: hidden;
@@ -609,6 +633,10 @@
           <button id="tab-shadow" class="tab" role="tab" aria-selected="false" data-tab="shadow"
                   title="Where the new understand-first router would have acted differently">
             Shadow review <span class="count" id="count-shadow"></span>
+          </button>
+          <button id="tab-projects" class="tab" role="tab" aria-selected="false" data-tab="projects"
+                  title="Folders Cygnus's coding agents can work in">
+            Projects <span class="count" id="count-projects"></span>
           </button>
         </nav>
         <div class="stats" aria-label="Summary">
@@ -938,13 +966,16 @@ function onHudMessage(e) {
 function setTab(tab) {
   if (!S.advanced && ADV_TABS.indexOf(tab) >= 0) tab = "curated";
   S.tab = tab;
-  for (const t of ["curated", "all", "shadow"]) {
+  for (const t of ["curated", "all", "shadow", "projects"]) {
     const el = $("#tab-" + t);
     el.classList.toggle("active", t === tab);
     el.setAttribute("aria-selected", String(t === tab));
   }
+  // Search and the type filter only mean something for apps.
+  $(".controls").hidden = tab === "projects";
   updateCounts();
   render();
+  if (tab === "projects") loadProjects();
 }
 
 // Show advanced: reveals the raw and shadow tabs. Turning it off while one of
@@ -978,6 +1009,7 @@ function render() {
   const list = $("#list");
   $("#search-clear").hidden = !($("#search").value || "").trim();
   if (S.tab === "shadow") { renderShadow(); return; }
+  if (S.tab === "projects") { renderProjects(); return; }
   if (S.loading && !S.all.length) {
     list.innerHTML = Array.from({ length: 7 }, () =>
       '<div class="skel"><i class="sq"></i><i style="width:' + (30 + Math.random() * 35) + '%"></i><i></i></div>').join("");
@@ -1693,6 +1725,215 @@ async function cancelDeepScan(btn) {
   toast("Stopping after the app being scanned now");
 }
 
+// ---------------------------------------------------------------- projects --
+// Folders the coding agents may work in. Everything from the server (ids,
+// paths, notes, diffs, task text) goes in with textContent, never innerHTML:
+// a repo's contents are not ours to trust.
+
+// `changes[id]` holds the open "Changes" section: {loading, error, data}.
+const P = { list: [], active: "", loading: false, error: "", changes: {}, msg: {}, form: null };
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+}
+
+async function loadProjects() {
+  P.loading = true;
+  P.error = "";
+  renderProjects();
+  try {
+    const d = await fetch("/projects", { cache: "no-store" }).then(r => r.json());
+    if (!d.ok) throw new Error(d.error || "");
+    P.list = d.projects || [];
+    P.active = d.active || "";
+  } catch (e) {
+    P.error = "Cygnus didn't answer. Check that the server is running, then retry.";
+  }
+  P.loading = false;
+  $("#count-projects").textContent = P.list.length || "";
+  renderProjects();
+}
+
+function projectCard(p) {
+  const card = el("section", "pj" + (p.active ? " is-active" : ""));
+  card.dataset.id = p.id;
+  const head = el("div", "pj-head");
+  head.appendChild(el("span", "pj-name", p.id));
+  if (p.active) head.appendChild(el("span", "pill on", "Active"));
+  if (p.allow_writes) head.appendChild(el("span", "pill", "Writes allowed"));
+  if (p.git) head.appendChild(el("span", "pill", "Git"));
+  if (!p.exists) head.appendChild(el("span", "pill broken", "Folder missing"));
+  card.appendChild(head);
+  card.appendChild(el("div", "pj-path", p.path));
+  const bits = [p.agent && "Agent: " + p.agent, p.dev_cmd && "Dev: " + p.dev_cmd, p.url && p.url].filter(Boolean);
+  if (bits.length) card.appendChild(el("div", "pj-line", bits.join(" \u00B7 ")));
+  if (p.note) card.appendChild(el("div", "pj-line", p.note));
+
+  const acts = el("div", "pj-acts");
+  const btn = (act, label) => {
+    const b = el("button", "btn btn-sm", label);
+    b.type = "button"; b.dataset.pj = act; b.dataset.id = p.id;
+    acts.appendChild(b);
+    return b;
+  };
+  if (!p.active) btn("active", "Set active");
+  if (p.dev_cmd || p.url) btn("start", "Start");
+  const ch = btn("changes", P.changes[p.id] ? "Hide changes" : "Changes");
+  ch.setAttribute("aria-expanded", String(!!P.changes[p.id]));
+  if (!p.builtin) btn("disconnect", "Disconnect").classList.add("btn-danger");
+  card.appendChild(acts);
+  // Last answer (from Start or Set active), kept so a redraw doesn't lose it.
+  if (P.msg[p.id]) card.appendChild(el("div", "pj-msg", P.msg[p.id]));
+  if (P.changes[p.id]) card.appendChild(changesBlock(P.changes[p.id]));
+  return card;
+}
+
+function changesBlock(c) {
+  const box = el("div", "pj-ch");
+  if (c.loading) { box.appendChild(el("div", "muted", "Loading changes\u2026")); return box; }
+  if (c.error) { box.appendChild(el("div", "pj-err", c.error)); return box; }
+  const d = c.data;
+  if (!d.git) { box.appendChild(el("div", "muted", "This folder isn't a git repository, so there is nothing to compare.")); }
+  else box.appendChild(el("div", "pj-line", "Branch " + (d.branch || "?") + (d.head ? " at " + d.head : "")));
+  const section = (title, items, line, none) => {
+    const h = el("div");
+    h.appendChild(el("h4", null, title));
+    if (!items.length) { h.appendChild(el("div", "muted", none)); box.appendChild(h); return; }
+    const ul = el("ul");
+    items.forEach(i => ul.appendChild(el("li", null, line(i))));
+    h.appendChild(ul);
+    box.appendChild(h);
+  };
+  if (d.git) {
+    section("Changed files", d.status || [], f => f.state + ": " + f.path, "No uncommitted changes.");
+    section("Recent commits", d.recent || [], r => r.hash + " " + r.subject + (r.when ? " (" + r.when + ")" : ""), "No commits yet.");
+  }
+  section("Agent jobs here", d.jobs || [],
+    j => (j.task || j.id) + " \u00B7 " + [j.agent, j.state].filter(Boolean).join(", "), "No agent has worked here yet.");
+  if (d.diff) {
+    const h = el("div");
+    h.appendChild(el("h4", null, "Diff" + (d.diff_truncated ? " (shortened)" : "")));
+    const pre = el("pre", "pj-diff", d.diff);
+    pre.tabIndex = 0;                                 // scrollable by keyboard
+    pre.setAttribute("aria-label", "Diff");
+    h.appendChild(pre);
+    box.appendChild(h);
+  }
+  return box;
+}
+
+// One form for the whole tab; built once so what's typed survives a redraw.
+function projectForm() {
+  if (P.form) return P.form;
+  const f = el("form", "pj-form");
+  f.noValidate = true;
+  f.appendChild(el("h3", null, "Connect a folder"));
+  const fields = el("div", "pj-fields");
+  const field = (name, label, ph, req) => {
+    const i = el("input"); i.type = "text"; i.name = name; i.placeholder = ph;
+    i.autocomplete = "off"; i.spellcheck = false; i.setAttribute("aria-label", label);
+    if (req) i.required = true;
+    fields.appendChild(i);
+  };
+  field("path", "Folder path (required)", "Folder path, e.g. C:\\Users\\you\\code\\my-app", true);
+  field("name", "Name (optional)", "Name (optional)");
+  field("dev_cmd", "Dev command (optional)", "Dev command, e.g. npm run dev");
+  field("url", "URL (optional)", "URL, e.g. http://localhost:5173");
+  f.appendChild(fields);
+  const chk = el("label", "pj-check");
+  const cb = el("input"); cb.type = "checkbox"; cb.name = "active";
+  chk.appendChild(cb); chk.appendChild(el("span", null, "Make active"));
+  f.appendChild(chk);
+  f.appendChild(el("div", "muted", "Agents will ask before changing files in a new project for the first time."));
+  const go = el("button", "btn btn-sm btn-primary", "Connect");
+  go.type = "submit";
+  const row = el("div", "btn-row"); row.appendChild(go);
+  f.appendChild(row);
+  const err = el("div", "pj-err"); err.setAttribute("aria-live", "polite");
+  f.appendChild(err);
+  f.addEventListener("submit", e => { e.preventDefault(); connectProject(f, go, err); });
+  return (P.form = f);
+}
+
+async function connectProject(f, go, err) {
+  const v = n => f.elements[n].value.trim();
+  err.textContent = "";
+  if (!v("path")) { err.textContent = "Enter the folder's path."; f.elements.path.focus(); return; }
+  const body = { path: v("path"), active: f.elements.active.checked };
+  for (const k of ["name", "dev_cmd", "url"]) if (v(k)) body[k] = v(k);
+  setBusy(go, true);
+  let d = null;
+  try { d = await fetch("/projects/connect", post(body)).then(r => r.json()); } catch (e) {}
+  setBusy(go, false);
+  if (!d || !d.ok) { err.textContent = (d && d.error) || "Couldn't connect that folder. Check that Cygnus is running."; return; }
+  f.reset();
+  toast("Connected " + (d.project ? d.project.id : "folder"));
+  loadProjects();
+}
+
+function renderProjects() {
+  const list = $("#list");
+  list.textContent = "";
+  const form = projectForm();
+  if (P.loading && !P.list.length) {
+    list.innerHTML = '<div class="skel"><i class="sq"></i><i style="width:40%"></i><i></i></div>';
+  } else if (P.error) {
+    list.innerHTML = emptyState("Couldn't load projects", P.error, "retry", "Retry");
+  } else if (!P.list.length) {
+    list.innerHTML = emptyState("No projects yet", "Connect a folder below to let agents work in it.", "retry", "Refresh");
+  } else {
+    P.list.forEach(p => list.appendChild(projectCard(p)));
+  }
+  if (!P.error) list.appendChild(form);
+}
+
+async function projectAction(act, id, btn) {
+  const p = P.list.find(x => x.id === id);
+  if (!p) return;
+  if (act === "changes") {
+    if (P.changes[id]) { delete P.changes[id]; renderProjects(); return; }
+    P.changes[id] = { loading: true };
+    renderProjects();
+    let c;
+    try {
+      const d = await fetch("/projects/" + encodeURIComponent(id) + "/changes", { cache: "no-store" }).then(r => r.json());
+      c = d.ok ? { data: d } : { error: d.error || "Couldn't read this project's changes." };
+    } catch (e) { c = { error: "Cygnus didn't answer. Check that the server is running." }; }
+    if (P.changes[id]) { P.changes[id] = c; renderProjects(); }
+    return;
+  }
+  if (act === "disconnect") {
+    if (!window.confirm("Disconnect " + id + "? Cygnus will forget this project. The folder itself is left untouched.")) return;
+    setBusy(btn, true);
+    let d = null;
+    try { d = await fetch("/projects/disconnect", post({ id })).then(r => r.json()); } catch (e) {}
+    setBusy(btn, false);
+    if (!d || !d.ok) { toast((d && d.error) || "Couldn't disconnect " + id, "err"); return; }
+    delete P.changes[id]; delete P.msg[id];
+    toast("Disconnected " + id);
+    loadProjects();
+    return;
+  }
+  setBusy(btn, true);
+  let d = null;
+  try {
+    // Start can take a minute: the server waits for the dev server to answer.
+    d = await fetch(act === "start" ? "/projects/start" : "/projects/active", post({ id })).then(r => r.json());
+  } catch (e) {}
+  setBusy(btn, false);
+  if (act === "start") {
+    P.msg[id] = (d && (d.result || d.error)) || "Cygnus didn't answer. Check that the server is running.";
+    renderProjects();
+    return;
+  }
+  if (!d || !d.ok) { toast((d && d.error) || "Couldn't switch to " + id, "err"); return; }
+  toast(id + " is now the active project");
+  loadProjects();
+}
+
 // ----------------------------------------------------------- shadow review --
 
 function describeRoute(r) {
@@ -1921,7 +2162,7 @@ function init() {
   list.addEventListener("click", e => {
     const actEl = e.target.closest("[data-act]");
     const act = actEl ? actEl.dataset.act : "";
-    if (act === "retry") return loadApps();
+    if (act === "retry") return S.tab === "projects" ? loadProjects() : loadApps();
     if (act === "browse") { if (!S.advanced) setAdvanced(true, true); return setTab("all"); }
     if (act === "add") return showAddRow(true);
     if (act === "clear") { $("#search").value = ""; return setFilter("all"); }
@@ -2018,6 +2259,8 @@ function init() {
     if (e.key === "Escape" && !moreMenu.hidden) { setMoreMenu(false); moreBtn.focus(); e.stopImmediatePropagation(); }
   });
   $("#list").addEventListener("click", e => {
+    const pj = e.target.closest("[data-pj]");
+    if (pj) return projectAction(pj.dataset.pj, pj.dataset.id, pj);
     const v = e.target.closest("[data-verdict]");
     if (v) return labelShadow(v.dataset.sid, v.dataset.verdict, v);
     const f = e.target.closest("[data-forget]");

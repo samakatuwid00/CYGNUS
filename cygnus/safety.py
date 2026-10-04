@@ -45,6 +45,11 @@ _RUNNABLE_RE = re.compile(r"\.(exe|bat|cmd|com|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|m
 # Tools whose own confirm flag the model sets on the second call; it counts
 # only when the first call (which asked) was in an earlier turn.
 SELF_LATCHED = {"desktop_control", "run_opencli", "delegate_to_hermes", "run_autonomous", "delegate"}
+# Tools that hand a task to a coding agent, and the argument holding the task.
+# The agent runs in the task's project folder (paths.cwd_for), so the first
+# change it may make in a connected project waits for the owner's yes.
+PROJECT_WRITERS = {"delegate": "task", "delegate_task": "task", "delegate_to_hermes": "task",
+                   "delegate_to_hermes_grounded": "task", "run_autonomous": "goal"}
 
 _lock = threading.Lock()
 _turn = 0
@@ -53,10 +58,12 @@ _pending: dict | None = None            # {"key", "question", "run", "ts", "turn
 
 
 class Decision:
-    __slots__ = ("kind", "reason", "question")
+    __slots__ = ("kind", "reason", "question", "then")
 
-    def __init__(self, kind: str, reason: str = "", question: str = ""):
-        self.kind, self.reason, self.question = kind, reason, question
+    def __init__(self, kind: str, reason: str = "", question: str = "", then=None):
+        # `then`: run once the user says yes, before the held action itself
+        # (allowing an agent to change files in a project).
+        self.kind, self.reason, self.question, self.then = kind, reason, question, then
 
     def __repr__(self):
         return f"Decision({self.kind!r}, {self.reason!r})"
@@ -135,7 +142,30 @@ def assess(tool: str, args: dict | None = None) -> Decision:
     if tool == "write_file" and _truthy(args.get("overwrite", False)):
         return Decision("confirm", "overwriting replaces the file",
                         f"Replace {os.path.basename(str(args.get('path') or 'that file'))}, sir?")
+    if tool in PROJECT_WRITERS:
+        return assess_project_write(str(args.get(PROJECT_WRITERS[tool]) or ""))
     return ACT
+
+
+def assess_project_write(task: str) -> Decision:
+    """A coding agent is about to work on `task`. In a connected project where
+    no agent has been allowed to change files yet, that waits for a yes; the
+    yes is remembered (allow_writes in projects.json). A look-only task and
+    Cygnus's own folder go ahead."""
+    try:
+        from cygnus import tools
+        from cygnus.agents import project
+        if tools._is_safe_task(task):
+            return ACT
+        pid, folder = project.project_for(task)
+        if project.writes_allowed(pid):
+            return ACT
+    except Exception:
+        return ACT
+    return Decision("confirm", f"first change an agent would make in {pid}",
+                    f"This would be the first time an agent changes files in {pid} ({folder}). "
+                    "Allow it, sir?",
+                    then=lambda: project.allow_writes(pid))
 
 
 def assess_app_step(slug: str, step: dict) -> Decision:
@@ -216,6 +246,12 @@ def same_client(latched: str | None, current: str | None = None) -> bool:
 def hold(key: str, decision: Decision, run) -> str:
     """Keep `run` until the user answers; the reply to speak now."""
     global _pending
+    if decision.then is not None:
+        held, then = run, decision.then
+
+        def run():
+            then()
+            return held()
     with _lock:
         _pending = {"key": key, "question": decision.question, "reason": decision.reason,
                     "run": run, "ts": time.time(), "turn": _turn,

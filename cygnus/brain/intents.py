@@ -284,7 +284,8 @@ def _referent_object(text, verb_pattern):
 NO_RULE_GUESS_INTENTS = {
     "math", "greeting", "thanks", "time", "help", "stop", "job_status", "job_stop",
     "recall_memory", "remember", "list_sites", "running_stop", "view", "volume",
-    "clarify_play", "clarify_search", "clarify_open"}
+    "clarify_play", "clarify_search", "clarify_open",
+    "project_switch", "project_connect", "project_which"}
 
 
 def requested_view(text: str):
@@ -412,6 +413,16 @@ def classify_intent(text: str) -> str:
             re.search(r"\b(web)?sites?\s+(do\s+)?you\s+know\b|\bare registered\b|"
                       r"\bmy (web)?sites\b|\bmy bookmarks\b|\bsites i have\b", t)):
         return "list_sites"
+    # Project Connector (docs/CONNECTOR.md): "work on sticky brain", "connect
+    # this folder", "which project are we on?". "work on X" is only a switch
+    # when X is a connected project's exact name.
+    try:
+        from cygnus.agents import project as _project
+        _pk = _project.voice_intent(t) or _project.voice_intent(text)
+    except Exception:
+        _pk = None
+    if _pk:
+        return _pk
     # report / launch: JARVIS-specific side-routes (compose_report, launch_project).
     # These run on JARVIS's local brain + signed-in browser, NOT Hermes, so they
     # must NOT be classified as `general` (which routes to the Hermes harness).

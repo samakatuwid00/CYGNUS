@@ -57,7 +57,7 @@ def _fake_hermes(monkeypatch, changes, tmp_path):
     snapshots = iter(changes)
     monkeypatch.setattr(tools, "_is_safe_task", lambda t: True)
     monkeypatch.setattr(tools, "_run_hermes_sync", lambda task, *a, **k: sent.append(task) or "Here is what I found.")
-    monkeypatch.setattr(tools, "_repo_changes", lambda: next(snapshots))
+    monkeypatch.setattr(tools, "_repo_changes", lambda root=None: next(snapshots))
     return sent
 
 
